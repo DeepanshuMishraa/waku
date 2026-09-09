@@ -1041,6 +1041,7 @@ pub struct Waku {
     /// Cached once at construction for the Daemon settings connection URL;
     /// rendering must not query account or network configuration.
     daemon_hostname: String,
+    sidebar_device_label: String,
     /// Session details currently being fetched from the daemon. Sidebar rows
     /// stay usable while the selected transcript hydrates asynchronously.
     session_hydrations: HashSet<Uuid>,
@@ -1217,6 +1218,8 @@ pub struct Waku {
     /// Window-modal Git commit/push UI. Its repository snapshot is filled
     /// off-thread; frames only read this in-memory value.
     commit_dialog: Option<commit_dialog::CommitDialogState>,
+    project_dialog: Option<project_dialog::ProjectDialogState>,
+    rename_dialog: Option<project_dialog::RenameDialogState>,
     goal_dialog: Option<goal_dialog::GoalDialogState>,
     goal_dialog_request: Option<goal_dialog::GoalDialogRequest>,
     /// Goal operations accepted before the session's runtime exists. Goals
@@ -1332,6 +1335,7 @@ pub struct Waku {
     /// Stable keyboard focus for each virtualized project-history reveal row.
     sidebar_show_more_focuses: RefCell<HashMap<SidebarGroup, FocusHandle>>,
     sidebar_visible: bool,
+    sidebar_options_open: bool,
     sidebar_width: f32,
     right_panel_visible: bool,
     right_panel_width: f32,
@@ -1613,6 +1617,7 @@ mod drafts;
 mod file_search;
 mod goal_dialog;
 mod image_preview;
+mod project_dialog;
 mod render;
 mod right_panel;
 mod runtime;
@@ -1638,6 +1643,7 @@ pub use commit_dialog::init as init_commit_dialog_keys;
 use components::*;
 pub use goal_dialog::init as init_goal_dialog_keys;
 pub use image_preview::init as init_image_preview_keys;
+pub use project_dialog::init as init_project_dialog_keys;
 pub use settings::init as init_settings_keys;
 pub use sidebar::init as init_sidebar_keys;
 use sidebar::{SidebarGroup, SidebarRow};
@@ -1937,6 +1943,8 @@ impl Waku {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let store = StateStore::remote(daemon.clone());
         let daemon_hostname = crate::daemon::local_hostname().unwrap_or_else(|| "this-mac".into());
+        let sidebar_device_label = crate::platform::local_device_label();
+        crate::platform::ensure_user_avatar_cached();
         let composer_draft_store = ComposerDraftStore::remote(daemon.clone());
         let composer_drafts = composer_draft_store.load().unwrap_or_default();
         let mut state = store.load_or_fresh(cwd);
@@ -2735,6 +2743,7 @@ impl Waku {
             Self {
                 daemon,
                 daemon_hostname,
+                sidebar_device_label,
                 session_hydrations: HashSet::new(),
                 pending_session_activation: None,
                 analytics,
@@ -2836,6 +2845,8 @@ impl Waku {
                 visible_branch_snapshot: None,
                 branch_operation_pending: false,
                 commit_dialog: None,
+                project_dialog: None,
+            rename_dialog: None,
                 goal_dialog: None,
                 goal_dialog_request: None,
                 pending_goal_operations: HashMap::new(),
@@ -2886,6 +2897,7 @@ impl Waku {
                 sidebar_group_compose_focuses: RefCell::new(HashMap::new()),
                 sidebar_show_more_focuses: RefCell::new(HashMap::new()),
                 sidebar_visible,
+                sidebar_options_open: false,
                 sidebar_width,
                 right_panel_visible,
                 right_panel_width,

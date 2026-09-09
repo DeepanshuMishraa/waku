@@ -19,35 +19,54 @@ pub(super) fn pulse_dot(size: f32, color: Hsla) -> AnyElement {
     .into_any_element()
 }
 
-/// Three dots chasing a brightness wave, the transcript's "still working"
-/// signal. Each dot rides the shared pulse clock with a phase offset, so the
-/// bright spot travels left to right. Under reduce-motion the clock holds the
-/// cycle's first frame — the lead dot bright, the tail dim — which reads as a
-/// static ellipsis.
-pub(super) fn working_wave_dots(color: Hsla) -> AnyElement {
-    const DOT_PHASE_STEP: f32 = 0.18;
-    motion::pulse(Duration::from_millis(1400), move |phase| {
-        div()
+/// A 3x3 animated matrix dot loader that sweeps columns on and off.
+pub(super) fn dot_matrix_loader(color: Hsla, size: f32) -> AnyElement {
+    let dot_size = (size * 0.18).max(2.5);
+    motion::pulse(Duration::from_millis(1200), move |phase| {
+        let mut grid = div()
+            .size(px(size))
+            .flex_none()
             .flex()
-            .items_center()
-            .gap(px(3.5))
-            .children((0..3).map(|index| {
-                let dot_phase = (phase + 1.0 - index as f32 * DOT_PHASE_STEP) % 1.0;
-                let wave = ((dot_phase * std::f32::consts::TAU).sin() + 1.0) / 2.0;
-                div()
-                    .size(px(4.5))
-                    .flex_none()
-                    .rounded_full()
-                    .bg(color)
-                    .opacity(0.25 + 0.75 * wave)
-            }))
-            .into_any_element()
+            .flex_col()
+            .justify_between()
+            .p(px(1.0));
+
+        for row in 0..3 {
+            let mut row_el = div().w_full().flex().items_center().justify_between();
+            for col in 0..3 {
+                let t_off = 0.10 + col as f32 * 0.09 + row as f32 * 0.025;
+                let t_on = 0.50 + col as f32 * 0.09 + row as f32 * 0.025;
+                let active = if phase < 0.10 {
+                    true
+                } else if phase < 0.50 {
+                    phase < t_off
+                } else if phase < 0.85 {
+                    phase >= t_on
+                } else {
+                    true
+                };
+
+                let opacity = if active { 0.95 } else { 0.0 };
+                row_el = row_el.child(
+                    div()
+                        .size(px(dot_size))
+                        .rounded_full()
+                        .bg(color)
+                        .opacity(opacity),
+                );
+            }
+            grid = grid.child(row_el);
+        }
+
+        grid.into_any_element()
     })
-    // Mounted for the whole turn: this is what sets the transcript pane's
-    // tick floor, and every tick rebuilds each visible row. The 1400 ms wave
-    // reads identically at half cadence.
-    .every(2)
+    .every(1)
     .into_any_element()
+}
+
+/// Animated 3x3 dot matrix loader for the live turn's footer before "Working for Ns".
+pub(super) fn working_wave_dots(color: Hsla) -> AnyElement {
+    dot_matrix_loader(color, 16.0)
 }
 
 pub(super) fn format_message_time(created_at: u64) -> String {

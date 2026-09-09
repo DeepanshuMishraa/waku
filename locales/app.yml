@@ -472,8 +472,14 @@ session.new_task:
 
 sidebar.today:
   en: Today
+sidebar.create:
+  en: Create
 sidebar.search:
   en: Search
+sidebar.home:
+  en: Home
+sidebar.projects:
+  en: Projects
 sidebar.options:
   en: Sidebar options
 sidebar.grouping:
@@ -549,6 +555,38 @@ project.without_a_project:
   en: without a project
 project.your_project:
   en: your project
+project.open_project:
+  en: Open project…
+project.open_github:
+  en: Open a GitHub project
+project.clone_github:
+  en: Clone GitHub repo
+project.repository_url:
+  en: Repository URL
+project.clone_location:
+  en: Location
+project.clone_location_required:
+  en: Choose a clone location
+project.browse:
+  en: Browse
+project.clone:
+  en: Clone repo
+project.choose_clone_location:
+  en: Choose clone location
+project.open_github_description:
+  en: Clone a repository from GitHub
+project.open_local:
+  en: Open a local project
+project.open_local_description:
+  en: Choose a folder on this computer
+project.github_url_placeholder:
+  en: https://github.com/owner/repository
+project.github_url_required:
+  en: Enter a GitHub repository URL
+project.open:
+  en: Open
+project.cloning:
+  en: Cloning…
 
 onboarding.open_project_to_begin:
   en: Open a project to begin

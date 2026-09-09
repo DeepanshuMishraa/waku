@@ -401,6 +401,33 @@ impl Waku {
             .detach();
     }
 
+    pub(super) fn remove_project(&mut self, project_id: Uuid, cx: &mut Context<Self>) {
+        let session_ids: Vec<Uuid> = self
+            .state
+            .sessions
+            .iter()
+            .filter(|s| s.project_id == project_id)
+            .map(|s| s.id)
+            .collect();
+
+        for session_id in session_ids {
+            self.remove_session(session_id, cx);
+        }
+
+        if let Some(pos) = self.state.projects.iter().position(|p| p.id == project_id) {
+            self.state.projects.remove(pos);
+        }
+
+        if self.state.selected_project == Some(project_id) {
+            self.state.selected_project = self.state.projects.first().map(|p| p.id);
+        }
+
+        self.sidebar_collapsed_groups
+            .remove(&sidebar::SidebarGroup::Project(project_id));
+        self.save();
+        cx.notify();
+    }
+
     pub(super) fn new_session_action(
         &mut self,
         _: &NewSession,
@@ -432,10 +459,10 @@ impl Waku {
     pub(super) fn new_project_action(
         &mut self,
         _: &NewProject,
-        _: &mut Window,
+        window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.add_project(cx);
+        self.open_project_source_dialog(window, cx);
     }
 
     pub(super) fn open_settings_action(
@@ -1572,19 +1599,28 @@ impl Waku {
                 && let Some(path) = paths.into_iter().next()
             {
                 let _ = this.update(cx, |this, cx| {
-                    if let Some(existing) = this.state.projects.iter().find(|p| p.path == path) {
-                        this.select_project(existing.id, cx);
-                        return;
-                    }
-                    let project = Project::from_path(path);
-                    let project_id = project.id;
-                    this.state.projects.push(project);
-                    this.analytics.track(crate::analytics::Event::ProjectAdded);
-                    this.create_session_for(project_id, this.state.last_provider, cx);
+                    this.add_project_path(path, cx);
                 });
             }
         })
         .detach();
+    }
+
+    pub(super) fn add_project_path(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if let Some(existing) = self
+            .state
+            .projects
+            .iter()
+            .find(|project| project.path == path)
+        {
+            self.select_project(existing.id, cx);
+            return;
+        }
+        let project = Project::from_path(path);
+        let project_id = project.id;
+        self.state.projects.push(project);
+        self.analytics.track(crate::analytics::Event::ProjectAdded);
+        self.create_session_for(project_id, self.state.last_provider, cx);
     }
 
     pub(super) fn create_projectless_session(&mut self, cx: &mut Context<Self>) {

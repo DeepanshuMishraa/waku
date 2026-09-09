@@ -555,6 +555,7 @@ mod tests {
             "icons/rewind.svg",
             "icons/fork.svg",
             "icons/git-branch.svg",
+            "icons/github.svg",
             "icons/chart-column.svg",
             "icons/chevron-down.svg",
             "icons/chevron-right.svg",

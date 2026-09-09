@@ -89,6 +89,11 @@ pub enum WorkspaceOperation {
         #[ts(type = "string")]
         path: PathBuf,
     },
+    CloneRepository {
+        url: String,
+        #[ts(type = "string")]
+        destination: PathBuf,
+    },
     InspectBranches {
         #[ts(type = "string")]
         cwd: PathBuf,
@@ -221,6 +226,10 @@ pub enum WorkspaceResult {
     ProjectlessWorkspace {
         #[ts(type = "string")]
         cwd: PathBuf,
+    },
+    ClonedRepository {
+        #[ts(type = "string")]
+        path: PathBuf,
     },
     Branches {
         snapshot: Option<BranchSnapshot>,

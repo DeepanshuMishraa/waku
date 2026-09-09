@@ -6,7 +6,7 @@
 use std::collections::HashSet;
 use std::fs;
 use std::path::{Component, Path, PathBuf};
-use std::process::Output;
+use std::process::{Command, Output};
 
 use anyhow::{Context as _, anyhow, bail};
 
@@ -87,6 +87,9 @@ pub fn execute(operation: WorkspaceOperation) -> anyhow::Result<WorkspaceResult>
                 cwd: crate::projectless::migrate_workspace(&path)?.cwd,
             }
         }
+        WorkspaceOperation::CloneRepository { url, destination } => WorkspaceResult::ClonedRepository {
+            path: clone_github_repository(&url, &destination)?,
+        },
         WorkspaceOperation::InspectBranches { cwd } => WorkspaceResult::Branches {
             snapshot: crate::git_branch::inspect(&cwd)?,
         },
@@ -304,6 +307,61 @@ fn list_directory(directory: &Path) -> anyhow::Result<Vec<WorkingTreeEntry>> {
 struct DiffRange {
     from: String,
     to: String,
+}
+
+fn clone_github_repository(input: &str, root: &Path) -> anyhow::Result<PathBuf> {
+    let url = url::Url::parse(input.trim()).context("enter a valid GitHub repository URL")?;
+    if url.scheme() != "https" || url.host_str() != Some("github.com") {
+        bail!("use an https://github.com/owner/repository URL");
+    }
+    let segments = url
+        .path_segments()
+        .map(|segments| {
+            segments
+                .filter(|segment| !segment.is_empty())
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    if segments.len() != 2 {
+        bail!("use a GitHub repository URL such as https://github.com/owner/repository");
+    }
+    let owner = segments[0];
+    let repository = segments[1].strip_suffix(".git").unwrap_or(segments[1]);
+    if owner.is_empty() || repository.is_empty() {
+        bail!("the GitHub URL must include an owner and repository");
+    }
+
+    let root = root
+        .canonicalize()
+        .with_context(|| format!("could not open clone location {}", root.display()))?;
+    if !root.is_dir() {
+        bail!("clone location is not a directory: {}", root.display());
+    }
+    let destination = root.join(repository);
+    if destination.join(".git").is_dir() {
+        return Ok(destination);
+    }
+    if destination.exists() {
+        bail!(
+            "{} already exists but is not a Git repository; move it or remove it before cloning",
+            destination.display()
+        );
+    }
+
+    let output = Command::new("git")
+        .args(["clone", "--", input.trim()])
+        .arg(&destination)
+        .output()
+        .context("could not start git clone; install Git and try again")?;
+    if !output.status.success() {
+        let detail = String::from_utf8_lossy(&output.stderr).trim().to_owned();
+        let _ = fs::remove_dir_all(&destination);
+        if detail.is_empty() {
+            bail!("git clone failed with status {}", output.status);
+        }
+        bail!("git clone failed: {detail}");
+    }
+    Ok(destination)
 }
 
 fn collect_review_diff(cwd: &Path, source: ReviewDiffSource) -> anyhow::Result<ReviewDiffData> {

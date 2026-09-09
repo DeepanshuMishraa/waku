@@ -1,4 +1,106 @@
+use std::path::PathBuf;
 use gpui::Window;
+
+/// A stable, human-readable label for the local desktop shown in navigation.
+/// Resolve it once during app startup. Rendering must not spawn processes or
+/// query the environment.
+pub fn local_device_label() -> String {
+    let name = local_user_full_name().unwrap_or_else(|| {
+        std::env::var("USER")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "My".to_owned())
+    });
+    let first_name = name.split_whitespace().next().unwrap_or(&name);
+    let trimmed = first_name.strip_suffix("'s").unwrap_or(first_name);
+    #[cfg(target_os = "macos")]
+    {
+        return format!("{trimmed}'s Mac");
+    }
+    #[cfg(not(target_os = "macos"))]
+    {
+        let computer = local_computer_name().unwrap_or_else(|| "Device".to_owned());
+        format!("{trimmed}'s {computer}")
+    }
+}
+
+pub fn local_user_full_name() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        if let Ok(output) = std::process::Command::new("id").arg("-F").output() {
+            let name = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if !name.is_empty() {
+                return Some(name);
+            }
+        }
+        if let Ok(user) = std::env::var("USER") {
+            if let Ok(output) = std::process::Command::new("dscl")
+                .args([".", "-read", &format!("/Users/{user}"), "RealName"])
+                .output()
+            {
+                let text = String::from_utf8_lossy(&output.stdout);
+                let name = text
+                    .lines()
+                    .filter(|line| !line.starts_with("RealName:"))
+                    .collect::<Vec<_>>()
+                    .join(" ")
+                    .trim()
+                    .to_owned();
+                if !name.is_empty() {
+                    return Some(name);
+                }
+            }
+        }
+    }
+    None
+}
+
+pub fn local_user_avatar_path() -> Option<PathBuf> {
+    let path = dirs::home_dir()?.join(".waku").join("cache").join("avatar.png");
+    if path.is_file() {
+        Some(path)
+    } else {
+        None
+    }
+}
+
+pub fn ensure_user_avatar_cached() {
+    let Some(home) = dirs::home_dir() else { return };
+    let cache_dir = home.join(".waku").join("cache");
+    let target = cache_dir.join("avatar.png");
+    if target.exists() {
+        return;
+    }
+    std::thread::spawn(move || {
+        let _ = std::fs::create_dir_all(&cache_dir);
+        if let Ok(output) = std::process::Command::new("gh")
+            .args(["api", "user", "--jq", ".avatar_url"])
+            .output()
+        {
+            let url = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+            if url.starts_with("https://") {
+                let _ = std::process::Command::new("curl")
+                    .args(["-s", "-L", &url, "-o", &target.display().to_string()])
+                    .output();
+            }
+        }
+    });
+}
+
+fn local_computer_name() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        let output = std::process::Command::new("scutil")
+            .args(["--get", "ComputerName"])
+            .output()
+            .ok()?;
+        let name = String::from_utf8_lossy(&output.stdout).trim().to_owned();
+        if !name.is_empty() {
+            return Some(name);
+        }
+    }
+    crate::daemon::local_hostname()
+}
 
 /// Returns the unique font family names available to the current user.
 /// Discovery is intentionally explicit and should run off the UI thread.
