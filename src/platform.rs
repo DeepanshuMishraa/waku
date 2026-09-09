@@ -1,5 +1,5 @@
-use std::path::PathBuf;
 use gpui::Window;
+use std::path::PathBuf;
 
 /// A stable, human-readable label for the local desktop shown in navigation.
 /// Resolve it once during app startup. Rendering must not spawn processes or
@@ -55,19 +55,127 @@ pub fn local_user_full_name() -> Option<String> {
     None
 }
 
-pub fn local_user_avatar_path() -> Option<PathBuf> {
-    let path = dirs::home_dir()?.join(".waku").join("cache").join("avatar.png");
-    if path.is_file() {
-        Some(path)
-    } else {
-        None
+pub fn local_user_login_avatar_path() -> Option<PathBuf> {
+    let cache_dir = dirs::home_dir()?.join(".waku").join("cache");
+    ["jpg", "png"]
+        .into_iter()
+        .map(|extension| cache_dir.join(format!("login-avatar.{extension}")))
+        .find(|path| path.is_file())
+}
+
+pub fn local_user_github_avatar_path() -> Option<PathBuf> {
+    let path = dirs::home_dir()?
+        .join(".waku")
+        .join("cache")
+        .join("github-avatar.png");
+    path.is_file().then_some(path)
+}
+
+/// Cache the macOS login picture for the device row. The cached file keeps
+/// rendering synchronous and lets the avatar appear immediately on relaunch.
+pub fn set_font_smoothing_enabled(enabled: bool) {
+    #[cfg(target_os = "macos")]
+    {
+        let bundle_id = if cfg!(debug_assertions) {
+            "sh.waku.dev"
+        } else {
+            "sh.waku"
+        };
+        let value = if enabled { "1" } else { "0" };
+        let _ = std::process::Command::new("defaults")
+            .args(["write", bundle_id, "AppleFontSmoothing", "-int", value])
+            .status();
     }
 }
 
-pub fn ensure_user_avatar_cached() {
+fn macos_picture_path(output: &[u8]) -> Option<PathBuf> {
+    String::from_utf8_lossy(output)
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && *line != "Picture:")
+        .map(PathBuf::from)
+}
+
+fn macos_jpeg_photo(output: &[u8]) -> Option<Vec<u8>> {
+    let hex = String::from_utf8_lossy(output)
+        .split_whitespace()
+        .skip_while(|token| *token != "JPEGPhoto:")
+        .skip(1)
+        .collect::<String>();
+    if hex.is_empty() || hex.len() % 2 != 0 || !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+        return None;
+    }
+    (0..hex.len())
+        .step_by(2)
+        .map(|index| u8::from_str_radix(&hex[index..index + 2], 16).ok())
+        .collect()
+}
+
+pub fn ensure_user_login_avatar_cached() {
+    #[cfg(target_os = "macos")]
+    {
+        let Some(home) = dirs::home_dir() else { return };
+        let cache_dir = home.join(".waku").join("cache");
+        let Some(user) = std::env::var_os("USER") else {
+            return;
+        };
+        if std::fs::create_dir_all(&cache_dir).is_err() {
+            return;
+        }
+        let jpeg_output = std::process::Command::new("dscl")
+            .args([".", "-read"])
+            .arg(format!("/Users/{}", user.to_string_lossy()))
+            .arg("JPEGPhoto")
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| macos_jpeg_photo(&output.stdout));
+        if let Some(bytes) = jpeg_output {
+            let target = cache_dir.join("login-avatar.jpg");
+            if !target.is_file() {
+                let temporary = cache_dir.join("login-avatar.tmp.jpg");
+                if std::fs::write(&temporary, bytes).is_ok() {
+                    let _ = std::fs::rename(temporary, target);
+                }
+            }
+            return;
+        }
+
+        let Some(source) = std::process::Command::new("dscl")
+            .args([".", "-read"])
+            .arg(format!("/Users/{}", user.to_string_lossy()))
+            .arg("Picture")
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| macos_picture_path(&output.stdout))
+            .filter(|source| source.is_file())
+        else {
+            return;
+        };
+        let target = cache_dir.join("login-avatar.png");
+        if !target.is_file() {
+            let temporary = cache_dir.join("login-avatar.tmp.png");
+            let converted = std::process::Command::new("sips")
+                .args(["-s", "format", "png"])
+                .arg(source)
+                .arg("--out")
+                .arg(&temporary)
+                .output()
+                .is_ok_and(|output| output.status.success());
+            if converted {
+                let _ = std::fs::rename(temporary, target);
+            } else {
+                let _ = std::fs::remove_file(temporary);
+            }
+        }
+    }
+}
+
+pub fn ensure_user_github_avatar_cached() {
     let Some(home) = dirs::home_dir() else { return };
     let cache_dir = home.join(".waku").join("cache");
-    let target = cache_dir.join("avatar.png");
+    let target = cache_dir.join("github-avatar.png");
     if target.exists() {
         return;
     }
@@ -832,7 +940,23 @@ mod tests {
 mod macos_tests {
     use std::{borrow::Cow, path::Path};
 
-    use super::termy_open_url;
+    use super::{macos_jpeg_photo, macos_picture_path, termy_open_url};
+
+    #[test]
+    fn login_picture_path_accepts_dscl_multiline_output() {
+        assert_eq!(
+            macos_picture_path(b"Picture:\n /Library/User Pictures/Animals/Eagle.heic\n"),
+            Some("/Library/User Pictures/Animals/Eagle.heic".into())
+        );
+    }
+
+    #[test]
+    fn login_jpeg_photo_decodes_dscl_hex_words() {
+        assert_eq!(
+            macos_jpeg_photo(b"JPEGPhoto:\n ffd8 ffe0 0010\n"),
+            Some(vec![0xff, 0xd8, 0xff, 0xe0, 0x00, 0x10])
+        );
+    }
 
     #[test]
     fn termy_projects_use_the_new_tab_deeplink() {

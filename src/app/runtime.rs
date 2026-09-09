@@ -841,7 +841,10 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                     ));
                 };
                 let binary = request.binary.as_deref().ok_or_else(|| {
-                    anyhow::anyhow!(tr!("errors.provider_not_installed", provider = "OpenCode 2"))
+                    anyhow::anyhow!(tr!(
+                        "errors.provider_not_installed",
+                        provider = "OpenCode 2"
+                    ))
                 })?;
                 Ok((
                     request
@@ -1658,6 +1661,8 @@ impl Waku {
     }
 
     pub(super) fn save(&mut self) {
+        self.state.pinned_projects = self.pinned_project_ids.iter().copied().collect();
+        self.state.pinned_projects.sort_unstable();
         self.last_stream_save = Instant::now();
         let daemon_error = self
             .daemon

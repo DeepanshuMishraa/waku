@@ -1348,23 +1348,25 @@ impl Waku {
         let selected_ui_font_family = self.state.ui_font_family.clone();
         let ui_font_search = self.ui_font_search.clone();
         let font_families = if self.font_families.is_empty() {
-            Rc::new(FONT_FAMILIES.iter().map(|family| (*family).to_owned()).collect())
+            Rc::new(
+                FONT_FAMILIES
+                    .iter()
+                    .map(|family| (*family).to_owned())
+                    .collect(),
+            )
         } else {
             self.font_families.clone()
         };
         let weak = cx.entity().downgrade();
         let ui_font_search_for_handle = ui_font_search.clone();
-        let ui_font_family_handle = self.menu_handle_with(
-            "ui-font-family-selector",
-            cx,
-            move |open, window, cx| {
+        let ui_font_family_handle =
+            self.menu_handle_with("ui-font-family-selector", cx, move |open, window, cx| {
                 if open {
                     ui_font_search_for_handle.update(cx, |input, cx| input.set_content("", cx));
                     let focus = ui_font_search_for_handle.read(cx).focus_handle(cx);
                     window.focus(&focus, cx);
                 }
-            },
-        );
+            });
         let ui_font_family_selector = dropdown_menu(
             MenuChip::new("ui-font-family-selector")
                 .label(selected_ui_font_family.clone())
@@ -1384,18 +1386,22 @@ impl Waku {
                         .icon("icons/search.svg", 13.0)
                         .into_any_element()
                 })];
-                items.extend(families.iter().filter(|family| {
-                    query.is_empty() || family.to_lowercase().contains(&query)
-                }).map(|family| {
-                    let family = family.clone();
-                    let selected = family == selected_ui_font_family;
-                    let weak = weak.clone();
-                    MenuItem::new(family.clone(), move |_, cx| {
-                        let _ = weak.update(cx, |this, cx| {
-                            this.set_ui_font_family(family.clone(), cx)
-                        });
-                    }).selected(selected)
-                }));
+                items.extend(
+                    families
+                        .iter()
+                        .filter(|family| query.is_empty() || family.to_lowercase().contains(&query))
+                        .map(|family| {
+                            let family = family.clone();
+                            let selected = family == selected_ui_font_family;
+                            let weak = weak.clone();
+                            MenuItem::new(family.clone(), move |_, cx| {
+                                let _ = weak.update(cx, |this, cx| {
+                                    this.set_ui_font_family(family.clone(), cx)
+                                });
+                            })
+                            .selected(selected)
+                        }),
+                );
                 items
             },
         );
@@ -1403,23 +1409,25 @@ impl Waku {
         let selected_code_font_family = self.state.code_font_family.clone();
         let code_font_search = self.code_font_search.clone();
         let font_families = if self.font_families.is_empty() {
-            Rc::new(FONT_FAMILIES.iter().map(|family| (*family).to_owned()).collect())
+            Rc::new(
+                FONT_FAMILIES
+                    .iter()
+                    .map(|family| (*family).to_owned())
+                    .collect(),
+            )
         } else {
             self.font_families.clone()
         };
         let weak = cx.entity().downgrade();
         let code_font_search_for_handle = code_font_search.clone();
-        let code_font_family_handle = self.menu_handle_with(
-            "code-font-family-selector",
-            cx,
-            move |open, window, cx| {
+        let code_font_family_handle =
+            self.menu_handle_with("code-font-family-selector", cx, move |open, window, cx| {
                 if open {
                     code_font_search_for_handle.update(cx, |input, cx| input.set_content("", cx));
                     let focus = code_font_search_for_handle.read(cx).focus_handle(cx);
                     window.focus(&focus, cx);
                 }
-            },
-        );
+            });
         let code_font_family_selector = dropdown_menu(
             MenuChip::new("code-font-family-selector")
                 .label(selected_code_font_family.clone())
@@ -1439,18 +1447,22 @@ impl Waku {
                         .icon("icons/search.svg", 13.0)
                         .into_any_element()
                 })];
-                items.extend(families.iter().filter(|family| {
-                    query.is_empty() || family.to_lowercase().contains(&query)
-                }).map(|family| {
-                    let family = family.clone();
-                    let selected = family == selected_code_font_family;
-                    let weak = weak.clone();
-                    MenuItem::new(family.clone(), move |_, cx| {
-                        let _ = weak.update(cx, |this, cx| {
-                            this.set_code_font_family(family.clone(), cx)
-                        });
-                    }).selected(selected)
-                }));
+                items.extend(
+                    families
+                        .iter()
+                        .filter(|family| query.is_empty() || family.to_lowercase().contains(&query))
+                        .map(|family| {
+                            let family = family.clone();
+                            let selected = family == selected_code_font_family;
+                            let weak = weak.clone();
+                            MenuItem::new(family.clone(), move |_, cx| {
+                                let _ = weak.update(cx, |this, cx| {
+                                    this.set_code_font_family(family.clone(), cx)
+                                });
+                            })
+                            .selected(selected)
+                        }),
+                );
                 items
             },
         );
@@ -1480,6 +1492,18 @@ impl Waku {
                         .selected(language == selected_language)
                     })
                     .collect()
+            },
+        );
+
+        let font_smoothing_enabled = self.state.font_smoothing;
+        let font_smoothing_toggle = toggle_switch(
+            "font-smoothing-toggle",
+            font_smoothing_enabled,
+            false,
+            theme,
+            cx,
+            move |this, _, cx| {
+                this.set_font_smoothing_enabled(!font_smoothing_enabled, cx);
             },
         );
 
@@ -1632,7 +1656,49 @@ impl Waku {
                     )
                     .child(code_font_size_selector),
             )
+            .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
+            .child(
+                div()
+                    .w_full()
+                    .min_h(px(60.0))
+                    .px(px(20.0))
+                    .py(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(24.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(sp(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text)
+                                    .child(tr!("settings.font_smoothing")),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(5.0))
+                                    .text_size(sp(12.5))
+                                    .line_height(sp(18.0))
+                                    .text_color(theme.text_secondary)
+                                    .child(tr!("settings.font_smoothing_description")),
+                            ),
+                    )
+                    .child(font_smoothing_toggle),
+            )
             .into_any_element()
+    }
+
+    fn set_font_smoothing_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.state.font_smoothing == enabled {
+            return;
+        }
+        self.state.font_smoothing = enabled;
+        crate::platform::set_font_smoothing_enabled(enabled);
+        self.save();
+        cx.notify();
     }
 
     fn set_ui_font_family(&mut self, family: String, cx: &mut Context<Self>) {

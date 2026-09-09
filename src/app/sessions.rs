@@ -410,6 +410,13 @@ impl Waku {
             .map(|s| s.id)
             .collect();
 
+        if self
+            .state
+            .selected_session
+            .is_some_and(|session_id| session_ids.contains(&session_id))
+        {
+            self.state.selected_session = None;
+        }
         for session_id in session_ids {
             self.remove_session(session_id, cx);
         }
@@ -422,8 +429,11 @@ impl Waku {
             self.state.selected_project = self.state.projects.first().map(|p| p.id);
         }
 
-        self.sidebar_collapsed_groups
+        self.sidebar_expanded_groups
             .remove(&sidebar::SidebarGroup::Project(project_id));
+        self.sidebar_expanded_groups
+            .remove(&sidebar::SidebarGroup::PinnedProject(project_id));
+        self.pinned_project_ids.remove(&project_id);
         self.save();
         cx.notify();
     }

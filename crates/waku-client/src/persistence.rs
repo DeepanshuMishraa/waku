@@ -267,6 +267,8 @@ pub struct AppSettings {
     pub code_font_size: f32,
     /// Typeface used by code surfaces — diffs, code blocks, tool output, and the terminal.
     pub code_font_family: String,
+    #[serde(default = "default_font_smoothing")]
+    pub font_smoothing: bool,
     pub daemon_exposure: DaemonExposureSettings,
     /// Preferred target of the header's "open project in app" control, by
     /// catalog id. `None` — and an id no longer installed — fall back to the
@@ -285,6 +287,7 @@ impl Default for AppSettings {
             ui_font_family: DEFAULT_UI_FONT_FAMILY.to_owned(),
             code_font_size: DEFAULT_CODE_FONT_SIZE,
             code_font_family: DEFAULT_CODE_FONT_FAMILY.to_owned(),
+            font_smoothing: true,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
         }
@@ -295,6 +298,10 @@ pub const DEFAULT_UI_FONT_SIZE: f32 = 14.0;
 pub const DEFAULT_CODE_FONT_SIZE: f32 = 13.0;
 pub const DEFAULT_UI_FONT_FAMILY: &str = ".SystemUIFont";
 pub const DEFAULT_CODE_FONT_FAMILY: &str = "JetBrains Mono";
+
+fn default_font_smoothing() -> bool {
+    true
+}
 
 /// Bounds a possibly hand-edited font size to something the layout survives.
 fn sanitized_font_size(size: f32, fallback: f32) -> f32 {
@@ -346,6 +353,8 @@ struct AppState {
     sidebar_grouping: SidebarGrouping,
     #[serde(default)]
     sidebar_ordering: SidebarOrdering,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pinned_projects: Vec<Uuid>,
     #[serde(default = "default_right_panel_width")]
     right_panel_width: f32,
     /// Whether markdown files in the right panel open as a rendered preview
@@ -394,6 +403,8 @@ pub struct PersistedState {
     pub code_font_size: f32,
     #[serde(default = "default_code_font_family")]
     pub code_font_family: String,
+    #[serde(default = "default_font_smoothing")]
+    pub font_smoothing: bool,
     #[serde(default)]
     pub daemon_exposure: DaemonExposureSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -408,6 +419,8 @@ pub struct PersistedState {
     pub sidebar_grouping: SidebarGrouping,
     #[serde(default)]
     pub sidebar_ordering: SidebarOrdering,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub pinned_projects: Vec<Uuid>,
     #[serde(default = "default_right_panel_width")]
     pub right_panel_width: f32,
     /// Whether markdown files in the right panel open as a rendered preview
@@ -469,6 +482,7 @@ impl PersistedState {
             ui_font_family: DEFAULT_UI_FONT_FAMILY.to_owned(),
             code_font_size: DEFAULT_CODE_FONT_SIZE,
             code_font_family: DEFAULT_CODE_FONT_FAMILY.to_owned(),
+            font_smoothing: true,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
             sidebar_visible: true,
@@ -476,6 +490,7 @@ impl PersistedState {
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_grouping: SidebarGrouping::Project,
             sidebar_ordering: SidebarOrdering::Updated,
+            pinned_projects: Vec::new(),
             right_panel_width: DEFAULT_RIGHT_PANEL_WIDTH,
             markdown_preview: false,
             window_state: None,
@@ -594,6 +609,7 @@ impl PersistedState {
             ui_font_family: self.ui_font_family.clone(),
             code_font_size: self.code_font_size,
             code_font_family: self.code_font_family.clone(),
+            font_smoothing: self.font_smoothing,
             daemon_exposure: self.daemon_exposure.clone(),
             open_in_app: self.open_in_app.clone(),
         }
@@ -617,6 +633,7 @@ impl PersistedState {
             sidebar_width: self.sidebar_width,
             sidebar_grouping: self.sidebar_grouping,
             sidebar_ordering: self.sidebar_ordering,
+            pinned_projects: self.pinned_projects.clone(),
             right_panel_width: self.right_panel_width,
             markdown_preview: self.markdown_preview,
             window_state: self.window_state,
@@ -632,6 +649,7 @@ impl PersistedState {
         self.ui_font_family = settings.ui_font_family;
         self.code_font_size = sanitized_code_font_size(settings.code_font_size);
         self.code_font_family = settings.code_font_family;
+        self.font_smoothing = settings.font_smoothing;
         self.daemon_exposure = settings.daemon_exposure;
         self.open_in_app = settings.open_in_app;
     }
@@ -652,6 +670,7 @@ impl PersistedState {
         self.sidebar_width = app_state.sidebar_width;
         self.sidebar_grouping = app_state.sidebar_grouping;
         self.sidebar_ordering = app_state.sidebar_ordering;
+        self.pinned_projects = app_state.pinned_projects;
         self.right_panel_width = app_state.right_panel_width;
         self.markdown_preview = app_state.markdown_preview;
         self.window_state = app_state.window_state;

@@ -165,6 +165,7 @@ const ICONS: &[(&str, &[u8])] = icons![
     "loader-circle",
     "lock",
     "lock-open",
+    "minus",
     "package",
     "panel-left",
     "panel-right",

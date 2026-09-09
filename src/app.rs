@@ -1322,9 +1322,11 @@ pub struct Waku {
     /// One stable field reused across sidebar rows so virtualization never
     /// replaces the focused editor while a rename is in progress.
     session_rename_input: Entity<TextInput>,
-    /// Groups the user has folded in either sidebar view. This is
+    /// Groups the user has unfolded in the sidebar view. This is
     /// intentionally runtime-only, like transcript disclosure state.
-    sidebar_collapsed_groups: HashSet<SidebarGroup>,
+    sidebar_expanded_groups: HashSet<SidebarGroup>,
+    /// Projects whose recent chats are shown in the pinned section.
+    pinned_project_ids: HashSet<Uuid>,
     /// Number of older sessions revealed inside each project section. This is
     /// runtime-only so every launch starts with the recent three-day view.
     sidebar_project_reveal_counts: HashMap<SidebarGroup, usize>,
@@ -1944,7 +1946,8 @@ impl Waku {
         let store = StateStore::remote(daemon.clone());
         let daemon_hostname = crate::daemon::local_hostname().unwrap_or_else(|| "this-mac".into());
         let sidebar_device_label = crate::platform::local_device_label();
-        crate::platform::ensure_user_avatar_cached();
+        crate::platform::ensure_user_login_avatar_cached();
+        crate::platform::ensure_user_github_avatar_cached();
         let composer_draft_store = ComposerDraftStore::remote(daemon.clone());
         let composer_drafts = composer_draft_store.load().unwrap_or_default();
         let mut state = store.load_or_fresh(cwd);
@@ -1954,6 +1957,7 @@ impl Waku {
             eprintln!("could not normalize daemon settings after migration: {error:#}");
         }
         crate::i18n::set_language(state.language);
+        crate::platform::set_font_smoothing_enabled(state.font_smoothing);
         set_active_ui_font_family(state.ui_font_family.clone());
         crate::md::render::set_active_mono_family(state.code_font_family.clone());
         // Chrome text is authored in `sp` rems against the default UI font
@@ -2056,6 +2060,10 @@ impl Waku {
         let workspace_client = waku_client::WorkspaceClient::new(daemon.client());
         let (projectless_migrated, projectless_migration_error) =
             migrate_legacy_projectless_projects(&mut state, &workspace_client);
+        // Every launch starts on the selected workspace's new-task screen.
+        // Running sessions are still recovered below from their busy status.
+        state.selected_session = None;
+        let pinned_project_ids = state.pinned_projects.iter().copied().collect();
         let projectless_save_error = projectless_migrated
             .then(|| store.save(&mut state).err())
             .flatten();
@@ -2846,7 +2854,7 @@ impl Waku {
                 branch_operation_pending: false,
                 commit_dialog: None,
                 project_dialog: None,
-            rename_dialog: None,
+                rename_dialog: None,
                 goal_dialog: None,
                 goal_dialog_request: None,
                 pending_goal_operations: HashMap::new(),
@@ -2891,7 +2899,8 @@ impl Waku {
                 session_navigation,
                 session_rename: None,
                 session_rename_input,
-                sidebar_collapsed_groups: HashSet::new(),
+                sidebar_expanded_groups: HashSet::new(),
+                pinned_project_ids,
                 sidebar_project_reveal_counts: HashMap::new(),
                 sidebar_group_header_focuses: RefCell::new(HashMap::new()),
                 sidebar_group_compose_focuses: RefCell::new(HashMap::new()),

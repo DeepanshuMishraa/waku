@@ -328,6 +328,10 @@ settings.code_font_size:
   en: Code font size
 settings.code_font_size_description:
   en: Text size in the file editor, diffs, code blocks, and tool output
+settings.font_smoothing:
+  en: Font smoothing
+settings.font_smoothing_description:
+  en: Adjust text smoothing used by the app. Restart Waku to apply changes
 settings.theme_system:
   en: System
 settings.theme_light:

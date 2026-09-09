@@ -1796,33 +1796,33 @@ impl Waku {
     /// the turn settles into its "Worked for N" fold.
     fn render_working_indicator_row(&self, theme: &Theme) -> AnyElement {
         let session = self.selected_session();
-        let elapsed = session
+        let elapsed_ms = session
             .and_then(|session| session.turns.last())
             .filter(|turn| turn.status == TurnStatus::Running)
-            .map(|turn| unix_time().saturating_sub(turn.started_at))
+            .map(|turn| unix_time_millis().saturating_sub(turn.started_at * 1000))
             .unwrap_or(0);
-        // A parked turn is waiting on detached work, not working.
-        let label = if session.is_some_and(|session| session.status == SessionStatus::Background) {
-            tr!("transcript.waiting_background")
+        let elapsed_secs = (elapsed_ms as f64) / 1000.0;
+        let time_str = if elapsed_secs < 60.0 {
+            format!("{:.1}s", elapsed_secs.max(0.1))
         } else {
-            tr!(
-                "transcript.working_for",
-                duration = format_working_elapsed(elapsed)
-            )
+            let mins = (elapsed_secs / 60.0).floor() as u64;
+            let secs = (elapsed_secs % 60.0).floor() as u64;
+            format!("{}m {}s", mins, secs)
         };
         div()
-            .h(px(22.0))
+            .h(px(24.0))
             .flex()
             .items_center()
-            .gap(px(8.0))
-            .child(working_wave_dots(theme.text_tertiary))
+            .gap(px(10.0))
+            .child(working_wave_dots(theme.text_secondary))
             .child(
                 div()
+                    .font_family(crate::md::render::active_mono_family())
                     .text_size(sp(13.5))
-                    .line_height(sp(18.0))
-                    .font_weight(FontWeight::MEDIUM)
-                    .text_color(theme.text_tertiary)
-                    .child(SharedString::from(label)),
+                    .line_height(sp(16.0))
+                    .font_weight(FontWeight::NORMAL)
+                    .text_color(theme.text_secondary)
+                    .child(time_str),
             )
             .into_any_element()
     }
@@ -1879,7 +1879,7 @@ impl Waku {
                     )
                 })
         });
-        let expanded = self
+        let _expanded = self
             .activities_expanded
             .get(&block_index)
             .copied()
@@ -1899,76 +1899,11 @@ impl Waku {
                 .map(|activity| activity.id)
         })
         .flatten();
-        let header_title = activity_header_title(activities, live_group, live_reasoning_id);
-        let header_focus =
+        let _header_title = activity_header_title(activities, live_group, live_reasoning_id);
+        let _header_focus =
             self.transcript_control_focus(format!("activity-toggle-{block_index}"), cx);
-        let cluster = div()
-            .w_full()
-            .min_w_0()
-            .flex()
-            .flex_col()
-            .gap(px(4.0))
-            .child(
-                div()
-                    .id(SharedString::from(format!("activity-toggle-{block_index}")))
-                    .track_focus(&header_focus)
-                    .tab_index(0)
-                    .w_full()
-                    .min_w_0()
-                    .h(px(26.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(6.0))
-                    .text_size(sp(12.5))
-                    .line_height(sp(16.0))
-                    .cursor_default()
-                    .focus_visible(|style| style.text_color(theme.text))
-                    .hover(|style| style.text_color(theme.text))
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(theme.text_secondary)
-                            .child(SharedString::from(header_title)),
-                    )
-                    .child(icon(
-                        if expanded {
-                            "icons/chevron-down.svg"
-                        } else {
-                            "icons/chevron-right.svg"
-                        },
-                        10.0,
-                        theme.text_tertiary,
-                    ))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.toggle_activities(block_index, expanded, cx);
-                    }))
-                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                            this.toggle_activities(block_index, expanded, cx);
-                            cx.stop_propagation();
-                        }
-                    })),
-            );
-        if !expanded {
-            return cluster.into_any_element();
-        }
-        // `Theme::overlay` is 5% alpha and GPUI's `opacity` multiplies it.
+        let mut items = div().w_full().min_w_0().flex().flex_col().gap(px(6.0));
         let activity_surface = theme.surface.blend(theme.overlay.opacity(0.7));
-        let activity_hover_surface = theme.surface.blend(theme.overlay);
-        let activity_active_surface = theme.surface.blend(theme.overlay_strong.opacity(0.72));
-        let mut items = div()
-            .w_full()
-            .min_w_0()
-            .ml(px(6.0))
-            .pl(px(12.0))
-            .pb(px(2.0))
-            .border_l_1()
-            .border_color(theme.border)
-            .flex()
-            .flex_col()
-            .gap(px(8.0));
         for activity in activities {
             let id = activity.id;
             let background_work = self
@@ -2057,116 +1992,214 @@ impl Waku {
                     .copied()
                     .unwrap_or(reasoning_live);
             let item_focus = self.transcript_control_focus(format!("activity-item-{id}"), cx);
-            let mut item = div()
-                .w_full()
-                .min_w_0()
-                .overflow_hidden()
-                .rounded(px(9.0))
-                .border_1()
-                .border_color(theme.border_strong)
-                .bg(activity_surface)
-                .flex()
-                .flex_col()
-                .child(
+
+            let is_error = activity.failed;
+            let is_cmd = activity.kind == ActivityKind::Command;
+            let tool_name = if is_cmd {
+                "Bash".to_string()
+            } else {
+                match activity.kind {
+                    ActivityKind::FileRead => "Read".to_string(),
+                    ActivityKind::FileChange => "Edit".to_string(),
+                    ActivityKind::FileSearch | ActivityKind::Search => "Search".to_string(),
+                    ActivityKind::FileList => "List".to_string(),
+                    ActivityKind::Reasoning => "Think".to_string(),
+                    _ => action_label.clone(),
+                }
+            };
+
+            let header_row = if is_error {
+                let error_msg = activity
+                    .output
+                    .as_deref()
+                    .or(activity.detail.as_deref())
+                    .unwrap_or(&activity.title);
+                let error_line = error_msg.lines().next().unwrap_or(error_msg);
+
+                div()
+                    .id(SharedString::from(format!("activity-item-{id}")))
+                    .h(px(32.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .cursor_default()
+                    .when(has_detail, |element| {
+                        element.track_focus(&item_focus).tab_index(0)
+                    })
+                    .child(
+                        div()
+                            .size(px(16.0))
+                            .rounded_full()
+                            .border_1()
+                            .border_color(theme.danger)
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icon("icons/x.svg", 10.0, theme.danger)),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(sp(13.5))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.danger)
+                            .child("Error"),
+                    )
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .px(px(8.0))
+                            .py(px(3.0))
+                            .rounded(px(5.0))
+                            .bg(gpui::hsla(0.0, 0.7, 0.2, 0.35))
+                            .child(
+                                div()
+                                    .font_family(crate::md::render::active_mono_family())
+                                    .text_size(sp(12.5))
+                                    .text_color(gpui::hsla(0.0, 0.85, 0.72, 1.0))
+                                    .truncate()
+                                    .child(error_line.to_owned()),
+                            ),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if has_detail {
+                            this.toggle_activity_item(id, item_expanded, cx);
+                        }
+                    }))
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                        if has_detail && matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                            this.toggle_activity_item(id, item_expanded, cx);
+                            cx.stop_propagation();
+                        }
+                    }))
+            } else {
+                let left_icon = if has_detail {
                     div()
-                        .id(SharedString::from(format!("activity-item-{id}")))
-                        // The parent owns a 1px border on each edge, so a
-                        // 28px row makes the visible activity header 30px.
-                        .h(px(28.0))
-                        .px(px(8.0))
+                        .size(px(14.0))
+                        .flex_none()
                         .flex()
                         .items_center()
-                        .gap(px(8.0))
-                        .rounded_tl(px(8.0))
-                        .rounded_tr(px(8.0))
-                        .when(!item_expanded, |element| {
-                            element.rounded_bl(px(8.0)).rounded_br(px(8.0))
-                        })
-                        .text_size(sp(12.5))
-                        .line_height(sp(16.0))
-                        .when(has_detail, |element| {
-                            element
-                                .track_focus(&item_focus)
-                                .tab_index(0)
-                                .cursor_default()
-                                .focus_visible(|element| element.bg(activity_hover_surface))
-                                .hover(|element| element.bg(activity_hover_surface))
-                                .active(|element| element.bg(activity_active_surface))
-                        })
+                        .justify_center()
+                        .child(icon(
+                            if item_expanded {
+                                "icons/minus.svg"
+                            } else {
+                                "icons/plus.svg"
+                            },
+                            11.0,
+                            theme.text_secondary,
+                        ))
+                } else if is_cmd {
+                    div()
+                        .font_family(crate::md::render::active_mono_family())
+                        .text_size(sp(12.0))
+                        .font_weight(FontWeight::BOLD)
+                        .text_color(theme.text_secondary)
+                        .child(">_")
+                } else {
+                    div()
+                        .size(px(14.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
                         .child(icon(
                             activity_icon(activity.kind),
                             12.0,
-                            theme.text_tertiary,
+                            theme.text_secondary,
                         ))
+                };
+
+                let detail_pill = (!row_detail.is_empty()).then(|| {
+                    let first_line = row_detail.lines().next().unwrap_or(&row_detail);
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .px(px(8.0))
+                        .py(px(3.0))
+                        .rounded(px(5.0))
+                        .bg(theme.inset)
+                        .child(
+                            div()
+                                .font_family(crate::md::render::active_mono_family())
+                                .text_size(sp(12.0))
+                                .text_color(theme.text_secondary)
+                                .truncate()
+                                .child(first_line.to_owned()),
+                        )
+                });
+
+                div()
+                    .id(SharedString::from(format!("activity-item-{id}")))
+                    .h(px(32.0))
+                    .px(px(8.0))
+                    .rounded(px(6.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .cursor_default()
+                    .when(has_detail, |element| {
+                        element
+                            .track_focus(&item_focus)
+                            .tab_index(0)
+                            .hover(|el| el.bg(theme.sidebar_item_background))
+                    })
+                    .child(left_icon)
+                    .child(
+                        div()
+                            .flex_none()
+                            .text_size(sp(13.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.text)
+                            .child(tool_name),
+                    )
+                    .children(detail_pill)
+                    .when_some(file_change_stats, |row, (additions, deletions)| {
+                        row.child(
+                            div()
+                                .flex_none()
+                                .text_size(sp(12.0))
+                                .text_color(theme.success)
+                                .child(format!("+{additions}")),
+                        )
                         .child(
                             div()
                                 .flex_none()
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .text_color(theme.text_secondary)
-                                .child(SharedString::from(action_label)),
+                                .text_size(sp(12.0))
+                                .text_color(theme.danger)
+                                .child(format!("-{deletions}")),
                         )
-                        .when(!row_detail.is_empty(), |element| {
-                            element.child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_color(theme.text_secondary)
-                                    .child(SharedString::from(row_detail)),
-                            )
-                        })
-                        .when_some(file_change_stats, |row, (additions, deletions)| {
-                            row.child(
-                                div()
-                                    .flex_none()
-                                    .text_color(theme.success)
-                                    .child(SharedString::from(format!("+{additions}"))),
-                            )
-                            .child(
-                                div()
-                                    .flex_none()
-                                    .text_color(theme.danger)
-                                    .child(SharedString::from(format!("-{deletions}"))),
-                            )
-                        })
-                        .children(background_badge)
-                        .children(open_file_button)
-                        .when(has_detail, |element| {
-                            element.child(icon(
-                                if item_expanded {
-                                    "icons/chevron-down.svg"
-                                } else {
-                                    "icons/chevron-right.svg"
-                                },
-                                10.0,
-                                theme.text_tertiary,
-                            ))
-                        })
-                        .when(!has_detail && reasoning.is_none(), |element| {
-                            element
-                                .when(activity.failed, |element| {
-                                    element.child(
-                                        icon("icons/x.svg", 10.0, theme.danger).into_any_element(),
-                                    )
-                                })
-                                .when(!activity.complete && !activity.failed, |element| {
-                                    element.child(pulse_dot(5.0, theme.accent))
-                                })
-                        })
-                        .on_click(cx.listener(move |this, _, _, cx| {
-                            if has_detail {
-                                this.toggle_activity_item(id, item_expanded, cx);
-                            }
-                        }))
-                        .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
-                            if has_detail
-                                && matches!(event.keystroke.key.as_str(), "enter" | "space")
-                            {
-                                this.toggle_activity_item(id, item_expanded, cx);
-                                cx.stop_propagation();
-                            }
-                        })),
-                );
+                    })
+                    .children(background_badge)
+                    .children(open_file_button)
+                    .when(!activity.complete, |element| {
+                        element.child(pulse_dot(4.0, theme.accent))
+                    })
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        if has_detail {
+                            this.toggle_activity_item(id, item_expanded, cx);
+                        }
+                    }))
+                    .on_key_down(cx.listener(move |this, event: &KeyDownEvent, _, cx| {
+                        if has_detail && matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                            this.toggle_activity_item(id, item_expanded, cx);
+                            cx.stop_propagation();
+                        }
+                    }))
+            };
+
+            let mut item = div()
+                .w_full()
+                .min_w_0()
+                .rounded(px(6.0))
+                .when(item_expanded, |el| {
+                    el.bg(theme.sidebar_item_background)
+                        .border_1()
+                        .border_color(theme.border)
+                })
+                .child(header_row);
             if item_expanded && let Some(reasoning) = reasoning {
                 // Reasoning remains model prose even though it now shares the
                 // activity stream, so keep selectable markdown rather than
@@ -2462,7 +2495,7 @@ impl Waku {
             }
             items = items.child(item);
         }
-        cluster.child(items).into_any_element()
+        items.into_any_element()
     }
 
     /// The diff for an expanded file-change activity.

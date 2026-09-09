@@ -1,6 +1,6 @@
-use std::time::Duration;
 use chrono::{DateTime, Datelike, Days, Local, NaiveDate, Utc};
 use gpui::{KeyBinding, actions};
+use std::time::Duration;
 
 use super::*;
 
@@ -69,6 +69,7 @@ impl SessionDateGroup {
 pub(super) enum SidebarGroup {
     Updated(SessionDateGroup),
     Project(Uuid),
+    PinnedProject(Uuid),
     Projectless,
 }
 
@@ -77,6 +78,7 @@ impl SidebarGroup {
         match self {
             Self::Updated(group) => format!("updated-{}", group.index()).into(),
             Self::Project(project_id) => format!("project-{project_id}").into(),
+            Self::PinnedProject(project_id) => format!("pinned-project-{project_id}").into(),
             Self::Projectless => "projectless".into(),
         }
     }
@@ -85,6 +87,7 @@ impl SidebarGroup {
         match self {
             Self::Updated(group) => mix(fingerprint, group.index() as u64 + 1),
             Self::Project(project_id) => mix_uuid(mix(fingerprint, 0x100), project_id),
+            Self::PinnedProject(project_id) => mix_uuid(mix(fingerprint, 0x180), project_id),
             Self::Projectless => mix(fingerprint, 0x200),
         }
     }
@@ -205,7 +208,11 @@ fn append_sidebar_group_rows(
 ) {
     rows.push(SidebarRow::Header(group));
     if !collapsed {
-        rows.extend(sessions.iter().copied().map(SidebarRow::Session));
+        if matches!(group, SidebarGroup::PinnedProject(_)) {
+            rows.extend(sessions.iter().copied().map(SidebarRow::PinnedSession));
+        } else {
+            rows.extend(sessions.iter().copied().map(SidebarRow::Session));
+        }
         if show_more {
             rows.push(SidebarRow::ShowMore(group));
         }
@@ -247,12 +254,12 @@ fn updater_button_available_content(
 /// Height of a session card plus the separation reserved beneath it in the
 /// virtualized sidebar list. Keep the gap inside the list row so measured and
 /// estimated heights stay identical for off-screen sessions.
-const SIDEBAR_SESSION_CARD_HEIGHT: f32 = 36.0;
+const SIDEBAR_SESSION_CARD_HEIGHT: f32 = 32.0;
 const SIDEBAR_SESSION_ROW_GAP: f32 = 2.0;
 const SIDEBAR_SESSION_ROW_HEIGHT: f32 = SIDEBAR_SESSION_CARD_HEIGHT + SIDEBAR_SESSION_ROW_GAP;
 const SIDEBAR_ACTION_ROW_HEIGHT: f32 = 34.0;
 const SIDEBAR_SEARCH_BOTTOM_GAP: f32 = 6.0;
-const SIDEBAR_GROUP_HEADER_HEIGHT: f32 = 36.0;
+const SIDEBAR_GROUP_HEADER_HEIGHT: f32 = 34.0;
 const SIDEBAR_GROUP_HEADER_BOTTOM_GAP: f32 = 2.0;
 const SIDEBAR_SHOW_MORE_ROW_HEIGHT: f32 = 28.0;
 const SIDEBAR_GROUP_SPACER_HEIGHT: f32 = 4.0;
@@ -353,6 +360,10 @@ fn sidebar_project_is_projectless(project: &Project, projectless_root: Option<&P
     projectless_root.is_some_and(|root| project.path.starts_with(root))
 }
 
+fn sidebar_project_should_show(session_count: usize, pinned: bool) -> bool {
+    session_count > 0 || pinned
+}
+
 fn persisted_sidebar_branch_label(workspace: &SessionWorkspace) -> Option<&str> {
     match workspace {
         SessionWorkspace::Local => None,
@@ -381,8 +392,14 @@ pub(super) enum SidebarRow {
     Search,
     /// Group header; the first row also carries the sidebar actions.
     Header(SidebarGroup),
-    /// A started session.
+    /// Heading separating pinned folders from ordinary workspaces.
+    PinnedHeader,
+    /// Heading for the complete workspace list and its actions.
+    WorkspacesHeader,
+    /// A started session in the main workspace tree.
     Session(Uuid),
+    /// A started session duplicated under a pinned workspace.
+    PinnedSession(Uuid),
     /// Reveals the next batch of older sessions in a project section.
     ShowMore(SidebarGroup),
     /// Spacing between date groups.
@@ -398,7 +415,8 @@ fn sidebar_row_height(row: SidebarRow) -> Pixels {
     px(match row {
         SidebarRow::Search => SIDEBAR_ACTION_ROW_HEIGHT + SIDEBAR_SEARCH_BOTTOM_GAP,
         SidebarRow::Header(_) => SIDEBAR_GROUP_HEADER_HEIGHT + SIDEBAR_GROUP_HEADER_BOTTOM_GAP,
-        SidebarRow::Session(_) => SIDEBAR_SESSION_ROW_HEIGHT,
+        SidebarRow::PinnedHeader | SidebarRow::WorkspacesHeader => SIDEBAR_GROUP_HEADER_HEIGHT,
+        SidebarRow::Session(_) | SidebarRow::PinnedSession(_) => SIDEBAR_SESSION_ROW_HEIGHT,
         SidebarRow::ShowMore(_) => SIDEBAR_SHOW_MORE_ROW_HEIGHT,
         SidebarRow::GroupSpacer => SIDEBAR_GROUP_SPACER_HEIGHT,
     })
@@ -701,6 +719,7 @@ impl Waku {
         let weak = cx.entity().downgrade();
 
         let grouping_menu = self.menu_handle("sidebar-group-by", cx);
+        let grouping_menu_for_items = grouping_menu.clone();
         let grouping_weak = weak.clone();
         let group_by_button = dropdown_menu(
             div()
@@ -728,21 +747,29 @@ impl Waku {
                             SidebarGrouping::Chats => "Chats",
                         }),
                 )
-                .child(icon("icons/chevrons-up-down.svg", 12.0, theme.text_secondary)),
+                .child(icon(
+                    "icons/chevrons-up-down.svg",
+                    12.0,
+                    theme.text_secondary,
+                )),
             "sidebar-group-by-menu",
             &grouping_menu,
             MenuAlign::BelowRight,
             move |_| {
                 let project_weak = grouping_weak.clone();
                 let chats_weak = grouping_weak.clone();
+                let project_menu = grouping_menu_for_items.clone();
+                let chats_menu = grouping_menu_for_items.clone();
                 vec![
-                    MenuItem::new("Project", move |_, cx| {
+                    MenuItem::new("Project", move |window, cx| {
+                        project_menu.close(window, cx);
                         let _ = project_weak.update(cx, |this, cx| {
                             this.set_sidebar_grouping(SidebarGrouping::Project, cx);
                         });
                     })
                     .selected(grouping == SidebarGrouping::Project),
-                    MenuItem::new("Chats", move |_, cx| {
+                    MenuItem::new("Chats", move |window, cx| {
+                        chats_menu.close(window, cx);
                         let _ = chats_weak.update(cx, |this, cx| {
                             this.set_sidebar_grouping(SidebarGrouping::Chats, cx);
                         });
@@ -753,6 +780,7 @@ impl Waku {
         );
 
         let ordering_menu = self.menu_handle("sidebar-sort-by", cx);
+        let ordering_menu_for_items = ordering_menu.clone();
         let ordering_weak = weak.clone();
         let sort_by_button = dropdown_menu(
             div()
@@ -780,21 +808,29 @@ impl Waku {
                             SidebarOrdering::Created => "Created",
                         }),
                 )
-                .child(icon("icons/chevrons-up-down.svg", 12.0, theme.text_secondary)),
+                .child(icon(
+                    "icons/chevrons-up-down.svg",
+                    12.0,
+                    theme.text_secondary,
+                )),
             "sidebar-sort-by-menu",
             &ordering_menu,
             MenuAlign::BelowRight,
             move |_| {
                 let updated_weak = ordering_weak.clone();
                 let created_weak = ordering_weak.clone();
+                let updated_menu = ordering_menu_for_items.clone();
+                let created_menu = ordering_menu_for_items.clone();
                 vec![
-                    MenuItem::new("Updated", move |_, cx| {
+                    MenuItem::new("Updated", move |window, cx| {
+                        updated_menu.close(window, cx);
                         let _ = updated_weak.update(cx, |this, cx| {
                             this.set_sidebar_ordering(SidebarOrdering::Updated, cx);
                         });
                     })
                     .selected(ordering == SidebarOrdering::Updated),
-                    MenuItem::new("Created", move |_, cx| {
+                    MenuItem::new("Created", move |window, cx| {
+                        created_menu.close(window, cx);
                         let _ = created_weak.update(cx, |this, cx| {
                             this.set_sidebar_ordering(SidebarOrdering::Created, cx);
                         });
@@ -891,15 +927,7 @@ impl Waku {
 
     fn render_sidebar_device(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let theme = Theme::current(cx);
-        let avatar_path = crate::platform::local_user_avatar_path();
-        let initials = self
-            .sidebar_device_label
-            .split("'s")
-            .next()
-            .and_then(|name| name.chars().next())
-            .map(|ch| ch.to_uppercase().to_string())
-            .unwrap_or_else(|| "D".to_owned());
-
+        let avatar_path = crate::platform::local_user_login_avatar_path();
         div()
             .id("sidebar-device")
             .w_full()
@@ -908,29 +936,15 @@ impl Waku {
             .flex()
             .items_center()
             .gap(px(10.0))
-            .child(
-                if let Some(path) = avatar_path {
-                    img(path)
-                        .size(px(26.0))
-                        .rounded_full()
-                        .flex_none()
-                        .into_any_element()
-                } else {
-                    div()
-                        .size(px(26.0))
-                        .rounded_full()
-                        .bg(theme.accent)
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .text_size(sp(12.0))
-                        .font_weight(FontWeight::BOLD)
-                        .text_color(theme.on_inverse)
-                        .child(initials)
-                        .flex_none()
-                        .into_any_element()
-                },
-            )
+            .child(if let Some(path) = avatar_path {
+                img(path)
+                    .size(px(26.0))
+                    .rounded_full()
+                    .flex_none()
+                    .into_any_element()
+            } else {
+                div().size(px(26.0)).rounded_full().into_any_element()
+            })
             .child(
                 div()
                     .flex_1()
@@ -941,26 +955,6 @@ impl Waku {
                     .text_color(theme.text)
                     .child(self.sidebar_device_label.clone()),
             )
-    }
-
-    fn render_sidebar_projects_section_header(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let theme = Theme::current(cx);
-        div()
-            .id("sidebar-projects-header")
-            .w_full()
-            .h(px(34.0))
-            .px(px(12.0))
-            .flex()
-            .items_center()
-            .justify_between()
-            .child(
-                div()
-                    .text_size(sp(13.5))
-                    .font_weight(FontWeight::SEMIBOLD)
-                    .text_color(theme.text_secondary)
-                    .child(tr!("sidebar.projects")),
-            )
-            .child(self.render_sidebar_header_actions(cx))
     }
 
     fn render_sidebar_search(&self, cx: &mut Context<Self>) -> Div {
@@ -1304,7 +1298,6 @@ impl Waku {
                     .h(px(1.0))
                     .bg(theme.border),
             )
-            .child(self.render_sidebar_projects_section_header(cx))
             .when(self.sidebar_options_open, |sidebar| {
                 sidebar.child(self.render_sidebar_options_panel(cx))
             })
@@ -1394,16 +1387,19 @@ impl Waku {
         }
         for project in &self.state.projects {
             fingerprint = mix_uuid(fingerprint, project.id);
+            if self.pinned_project_ids.contains(&project.id) {
+                fingerprint = mix(fingerprint, 0x91a7);
+            }
         }
-        let collapsed = self
-            .sidebar_collapsed_groups
+        let expanded = self
+            .sidebar_expanded_groups
             .iter()
             .fold(0u64, |combined, group| {
                 combined.wrapping_add(group.mix_fingerprint(0))
             });
         fingerprint = mix(
-            mix(fingerprint, self.sidebar_collapsed_groups.len() as u64),
-            collapsed,
+            mix(fingerprint, self.sidebar_expanded_groups.len() as u64),
+            expanded,
         );
         if let Some(selected) = self.state.selected_session {
             fingerprint = mix_uuid(fingerprint, selected);
@@ -1430,6 +1426,32 @@ impl Waku {
             })
             .collect::<Vec<_>>();
         sort_sidebar_sessions(&mut sessions, self.state.sidebar_ordering);
+
+        let pinned_projects = self
+            .state
+            .projects
+            .iter()
+            .filter(|project| self.pinned_project_ids.contains(&project.id))
+            .collect::<Vec<_>>();
+        if !pinned_projects.is_empty() {
+            rows.push(SidebarRow::PinnedHeader);
+            for project in pinned_projects {
+                let group = SidebarGroup::PinnedProject(project.id);
+                let session_ids = sessions
+                    .iter()
+                    .filter(|session| session.project_id == project.id)
+                    .map(|session| session.id)
+                    .collect::<Vec<_>>();
+                append_sidebar_group_rows(
+                    &mut rows,
+                    group,
+                    &session_ids,
+                    !self.sidebar_expanded_groups.contains(&group),
+                    false,
+                );
+            }
+        }
+        rows.push(SidebarRow::WorkspacesHeader);
 
         match self.state.sidebar_grouping {
             SidebarGrouping::Chats => {
@@ -1461,41 +1483,29 @@ impl Waku {
                         continue;
                     }
                     let group = SidebarGroup::Project(project.id);
-                    let is_collapsed = self.sidebar_collapsed_groups.contains(&group);
+                    let is_collapsed = !self.sidebar_expanded_groups.contains(&group);
                     let mut project_sessions =
                         sessions_by_project.remove(&project.id).unwrap_or_default();
+                    if !sidebar_project_should_show(
+                        project_sessions.len(),
+                        self.pinned_project_ids.contains(&project.id),
+                    ) {
+                        continue;
+                    }
                     sort_sidebar_sessions(&mut project_sessions, self.state.sidebar_ordering);
                     let session_ids = project_sessions.iter().map(|s| s.id).collect::<Vec<_>>();
 
-                    append_sidebar_group_rows(
-                        &mut rows,
-                        group,
-                        &session_ids,
-                        is_collapsed,
-                        false,
-                    );
+                    append_sidebar_group_rows(&mut rows, group, &session_ids, is_collapsed, false);
                 }
 
                 if !projectless_sessions.is_empty() {
                     let group = SidebarGroup::Projectless;
-                    let is_collapsed = self.sidebar_collapsed_groups.contains(&group);
-                    let session_ids = projectless_sessions.iter().map(|s| s.id).collect::<Vec<_>>();
-                    append_sidebar_group_rows(
-                        &mut rows,
-                        group,
-                        &session_ids,
-                        is_collapsed,
-                        false,
-                    );
-                }
-
-                if rows.is_empty() {
-                    if let Some(project) = self.state.projects.first() {
-                        let group = SidebarGroup::Project(project.id);
-                        append_sidebar_group_rows(&mut rows, group, &[], false, false);
-                    } else {
-                        append_sidebar_group_rows(&mut rows, SidebarGroup::Projectless, &[], false, false);
-                    }
+                    let is_collapsed = !self.sidebar_expanded_groups.contains(&group);
+                    let session_ids = projectless_sessions
+                        .iter()
+                        .map(|s| s.id)
+                        .collect::<Vec<_>>();
+                    append_sidebar_group_rows(&mut rows, group, &session_ids, is_collapsed, false);
                 }
             }
         }
@@ -1539,9 +1549,24 @@ impl Waku {
         };
         match *row {
             SidebarRow::Search => self.render_sidebar_search(cx).into_any_element(),
+            SidebarRow::PinnedHeader => self
+                .render_sidebar_section_header("Pinned", None, cx)
+                .into_any_element(),
+            SidebarRow::WorkspacesHeader => self
+                .render_sidebar_section_header(
+                    "My Workspaces",
+                    Some(self.render_sidebar_header_actions(cx)),
+                    cx,
+                )
+                .into_any_element(),
             SidebarRow::Header(group) => {
                 let has_expanded_children = rows.get(index + 1).is_some_and(|row| {
-                    matches!(row, SidebarRow::Session(_) | SidebarRow::ShowMore(_))
+                    matches!(
+                        row,
+                        SidebarRow::Session(_)
+                            | SidebarRow::PinnedSession(_)
+                            | SidebarRow::ShowMore(_)
+                    )
                 });
                 self.render_sidebar_group_header(
                     group,
@@ -1557,7 +1582,10 @@ impl Waku {
                 .into_any_element()
             }
             SidebarRow::Session(session_id) => self
-                .render_sidebar_session_item(session_id, cx)
+                .render_sidebar_session_item(session_id, false, cx)
+                .into_any_element(),
+            SidebarRow::PinnedSession(session_id) => self
+                .render_sidebar_session_item(session_id, true, cx)
                 .into_any_element(),
             SidebarRow::ShowMore(group) => {
                 self.render_sidebar_show_more(group, cx).into_any_element()
@@ -1569,6 +1597,27 @@ impl Waku {
         }
     }
 
+    fn render_sidebar_section_header(
+        &self,
+        label: &'static str,
+        actions: Option<Div>,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let theme = Theme::current(cx);
+        div()
+            .w_full()
+            .h(px(SIDEBAR_GROUP_HEADER_HEIGHT))
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .justify_between()
+            .text_size(sp(13.5))
+            .font_weight(FontWeight::SEMIBOLD)
+            .text_color(theme.text_secondary)
+            .child(label)
+            .children(actions)
+    }
+
     fn render_sidebar_group_header(
         &self,
         group: SidebarGroup,
@@ -1577,7 +1626,7 @@ impl Waku {
         cx: &mut Context<Self>,
     ) -> Div {
         let theme = Theme::current(cx);
-        let collapsed = self.sidebar_collapsed_groups.contains(&group);
+        let collapsed = !self.sidebar_expanded_groups.contains(&group);
         let group_key = group.element_key();
         let group_name = SharedString::from(format!("sidebar-group-header-{group_key}"));
         let header_focus = self
@@ -1586,11 +1635,13 @@ impl Waku {
             .entry(group)
             .or_insert_with(|| cx.focus_handle())
             .clone();
-        let show_folder_icon =
-            matches!(group, SidebarGroup::Project(_) | SidebarGroup::Projectless);
+        let show_folder_icon = matches!(
+            group,
+            SidebarGroup::Project(_) | SidebarGroup::PinnedProject(_) | SidebarGroup::Projectless
+        );
         let label = match group {
             SidebarGroup::Updated(group) => group.label(),
-            SidebarGroup::Project(project_id) => self
+            SidebarGroup::Project(project_id) | SidebarGroup::PinnedProject(project_id) => self
                 .state
                 .projects
                 .iter()
@@ -1628,11 +1679,7 @@ impl Waku {
                         .items_center()
                         .justify_center()
                         .cursor_default()
-                        .focus_visible(|style| {
-                            style
-                                .border_1()
-                                .border_color(theme.accent)
-                        })
+                        .focus_visible(|style| style.border_1().border_color(theme.accent))
                         .hover(|style| style.bg(theme.overlay))
                         .active(|style| style.bg(theme.overlay_strong))
                         .tooltip(Tooltip::text("New chat"))
@@ -1651,7 +1698,7 @@ impl Waku {
                 )
         });
 
-        let avatar_path = crate::platform::local_user_avatar_path();
+        let avatar_path = crate::platform::local_user_github_avatar_path();
         let project_icon_el = if let Some(path) = avatar_path.as_ref() {
             img(path.clone())
                 .size(px(22.0))
@@ -1669,13 +1716,28 @@ impl Waku {
                 .text_size(sp(11.0))
                 .font_weight(FontWeight::BOLD)
                 .text_color(theme.on_inverse)
-                .child(label.chars().next().unwrap_or('P').to_uppercase().to_string())
+                .child(
+                    label
+                        .chars()
+                        .next()
+                        .unwrap_or('P')
+                        .to_uppercase()
+                        .to_string(),
+                )
                 .flex_none()
                 .into_any_element()
         };
 
         let waku = cx.entity().downgrade();
         let menu = self.menu_handle(format!("project-{group_key}"), cx);
+        let project_id = match group {
+            SidebarGroup::Project(project_id) | SidebarGroup::PinnedProject(project_id) => {
+                Some(project_id)
+            }
+            SidebarGroup::Updated(_) | SidebarGroup::Projectless => None,
+        };
+        let is_pinned =
+            project_id.is_some_and(|project_id| self.pinned_project_ids.contains(&project_id));
         let header = session_group_header(&theme)
             .h(px(38.0))
             .font_weight(FontWeight::SEMIBOLD)
@@ -1703,9 +1765,7 @@ impl Waku {
                     .flex()
                     .items_center()
                     .gap(px(8.0))
-                    .when(show_folder_icon, |element| {
-                        element.child(project_icon_el)
-                    })
+                    .when(show_folder_icon, |element| element.child(project_icon_el))
                     .child(
                         div()
                             .min_w_0()
@@ -1728,26 +1788,32 @@ impl Waku {
                         cx.stop_propagation();
                     }
                     "left" if !collapsed => {
-                        this.set_sidebar_group_collapsed(group, true, cx);
+                        this.set_sidebar_group_expanded(group, false, cx);
                         cx.stop_propagation();
                     }
                     "right" if collapsed => {
-                        this.set_sidebar_group_collapsed(group, false, cx);
+                        this.set_sidebar_group_expanded(group, true, cx);
                         cx.stop_propagation();
                     }
                     _ => {}
                 }
             }));
 
-        let header_element = if let SidebarGroup::Project(project_id) = group {
+        let header_element = if let Some(project_id) = project_id {
             context_menu(
                 div().w_full().child(header),
                 SharedString::from(format!("project-menu-{project_id}")),
                 &menu,
                 move |_| {
                     let rename_waku = waku.clone();
+                    let pin_waku = waku.clone();
                     let remove_waku = waku.clone();
                     vec![
+                        MenuItem::new(if is_pinned { "Unpin" } else { "Pin" }, move |_, cx| {
+                            let _ = pin_waku.update(cx, |waku, cx| {
+                                waku.toggle_project_pinned(project_id, cx);
+                            });
+                        }),
                         MenuItem::new(tr!("common.rename"), move |window, cx| {
                             let _ = rename_waku.update(cx, |waku, cx| {
                                 waku.open_rename_project_dialog(project_id, window, cx);
@@ -1780,12 +1846,12 @@ impl Waku {
     ) {
         self.settings_page = None;
         match group {
-            SidebarGroup::Project(project_id) => {
-                self.sidebar_collapsed_groups.remove(&group);
+            SidebarGroup::Project(project_id) | SidebarGroup::PinnedProject(project_id) => {
+                self.sidebar_expanded_groups.insert(group);
                 self.create_session_for(project_id, self.state.last_provider, cx);
             }
             SidebarGroup::Projectless => {
-                self.sidebar_collapsed_groups.remove(&group);
+                self.sidebar_expanded_groups.insert(group);
                 self.create_projectless_session(cx);
             }
             SidebarGroup::Updated(_) => return,
@@ -1868,50 +1934,51 @@ impl Waku {
         cx.notify();
     }
 
+    fn toggle_project_pinned(&mut self, project_id: Uuid, cx: &mut Context<Self>) {
+        let pinned_group = SidebarGroup::PinnedProject(project_id);
+        if self.pinned_project_ids.insert(project_id) {
+            self.sidebar_expanded_groups.insert(pinned_group);
+        } else {
+            self.pinned_project_ids.remove(&project_id);
+            self.sidebar_expanded_groups.remove(&pinned_group);
+        }
+        self.sidebar_rows_fingerprint.set(None);
+        self.save();
+        cx.notify();
+    }
+
     fn toggle_sidebar_group(&mut self, group: SidebarGroup, cx: &mut Context<Self>) {
-        let collapsed = !self.sidebar_collapsed_groups.contains(&group);
-        self.set_sidebar_group_collapsed(group, collapsed, cx);
+        let expanded = !self.sidebar_expanded_groups.contains(&group);
+        self.set_sidebar_group_expanded(group, expanded, cx);
     }
 
     pub(super) fn collapse_all_sidebar_groups(&mut self, cx: &mut Context<Self>) {
-        let groups = self
-            .sidebar_rows_cached(Local::now().date_naive(), unix_time())
-            .iter()
-            .filter_map(|row| match row {
-                SidebarRow::Header(group) => Some(*group),
-                _ => None,
-            })
-            .collect::<Vec<_>>();
-        let mut changed = false;
-        for group in groups {
-            changed |= self.sidebar_collapsed_groups.insert(group);
-            changed |= self.sidebar_project_reveal_counts.remove(&group).is_some();
-        }
-        if changed {
-            self.sidebar_rows_fingerprint.set(None);
-            cx.notify();
-        }
+        self.sidebar_expanded_groups.clear();
+        self.sidebar_project_reveal_counts.clear();
+        self.sidebar_rows_fingerprint.set(None);
+        cx.notify();
     }
 
-    fn set_sidebar_group_collapsed(
+    fn set_sidebar_group_expanded(
         &mut self,
         group: SidebarGroup,
-        collapsed: bool,
+        expanded: bool,
         cx: &mut Context<Self>,
     ) {
-        let collapse_changed = if collapsed {
-            self.sidebar_collapsed_groups.insert(group)
+        let changed = if expanded {
+            self.sidebar_expanded_groups.insert(group)
         } else {
-            self.sidebar_collapsed_groups.remove(&group)
+            self.sidebar_expanded_groups.remove(&group)
         };
-        let reveal_reset = collapsed && self.sidebar_project_reveal_counts.remove(&group).is_some();
-        if collapse_changed || reveal_reset {
+        let reveal_reset = !expanded && self.sidebar_project_reveal_counts.remove(&group).is_some();
+        if changed || reveal_reset {
             self.sidebar_rows_fingerprint.set(None);
             cx.notify();
         }
     }
 
     fn set_sidebar_grouping(&mut self, grouping: SidebarGrouping, cx: &mut Context<Self>) {
+        self.sidebar_options_open = false;
         if self.state.sidebar_grouping == grouping {
             return;
         }
@@ -1929,6 +1996,7 @@ impl Waku {
     }
 
     fn set_sidebar_ordering(&mut self, ordering: SidebarOrdering, cx: &mut Context<Self>) {
+        self.sidebar_options_open = false;
         if self.state.sidebar_ordering == ordering {
             return;
         }
@@ -2005,7 +2073,12 @@ impl Waku {
         cx.notify();
     }
 
-    fn render_sidebar_session_item(&self, session_id: Uuid, cx: &mut Context<Self>) -> AnyElement {
+    fn render_sidebar_session_item(
+        &self,
+        session_id: Uuid,
+        pinned_copy: bool,
+        cx: &mut Context<Self>,
+    ) -> AnyElement {
         let theme = Theme::current(cx);
         let Some(session) = self
             .state
@@ -2031,11 +2104,9 @@ impl Waku {
         } else {
             SharedString::from(localized_session_title(session))
         };
-        let left_padding = if self.state.sidebar_grouping == SidebarGrouping::Chats {
-            8.0
-        } else {
-            18.0
-        };
+        let is_flat = self.state.sidebar_grouping == SidebarGrouping::Chats;
+        let left_margin = if is_flat { 4.0 } else { 12.0 };
+        let right_margin = 4.0;
         let providers = sidebar_session_providers(session);
         let icon_element = if working {
             dot_matrix_loader(theme.text_secondary, 18.0)
@@ -2092,15 +2163,18 @@ impl Waku {
         let row_focus = menu.trigger_focus_handle().clone();
         let keyboard_menu = menu.clone();
         let row = div()
-            .id(SharedString::from(format!("session-{}", session.id)))
-            .w_full()
-            .min_w_0()
+            .id(SharedString::from(if pinned_copy {
+                format!("pinned-session-{}", session.id)
+            } else {
+                format!("session-{}", session.id)
+            }))
+            .ml(px(left_margin))
+            .mr(px(right_margin))
             .h(px(SIDEBAR_SESSION_CARD_HEIGHT))
-            .justify_center()
-            .pl(px(left_padding))
-            .pr(px(8.0))
-            .py(px(4.0))
-            .rounded(px(8.0))
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .rounded(px(7.0))
             .cursor_default()
             .when(selected, |element| {
                 element.bg(theme.sidebar_item_background)
@@ -2169,7 +2243,11 @@ impl Waku {
         } else {
             context_menu(
                 div().w_full().child(row),
-                SharedString::from(format!("session-menu-{session_id}")),
+                SharedString::from(if pinned_copy {
+                    format!("pinned-session-menu-{session_id}")
+                } else {
+                    format!("session-menu-{session_id}")
+                }),
                 &menu,
                 move |_| {
                     let rename_waku = waku.clone();
@@ -2609,6 +2687,36 @@ mod tests {
     }
 
     #[test]
+    fn empty_unselected_workspace_is_hidden_from_sidebar() {
+        assert!(!sidebar_project_should_show(0, false));
+        assert!(sidebar_project_should_show(0, true));
+        assert!(sidebar_project_should_show(1, false));
+    }
+
+    #[test]
+    fn pinned_project_keeps_its_folder_expander_and_nested_chats() {
+        let project_id = Uuid::from_u128(10);
+        let sessions = [Uuid::from_u128(1), Uuid::from_u128(2)];
+        let group = SidebarGroup::PinnedProject(project_id);
+        let mut rows = vec![SidebarRow::PinnedHeader];
+
+        append_sidebar_group_rows(&mut rows, group, &sessions, false, false);
+        rows.push(SidebarRow::WorkspacesHeader);
+
+        assert_eq!(
+            rows,
+            vec![
+                SidebarRow::PinnedHeader,
+                SidebarRow::Header(group),
+                SidebarRow::PinnedSession(sessions[0]),
+                SidebarRow::PinnedSession(sessions[1]),
+                SidebarRow::GroupSpacer,
+                SidebarRow::WorkspacesHeader,
+            ]
+        );
+    }
+
+    #[test]
     fn collapsed_sidebar_group_keeps_only_its_header_and_spacer() {
         let sessions = [Uuid::from_u128(1), Uuid::from_u128(2)];
         let group = SidebarGroup::Updated(SessionDateGroup::Today);
@@ -2839,8 +2947,8 @@ mod tests {
         let offset = sidebar_bottom_aligned_offset(&rows, index, px(400.0));
 
         assert_eq!(index, 32);
-        assert_eq!(offset.item_ix, 22);
-        assert_eq!(offset.offset_in_item, px(18.0));
+        assert_eq!(offset.item_ix, 21);
+        assert_eq!(offset.offset_in_item, px(8.0));
         let visible_height = rows[offset.item_ix..=index]
             .iter()
             .copied()

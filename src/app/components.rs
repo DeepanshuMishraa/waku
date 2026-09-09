@@ -21,18 +21,22 @@ pub(super) fn pulse_dot(size: f32, color: Hsla) -> AnyElement {
 
 /// A 3x3 animated matrix dot loader that sweeps columns on and off.
 pub(super) fn dot_matrix_loader(color: Hsla, size: f32) -> AnyElement {
-    let dot_size = (size * 0.18).max(2.5);
+    let dot_size = 2.2;
+    let dot_gap = 2.0;
     motion::pulse(Duration::from_millis(1200), move |phase| {
         let mut grid = div()
-            .size(px(size))
-            .flex_none()
             .flex()
             .flex_col()
-            .justify_between()
-            .p(px(1.0));
+            .items_center()
+            .justify_center()
+            .gap(px(dot_gap));
 
         for row in 0..3 {
-            let mut row_el = div().w_full().flex().items_center().justify_between();
+            let mut row_el = div()
+                .flex()
+                .items_center()
+                .justify_center()
+                .gap(px(dot_gap));
             for col in 0..3 {
                 let t_off = 0.10 + col as f32 * 0.09 + row as f32 * 0.025;
                 let t_on = 0.50 + col as f32 * 0.09 + row as f32 * 0.025;
@@ -58,7 +62,14 @@ pub(super) fn dot_matrix_loader(color: Hsla, size: f32) -> AnyElement {
             grid = grid.child(row_el);
         }
 
-        grid.into_any_element()
+        div()
+            .size(px(size))
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .child(grid)
+            .into_any_element()
     })
     .every(1)
     .into_any_element()

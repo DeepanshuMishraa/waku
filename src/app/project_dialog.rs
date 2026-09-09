@@ -10,7 +10,12 @@ use super::*;
 
 actions!(
     waku_project_dialog,
-    [ConfirmGithubProject, DismissProjectDialog, ConfirmRename, DismissRename]
+    [
+        ConfirmGithubProject,
+        DismissProjectDialog,
+        ConfirmRename,
+        DismissRename
+    ]
 );
 
 const DIALOG_CONTEXT: &str = "ProjectDialog";
@@ -21,7 +26,11 @@ const RENAME_INPUT_CONTEXT: &str = "RenameDialog > TextInput";
 pub fn init(cx: &mut App) {
     cx.bind_keys([
         KeyBinding::new("enter", ConfirmGithubProject, Some(DIALOG_INPUT_CONTEXT)),
-        KeyBinding::new("cmd-enter", ConfirmGithubProject, Some(DIALOG_INPUT_CONTEXT)),
+        KeyBinding::new(
+            "cmd-enter",
+            ConfirmGithubProject,
+            Some(DIALOG_INPUT_CONTEXT),
+        ),
         KeyBinding::new("enter", ConfirmGithubProject, Some(DIALOG_CONTEXT)),
         KeyBinding::new("cmd-enter", ConfirmGithubProject, Some(DIALOG_CONTEXT)),
         KeyBinding::new("escape", DismissProjectDialog, Some(DIALOG_CONTEXT)),
@@ -100,10 +109,13 @@ impl Waku {
         cx.notify();
     }
 
-    pub(super) fn open_github_project_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let url = cx.new(|cx| {
-            TextInput::new(window, cx).placeholder("https://github.com/user/repo.git")
-        });
+    pub(super) fn open_github_project_dialog(
+        &mut self,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        let url =
+            cx.new(|cx| TextInput::new(window, cx).placeholder("https://github.com/user/repo.git"));
         cx.subscribe(&url, |_, _, event: &InputEvent, cx| {
             if matches!(event, InputEvent::Edited) {
                 cx.notify();
@@ -134,7 +146,14 @@ impl Waku {
                 .background_executor()
                 .spawn(async move {
                     let Ok(output) = std::process::Command::new("gh")
-                        .args(["repo", "list", "--limit", "15", "--json", "nameWithOwner,description"])
+                        .args([
+                            "repo",
+                            "list",
+                            "--limit",
+                            "15",
+                            "--json",
+                            "nameWithOwner,description",
+                        ])
                         .output()
                     else {
                         return Vec::new();
@@ -238,9 +257,12 @@ impl Waku {
 
         cx.spawn(async move |waku, cx| {
             // First show "Fetching repository…" briefly to indicate verification phase
-            cx.background_executor().timer(Duration::from_millis(400)).await;
+            cx.background_executor()
+                .timer(Duration::from_millis(400))
+                .await;
             let _ = waku.update(cx, |waku, cx| {
-                if let Some(ProjectDialogState::Github { stage, .. }) = waku.project_dialog.as_mut() {
+                if let Some(ProjectDialogState::Github { stage, .. }) = waku.project_dialog.as_mut()
+                {
                     *stage = CloneStage::Cloning;
                     cx.notify();
                 }
@@ -301,72 +323,88 @@ impl Waku {
                 let github_key = weak.clone();
                 div()
                     .w_full()
-                    .max_w(px(380.0))
-                    .rounded(px(14.0))
+                    .max_w(px(420.0))
+                    .rounded(px(16.0))
                     .border_1()
                     .border_color(gpui::hsla(0.0, 0.0, 1.0, 0.08))
                     .bg(theme.composer)
                     .shadow_2xl()
-                    .p(px(12.0))
+                    .p(px(20.0))
+                    .font_family(crate::theme::active_ui_font_family())
                     .flex()
                     .flex_col()
-                    .gap(px(4.0))
                     .child(
                         div()
-                            .px(px(8.0))
-                            .py(px(4.0))
-                            .text_size(sp(15.0))
+                            .text_size(sp(17.0))
                             .font_weight(FontWeight::SEMIBOLD)
                             .text_color(theme.text)
                             .child("New project"),
                     )
                     .child(
-                        project_source_row(
-                            "project-source-local",
-                            local_focus,
-                            "icons/folder-new.svg",
-                            "Open local folder".to_string(),
-                            "Choose an existing directory on your computer".to_string(),
-                            theme,
-                        )
-                        .on_click(move |_, window, cx| {
-                            let _ = local_click
-                                .update(cx, |waku, cx| waku.choose_local_project(window, cx));
-                        })
-                        .on_key_down(
-                            move |event: &KeyDownEvent, window, cx| {
-                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    let _ = local_key.update(cx, |waku, cx| {
-                                        waku.choose_local_project(window, cx)
-                                    });
-                                    cx.stop_propagation();
-                                }
-                            },
-                        ),
+                        div()
+                            .mt(px(2.0))
+                            .mb(px(16.0))
+                            .text_size(sp(12.5))
+                            .text_color(theme.text_secondary)
+                            .child("Open an existing directory or clone a remote Git repository"),
                     )
                     .child(
-                        project_source_row(
-                            "project-source-github",
-                            github_focus,
-                            "icons/github.svg",
-                            "Clone from GitHub".to_string(),
-                            "Clone a repository from GitHub URL".to_string(),
-                            theme,
-                        )
-                        .on_click(move |_, window, cx| {
-                            let _ = github_click
-                                .update(cx, |waku, cx| waku.open_github_project_dialog(window, cx));
-                        })
-                        .on_key_down(
-                            move |event: &KeyDownEvent, window, cx| {
-                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    let _ = github_key.update(cx, |waku, cx| {
+                        div()
+                            .flex()
+                            .flex_col()
+                            .gap(px(10.0))
+                            .child(
+                                project_source_row(
+                                    "project-source-local",
+                                    local_focus,
+                                    "icons/folder-new.svg",
+                                    "Open local folder".to_string(),
+                                    "Choose an existing directory on your computer".to_string(),
+                                    theme,
+                                )
+                                .on_click(move |_, window, cx| {
+                                    let _ = local_click.update(cx, |waku, cx| {
+                                        waku.choose_local_project(window, cx)
+                                    });
+                                })
+                                .on_key_down(
+                                    move |event: &KeyDownEvent, window, cx| {
+                                        if matches!(event.keystroke.key.as_str(), "enter" | "space")
+                                        {
+                                            let _ = local_key.update(cx, |waku, cx| {
+                                                waku.choose_local_project(window, cx)
+                                            });
+                                            cx.stop_propagation();
+                                        }
+                                    },
+                                ),
+                            )
+                            .child(
+                                project_source_row(
+                                    "project-source-github",
+                                    github_focus,
+                                    "icons/github.svg",
+                                    "Clone from GitHub".to_string(),
+                                    "Clone a repository from GitHub URL".to_string(),
+                                    theme,
+                                )
+                                .on_click(move |_, window, cx| {
+                                    let _ = github_click.update(cx, |waku, cx| {
                                         waku.open_github_project_dialog(window, cx)
                                     });
-                                    cx.stop_propagation();
-                                }
-                            },
-                        ),
+                                })
+                                .on_key_down(
+                                    move |event: &KeyDownEvent, window, cx| {
+                                        if matches!(event.keystroke.key.as_str(), "enter" | "space")
+                                        {
+                                            let _ = github_key.update(cx, |waku, cx| {
+                                                waku.open_github_project_dialog(window, cx)
+                                            });
+                                            cx.stop_propagation();
+                                        }
+                                    },
+                                ),
+                            ),
                     )
                     .into_any_element()
             }
@@ -383,7 +421,7 @@ impl Waku {
                 let can_open = !is_busy && !url.read(cx).content().trim().is_empty();
                 let button_weak = weak.clone();
                 let button_key_weak = weak.clone();
-                let avatar_path = crate::platform::local_user_avatar_path();
+                let avatar_path = crate::platform::local_user_github_avatar_path();
 
                 div()
                     .w_full()
@@ -394,6 +432,7 @@ impl Waku {
                     .bg(theme.composer)
                     .shadow_2xl()
                     .p(px(22.0))
+                    .font_family(crate::theme::active_ui_font_family())
                     .flex()
                     .flex_col()
                     .child(
@@ -454,26 +493,24 @@ impl Waku {
                                     .cursor_default()
                                     .when(is_selected, |element| element.bg(theme.overlay_strong))
                                     .hover(|element| element.bg(theme.overlay))
-                                    .child(
-                                        if let Some(avatar) = avatar_path.as_ref() {
-                                            img(avatar.clone())
-                                                .size(px(28.0))
-                                                .rounded_full()
-                                                .flex_none()
-                                                .into_any_element()
-                                        } else {
-                                            div()
-                                                .size(px(28.0))
-                                                .rounded_full()
-                                                .bg(theme.accent)
-                                                .flex()
-                                                .items_center()
-                                                .justify_center()
-                                                .child(icon("icons/github.svg", 14.0, theme.on_inverse))
-                                                .flex_none()
-                                                .into_any_element()
-                                        },
-                                    )
+                                    .child(if let Some(avatar) = avatar_path.as_ref() {
+                                        img(avatar.clone())
+                                            .size(px(28.0))
+                                            .rounded_full()
+                                            .flex_none()
+                                            .into_any_element()
+                                    } else {
+                                        div()
+                                            .size(px(28.0))
+                                            .rounded_full()
+                                            .bg(theme.accent)
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .child(icon("icons/github.svg", 14.0, theme.on_inverse))
+                                            .flex_none()
+                                            .into_any_element()
+                                    })
                                     .child(
                                         div()
                                             .flex_1()
@@ -733,7 +770,9 @@ impl Waku {
     }
 
     pub(super) fn confirm_rename(&mut self, window: &mut Window, cx: &mut Context<Self>) {
-        let Some(dialog) = self.rename_dialog.as_ref() else { return };
+        let Some(dialog) = self.rename_dialog.as_ref() else {
+            return;
+        };
         let new_name = dialog.input.read(cx).content().trim().to_owned();
         if new_name.is_empty() {
             return;
@@ -790,6 +829,7 @@ impl Waku {
             .bg(theme.composer)
             .shadow_2xl()
             .p(px(20.0))
+            .font_family(crate::theme::active_ui_font_family())
             .flex()
             .flex_col()
             .child(
@@ -872,9 +912,9 @@ impl Waku {
             .on_action(cx.listener(|waku, _: &DismissRename, window, cx| {
                 waku.close_rename_dialog(window, cx)
             }))
-            .on_action(cx.listener(|waku, _: &ConfirmRename, window, cx| {
-                waku.confirm_rename(window, cx)
-            }))
+            .on_action(
+                cx.listener(|waku, _: &ConfirmRename, window, cx| waku.confirm_rename(window, cx)),
+            )
             .absolute()
             .inset_0()
             .occlude()
@@ -908,35 +948,48 @@ fn project_source_row(
         .id(id)
         .track_focus(focus)
         .tab_index(0)
-        .h(px(58.0))
-        .px(px(12.0))
+        .w_full()
+        .h(px(64.0))
+        .px(px(14.0))
         .rounded(px(10.0))
+        .border_1()
+        .border_color(theme.border)
+        .bg(theme.sidebar_item_background)
         .flex()
         .items_center()
-        .gap(px(11.0))
+        .gap(px(14.0))
         .cursor_default()
         .focus_visible(|style| style.border_1().border_color(theme.accent))
         .hover(|row| row.bg(theme.overlay))
         .active(|row| row.bg(theme.overlay_strong))
-        .child(icon(icon_path, 17.0, theme.text_secondary))
+        .child(
+            div()
+                .size(px(38.0))
+                .rounded(px(8.0))
+                .bg(theme.overlay)
+                .flex()
+                .items_center()
+                .justify_center()
+                .child(icon(icon_path, 18.0, theme.text)),
+        )
         .child(
             div()
                 .min_w_0()
                 .flex_1()
                 .child(
                     div()
-                        .text_size(sp(13.5))
-                        .font_weight(FontWeight::MEDIUM)
+                        .text_size(sp(14.0))
+                        .font_weight(FontWeight::SEMIBOLD)
                         .text_color(theme.text)
                         .child(title),
                 )
                 .child(
                     div()
-                        .mt(px(3.0))
+                        .mt(px(2.0))
                         .text_size(sp(12.0))
-                        .text_color(theme.text_tertiary)
+                        .text_color(theme.text_secondary)
                         .child(description),
                 ),
         )
-        .child(icon("icons/chevron-right.svg", 11.0, theme.text_ghost))
+        .child(icon("icons/chevron-right.svg", 14.0, theme.text_tertiary))
 }
