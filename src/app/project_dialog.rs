@@ -87,8 +87,17 @@ impl Waku {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        // Open GitHub clone dialog directly as requested for minimal, clean workflow.
-        self.open_github_project_dialog(window, cx);
+        let local_focus = cx.focus_handle();
+        let github_focus = cx.focus_handle();
+        let initial_focus = local_focus.clone();
+        self.project_dialog = Some(ProjectDialogState::Sources {
+            github_focus,
+            local_focus,
+        });
+        window.on_next_frame(move |window, _| {
+            window.on_next_frame(move |window, cx| window.focus(&initial_focus, cx));
+        });
+        cx.notify();
     }
 
     pub(super) fn open_github_project_dialog(&mut self, window: &mut Window, cx: &mut Context<Self>) {
@@ -217,6 +226,9 @@ impl Waku {
             cx.notify();
             return;
         }
+        if !destination.exists() {
+            let _ = std::fs::create_dir_all(&destination);
+        }
 
         *stage = CloneStage::Fetching;
         *error = None;
@@ -283,51 +295,38 @@ impl Waku {
                 github_focus,
                 local_focus,
             } => {
-                let github_click = weak.clone();
-                let github_key = weak.clone();
                 let local_click = weak.clone();
                 let local_key = weak.clone();
+                let github_click = weak.clone();
+                let github_key = weak.clone();
                 div()
                     .w_full()
                     .max_w(px(380.0))
-                    .rounded(px(16.0))
+                    .rounded(px(14.0))
+                    .border_1()
+                    .border_color(gpui::hsla(0.0, 0.0, 1.0, 0.08))
                     .bg(theme.composer)
-                    .shadow_xl()
-                    .p(px(8.0))
+                    .shadow_2xl()
+                    .p(px(12.0))
                     .flex()
                     .flex_col()
-                    .gap(px(2.0))
+                    .gap(px(4.0))
                     .child(
-                        project_source_row(
-                            "project-source-github",
-                            github_focus,
-                            "icons/github.svg",
-                            tr!("project.open_github"),
-                            tr!("project.open_github_description"),
-                            theme,
-                        )
-                        .on_click(move |_, window, cx| {
-                            let _ = github_click
-                                .update(cx, |waku, cx| waku.open_github_project_dialog(window, cx));
-                        })
-                        .on_key_down(
-                            move |event: &KeyDownEvent, window, cx| {
-                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    let _ = github_key.update(cx, |waku, cx| {
-                                        waku.open_github_project_dialog(window, cx)
-                                    });
-                                    cx.stop_propagation();
-                                }
-                            },
-                        ),
+                        div()
+                            .px(px(8.0))
+                            .py(px(4.0))
+                            .text_size(sp(15.0))
+                            .font_weight(FontWeight::SEMIBOLD)
+                            .text_color(theme.text)
+                            .child("New project"),
                     )
                     .child(
                         project_source_row(
                             "project-source-local",
                             local_focus,
                             "icons/folder-new.svg",
-                            tr!("project.open_local"),
-                            tr!("project.open_local_description"),
+                            "Open local folder".to_string(),
+                            "Choose an existing directory on your computer".to_string(),
                             theme,
                         )
                         .on_click(move |_, window, cx| {
@@ -339,6 +338,30 @@ impl Waku {
                                 if matches!(event.keystroke.key.as_str(), "enter" | "space") {
                                     let _ = local_key.update(cx, |waku, cx| {
                                         waku.choose_local_project(window, cx)
+                                    });
+                                    cx.stop_propagation();
+                                }
+                            },
+                        ),
+                    )
+                    .child(
+                        project_source_row(
+                            "project-source-github",
+                            github_focus,
+                            "icons/github.svg",
+                            "Clone from GitHub".to_string(),
+                            "Clone a repository from GitHub URL".to_string(),
+                            theme,
+                        )
+                        .on_click(move |_, window, cx| {
+                            let _ = github_click
+                                .update(cx, |waku, cx| waku.open_github_project_dialog(window, cx));
+                        })
+                        .on_key_down(
+                            move |event: &KeyDownEvent, window, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    let _ = github_key.update(cx, |waku, cx| {
+                                        waku.open_github_project_dialog(window, cx)
                                     });
                                     cx.stop_propagation();
                                 }

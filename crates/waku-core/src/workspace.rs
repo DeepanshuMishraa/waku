@@ -331,6 +331,10 @@ fn clone_github_repository(input: &str, root: &Path) -> anyhow::Result<PathBuf> 
         bail!("the GitHub URL must include an owner and repository");
     }
 
+    if !root.exists() {
+        fs::create_dir_all(root)
+            .with_context(|| format!("could not create clone location {}", root.display()))?;
+    }
     let root = root
         .canonicalize()
         .with_context(|| format!("could not open clone location {}", root.display()))?;
