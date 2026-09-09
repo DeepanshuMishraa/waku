@@ -310,10 +310,20 @@ settings.theme:
   en: Theme
 settings.theme_description:
   en: Choose between system, light, or dark themes
+settings.search_fonts:
+  en: Search fonts
+settings.ui_font_family:
+  en: UI font
+settings.ui_font_family_description:
+  en: Typeface used throughout the interface
 settings.ui_font_size:
   en: UI font size
 settings.ui_font_size_description:
   en: Text size across the interface and messages
+settings.code_font:
+  en: Code font
+settings.code_font_description:
+  en: Typeface used for diffs, code blocks, tool output, and the terminal
 settings.code_font_size:
   en: Code font size
 settings.code_font_size_description:

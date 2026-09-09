@@ -20,6 +20,7 @@ use std::cell::{Cell, RefCell};
 use std::collections::HashMap;
 use std::ops::Range;
 use std::rc::Rc;
+use std::sync::{OnceLock, RwLock};
 use std::time::{Duration, Instant};
 
 use gpui::{
@@ -143,6 +144,24 @@ pub const SANS_FAMILY: &str = ".SystemUIFont";
 /// with Xcode or Terminal, and silently falls back to the sans face when it
 /// does not — which reads as proportional code.
 pub const MONO_FAMILY: &str = "JetBrains Mono";
+
+static ACTIVE_MONO_FAMILY: OnceLock<RwLock<&'static str>> = OnceLock::new();
+
+/// Returns the selected code face without doing font discovery during render.
+pub fn active_mono_family() -> &'static str {
+    *ACTIVE_MONO_FAMILY
+        .get_or_init(|| RwLock::new(MONO_FAMILY))
+        .read()
+        .expect("active code font lock poisoned")
+}
+
+pub fn set_active_mono_family(family: String) {
+    let family: &'static str = Box::leak(family.into_boxed_str());
+    *ACTIVE_MONO_FAMILY
+        .get_or_init(|| RwLock::new(MONO_FAMILY))
+        .write()
+        .expect("active code font lock poisoned") = family;
+}
 
 /// Inline-code wash geometry. Paint-only: the box overhangs the glyphs
 /// horizontally and insets vertically inside the line box.
@@ -301,9 +320,9 @@ pub fn flatten(
         let end = text.len();
 
         let mut run_font = font(if run.style.code {
-            MONO_FAMILY
+            active_mono_family()
         } else {
-            SANS_FAMILY
+            crate::theme::active_ui_font_family()
         });
         run_font.weight = if run.style.bold && base_weight < FontWeight::SEMIBOLD {
             FontWeight::SEMIBOLD
@@ -414,7 +433,7 @@ pub struct MarkdownView {
     /// Style the cached flats were built for. Colors live inside `TextRun`s, so
     /// a theme switch has to drop them or the transcript keeps painting the old
     /// palette.
-    style: Cell<Option<(Palette, Metrics)>>,
+    style: Cell<Option<(Palette, Metrics, &'static str, &'static str)>>,
     /// Per-element opacity spans for the live response. Text is committed to
     /// layout immediately; only these paint colors animate.
     veil: RefCell<RowVeil>,
@@ -510,7 +529,12 @@ impl MarkdownView {
 
     /// Drop cached flats if the style they were built for no longer applies.
     fn sync_style(&self, palette: &Palette, metrics: &Metrics) {
-        let current = (*palette, *metrics);
+        let current = (
+            *palette,
+            *metrics,
+            crate::theme::active_ui_font_family(),
+            active_mono_family(),
+        );
         if self.style.get() != Some(current) {
             self.style.set(Some(current));
             self.flats.borrow_mut().clear();
@@ -1524,7 +1548,7 @@ fn render_code_block(language: Option<&str>, code: &str, ctx: &Ctx) -> AnyElemen
     // code block is exactly the case the cache exists for.
     let flat = ctx.flat(key.index, || {
         let lang = language.and_then(highlight::lang_for_tag);
-        let mut code_font = font(MONO_FAMILY);
+        let mut code_font = font(active_mono_family());
         code_font.weight = FontWeight::NORMAL;
         FlatText {
             text: SharedString::from(code.to_owned()),
@@ -1944,7 +1968,12 @@ mod tests {
 
     #[test]
     fn plain_flatten_tiles_and_handles_empty_text() {
-        let flat = flatten_plain("hello", MONO_FAMILY, FontWeight::NORMAL, palette().text);
+        let flat = flatten_plain(
+            "hello",
+            active_mono_family(),
+            FontWeight::NORMAL,
+            palette().text,
+        );
         assert_runs_tile(&flat);
         assert_eq!(flat.runs.len(), 1);
 
@@ -1956,7 +1985,7 @@ mod tests {
     #[test]
     fn code_runs_tile_the_block_including_newlines() {
         let code = "fn main() {\n    let x = 1; // c\n}";
-        let mut code_font = font(MONO_FAMILY);
+        let mut code_font = font(active_mono_family());
         code_font.weight = FontWeight::NORMAL;
         let runs = code_runs(code, Some(Lang::Rust), &code_font, &palette());
         assert_eq!(
@@ -2051,7 +2080,7 @@ mod tests {
     #[test]
     fn highlighting_never_changes_run_lengths() {
         let code = "const a = `t ${b}`;\n// note\nlet n = 0x1F;";
-        let mut code_font = font(MONO_FAMILY);
+        let mut code_font = font(active_mono_family());
         code_font.weight = FontWeight::NORMAL;
         let highlighted = code_runs(code, Some(Lang::Script), &code_font, &palette());
         let plain = code_runs(code, None, &code_font, &palette());

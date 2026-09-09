@@ -110,7 +110,7 @@ impl Waku {
                             .p(px(8.0))
                             .rounded(px(7.0))
                             .bg(theme.inset)
-                            .font_family(crate::md::render::MONO_FAMILY)
+                            .font_family(crate::md::render::active_mono_family())
                             .text_size(sp(12.5))
                             .line_height(sp(16.0))
                             .text_color(theme.text_secondary)
@@ -806,7 +806,12 @@ impl Waku {
                 .flex()
                 .items_center()
                 .gap(px(6.0))
-                .child(provider_mark(&theme, provider, 10.5, provider_color(&theme, provider).opacity(0.9)))
+                .child(provider_mark(
+                    &theme,
+                    provider,
+                    10.5,
+                    provider_color(&theme, provider).opacity(0.9),
+                ))
                 .child(
                     div()
                         .max_w(px(210.0))
@@ -937,7 +942,11 @@ impl Waku {
                 .label(tr!("models.no_providers"))
         } else {
             MenuChip::new("composer-provider-model")
-                .provider(&theme, provider, provider_color(&theme, provider).opacity(0.9))
+                .provider(
+                    &theme,
+                    provider,
+                    provider_color(&theme, provider).opacity(0.9),
+                )
                 .label(selected_model_name)
         };
 
@@ -1048,11 +1057,16 @@ impl Waku {
                                     },
                                 )
                             })
-                            .child(provider_mark(&theme, kind, 18.0, provider_color(&theme, kind).opacity(if selected {
+                            .child(provider_mark(
+                                &theme,
+                                kind,
+                                18.0,
+                                provider_color(&theme, kind).opacity(if selected {
                                     1.0
                                 } else {
                                     0.82
-                                }))),
+                                }),
+                            )),
                     );
                 }
 
@@ -1169,7 +1183,12 @@ impl Waku {
                                             .flex()
                                             .items_center()
                                             .gap(px(6.0))
-                                            .child(provider_mark(&theme, kind, 10.5, provider_color(&theme, kind).opacity(0.85)))
+                                            .child(provider_mark(
+                                                &theme,
+                                                kind,
+                                                10.5,
+                                                provider_color(&theme, kind).opacity(0.85),
+                                            ))
                                             .child(
                                                 div()
                                                     .truncate()

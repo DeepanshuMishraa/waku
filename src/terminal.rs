@@ -79,7 +79,7 @@ static TERMINAL_FONT_FALLBACKS: LazyLock<FontFallbacks> = LazyLock::new(|| {
 });
 
 fn terminal_font() -> gpui::Font {
-    let mut terminal_font = font("JetBrains Mono");
+    let mut terminal_font = font(crate::md::render::active_mono_family());
     terminal_font.fallbacks = Some(TERMINAL_FONT_FALLBACKS.clone());
     terminal_font
 }

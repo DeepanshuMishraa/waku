@@ -3,6 +3,20 @@ use super::*;
 
 const SETTINGS_CONTENT_MAX_WIDTH: f32 = 760.0;
 
+const FONT_FAMILIES: &[&str] = &[
+    ".SystemUIFont",
+    "Helvetica Neue",
+    "SF Pro",
+    "Avenir Next",
+    "Arial",
+    "Georgia",
+    "Menlo",
+    "Monaco",
+    "SF Mono",
+    "JetBrains Mono",
+    "Courier New",
+];
+
 /// The Usage page is a dashboard, not a form; it mirrors T3 Code's wide
 /// two-column layout and needs the extra room for the chart.
 const SETTINGS_USAGE_MAX_WIDTH: f32 = 1024.0;
@@ -112,7 +126,7 @@ impl Waku {
             .flex()
             .bg(theme.canvas)
             .text_color(theme.text)
-            .font_family(".SystemUIFont")
+            .font_family(crate::theme::active_ui_font_family())
             .child(self.render_settings_sidebar(window, cx))
             .child(self.render_settings_content(window, cx))
             .into_any_element()
@@ -1331,6 +1345,116 @@ impl Waku {
             },
         );
 
+        let selected_ui_font_family = self.state.ui_font_family.clone();
+        let ui_font_search = self.ui_font_search.clone();
+        let font_families = if self.font_families.is_empty() {
+            Rc::new(FONT_FAMILIES.iter().map(|family| (*family).to_owned()).collect())
+        } else {
+            self.font_families.clone()
+        };
+        let weak = cx.entity().downgrade();
+        let ui_font_search_for_handle = ui_font_search.clone();
+        let ui_font_family_handle = self.menu_handle_with(
+            "ui-font-family-selector",
+            cx,
+            move |open, window, cx| {
+                if open {
+                    ui_font_search_for_handle.update(cx, |input, cx| input.set_content("", cx));
+                    let focus = ui_font_search_for_handle.read(cx).focus_handle(cx);
+                    window.focus(&focus, cx);
+                }
+            },
+        );
+        let ui_font_family_selector = dropdown_menu(
+            MenuChip::new("ui-font-family-selector")
+                .label(selected_ui_font_family.clone())
+                .outlined()
+                .selected(ui_font_family_handle.is_open())
+                .w(px(180.0))
+                .justify_between(),
+            "ui-font-family-selector-menu",
+            &ui_font_family_handle,
+            MenuAlign::BelowRight,
+            move |cx| {
+                let query = ui_font_search.read(cx).content().trim().to_lowercase();
+                let search = ui_font_search.clone();
+                let families = font_families.clone();
+                let mut items = vec![MenuItem::custom(move |_, _| {
+                    TextField::new("ui-font-search", search.clone())
+                        .icon("icons/search.svg", 13.0)
+                        .into_any_element()
+                })];
+                items.extend(families.iter().filter(|family| {
+                    query.is_empty() || family.to_lowercase().contains(&query)
+                }).map(|family| {
+                    let family = family.clone();
+                    let selected = family == selected_ui_font_family;
+                    let weak = weak.clone();
+                    MenuItem::new(family.clone(), move |_, cx| {
+                        let _ = weak.update(cx, |this, cx| {
+                            this.set_ui_font_family(family.clone(), cx)
+                        });
+                    }).selected(selected)
+                }));
+                items
+            },
+        );
+
+        let selected_code_font_family = self.state.code_font_family.clone();
+        let code_font_search = self.code_font_search.clone();
+        let font_families = if self.font_families.is_empty() {
+            Rc::new(FONT_FAMILIES.iter().map(|family| (*family).to_owned()).collect())
+        } else {
+            self.font_families.clone()
+        };
+        let weak = cx.entity().downgrade();
+        let code_font_search_for_handle = code_font_search.clone();
+        let code_font_family_handle = self.menu_handle_with(
+            "code-font-family-selector",
+            cx,
+            move |open, window, cx| {
+                if open {
+                    code_font_search_for_handle.update(cx, |input, cx| input.set_content("", cx));
+                    let focus = code_font_search_for_handle.read(cx).focus_handle(cx);
+                    window.focus(&focus, cx);
+                }
+            },
+        );
+        let code_font_family_selector = dropdown_menu(
+            MenuChip::new("code-font-family-selector")
+                .label(selected_code_font_family.clone())
+                .outlined()
+                .selected(code_font_family_handle.is_open())
+                .w(px(180.0))
+                .justify_between(),
+            "code-font-family-selector-menu",
+            &code_font_family_handle,
+            MenuAlign::BelowRight,
+            move |cx| {
+                let query = code_font_search.read(cx).content().trim().to_lowercase();
+                let search = code_font_search.clone();
+                let families = font_families.clone();
+                let mut items = vec![MenuItem::custom(move |_, _| {
+                    TextField::new("code-font-search", search.clone())
+                        .icon("icons/search.svg", 13.0)
+                        .into_any_element()
+                })];
+                items.extend(families.iter().filter(|family| {
+                    query.is_empty() || family.to_lowercase().contains(&query)
+                }).map(|family| {
+                    let family = family.clone();
+                    let selected = family == selected_code_font_family;
+                    let weak = weak.clone();
+                    MenuItem::new(family.clone(), move |_, cx| {
+                        let _ = weak.update(cx, |this, cx| {
+                            this.set_code_font_family(family.clone(), cx)
+                        });
+                    }).selected(selected)
+                }));
+                items
+            },
+        );
+
         let weak = cx.entity().downgrade();
         let language_handle = self.menu_handle("language-selector", cx);
         let language_selector = dropdown_menu(
@@ -1431,6 +1555,13 @@ impl Waku {
                     .child(language_selector),
             )
             .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
+            .child(Self::font_setting_row(
+                theme,
+                tr!("settings.ui_font_family"),
+                tr!("settings.ui_font_family_description"),
+                ui_font_family_selector,
+            ))
+            .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
             .child(
                 div()
                     .w_full()
@@ -1462,6 +1593,13 @@ impl Waku {
                     )
                     .child(ui_font_size_selector),
             )
+            .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
+            .child(Self::font_setting_row(
+                theme,
+                tr!("settings.code_font"),
+                tr!("settings.code_font_description"),
+                code_font_family_selector,
+            ))
             .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
             .child(
                 div()
@@ -1497,6 +1635,28 @@ impl Waku {
             .into_any_element()
     }
 
+    fn set_ui_font_family(&mut self, family: String, cx: &mut Context<Self>) {
+        if self.state.ui_font_family == family {
+            return;
+        }
+        self.state.ui_font_family = family.clone();
+        crate::theme::set_active_ui_font_family(family);
+        self.remeasure_font_sized_surfaces();
+        self.save();
+        cx.notify();
+    }
+
+    fn set_code_font_family(&mut self, family: String, cx: &mut Context<Self>) {
+        if self.state.code_font_family == family {
+            return;
+        }
+        self.state.code_font_family = family.clone();
+        crate::md::render::set_active_mono_family(family);
+        self.remeasure_font_sized_surfaces();
+        self.save();
+        cx.notify();
+    }
+
     fn set_ui_font_size(&mut self, size: f32, window: &mut Window, cx: &mut Context<Self>) {
         let size = waku_client::persistence::sanitized_ui_font_size(size);
         if self.state.ui_font_size == size {
@@ -1520,6 +1680,43 @@ impl Waku {
         self.remeasure_font_sized_surfaces();
         self.save();
         cx.notify();
+    }
+
+    fn font_setting_row(
+        theme: Theme,
+        title: impl Into<SharedString>,
+        description: impl Into<SharedString>,
+        selector: AnyElement,
+    ) -> Div {
+        div()
+            .w_full()
+            .min_h(px(60.0))
+            .px(px(20.0))
+            .py(px(12.0))
+            .flex()
+            .items_center()
+            .gap(px(24.0))
+            .child(
+                div()
+                    .flex_1()
+                    .min_w_0()
+                    .child(
+                        div()
+                            .text_size(sp(13.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.text)
+                            .child(title.into()),
+                    )
+                    .child(
+                        div()
+                            .mt(px(5.0))
+                            .text_size(sp(12.5))
+                            .line_height(sp(18.0))
+                            .text_color(theme.text_secondary)
+                            .child(description.into()),
+                    ),
+            )
+            .child(selector)
     }
 
     /// Drop every cached row height that a font size participates in. The
@@ -1669,7 +1866,12 @@ impl Waku {
                         .flex()
                         .items_center()
                         .justify_center()
-                        .child(provider_mark(&theme, kind, 16.0, provider_color(&theme, kind).opacity(if installed { 1.0 } else { 0.5 })))
+                        .child(provider_mark(
+                            &theme,
+                            kind,
+                            16.0,
+                            provider_color(&theme, kind).opacity(if installed { 1.0 } else { 0.5 }),
+                        ))
                         .child(
                             div()
                                 .absolute()
@@ -1706,7 +1908,7 @@ impl Waku {
                                 .when_some(version, |element, version| {
                                     element.child(
                                         div()
-                                            .font_family(crate::md::render::MONO_FAMILY)
+                                            .font_family(crate::md::render::active_mono_family())
                                             .text_size(sp(12.5))
                                             .text_color(theme.text_tertiary)
                                             .child(SharedString::from(format!("v{version}"))),

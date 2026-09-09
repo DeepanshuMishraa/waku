@@ -59,7 +59,7 @@ use crate::persistence::{
 use crate::query::{Query, QueryCache};
 use crate::review_diff::{Snapshot as ReviewDiffSnapshot, Source as ReviewDiffSource};
 use crate::terminal::TerminalView;
-use crate::theme::{Theme, ThemePreference, sp};
+use crate::theme::{Theme, ThemePreference, set_active_ui_font_family, sp};
 use crate::ui::text_field::TextField;
 use crate::ui::{
     MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_scroll, file_icon, icon,
@@ -1064,6 +1064,10 @@ pub struct Waku {
     task_switcher: task_switcher::TaskSwitcherUi,
     model_search: Entity<TextInput>,
     settings_search: Entity<TextInput>,
+    ui_font_search: Entity<TextInput>,
+    code_font_search: Entity<TextInput>,
+    font_families: Rc<Vec<String>>,
+    font_picker_scroll: ScrollHandle,
     daemon_port_input: Entity<TextInput>,
     daemon_origins_input: Entity<TextInput>,
     daemon_reconfigure_pending: bool,
@@ -1942,6 +1946,8 @@ impl Waku {
             eprintln!("could not normalize daemon settings after migration: {error:#}");
         }
         crate::i18n::set_language(state.language);
+        set_active_ui_font_family(state.ui_font_family.clone());
+        crate::md::render::set_active_mono_family(state.code_font_family.clone());
         // Chrome text is authored in `sp` rems against the default UI font
         // size, so the window's rem size *is* the UI font size setting.
         window.set_rem_size(px(waku_client::persistence::sanitized_ui_font_size(
@@ -1993,6 +1999,17 @@ impl Waku {
                 .clear_on_escape()
                 .placeholder(tr!("settings.search"))
         });
+        let ui_font_search = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .clear_on_escape()
+                .placeholder(tr!("settings.search_fonts"))
+        });
+        let code_font_search = cx.new(|cx| {
+            TextInput::new(window, cx)
+                .clear_on_escape()
+                .placeholder(tr!("settings.search_fonts"))
+        });
+        let font_families = Rc::new(crate::platform::installed_font_families());
         let daemon_port = state.daemon_exposure.port.to_string();
         let daemon_origins = state.daemon_exposure.allowed_origins_text();
         let daemon_port_input = cx.new(|cx| {
@@ -2483,6 +2500,18 @@ impl Waku {
             // active the cursor lands on the first match so `enter` has a
             // visible target; clearing the query returns to the opening
             // state — nothing highlighted, the current model's row in view.
+            cx.subscribe(&ui_font_search, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Edited) {
+                    cx.notify();
+                }
+            })
+            .detach();
+            cx.subscribe(&code_font_search, |_, _, event: &InputEvent, cx| {
+                if matches!(event, InputEvent::Edited) {
+                    cx.notify();
+                }
+            })
+            .detach();
             cx.subscribe(
                 &model_search,
                 |this: &mut Self, search, event: &InputEvent, cx| {
@@ -2720,6 +2749,10 @@ impl Waku {
                 command_palette: command_palette::CommandPaletteUi::new(command_palette_search),
                 task_switcher,
                 model_search,
+                ui_font_search,
+                code_font_search,
+                font_families,
+                font_picker_scroll: ScrollHandle::new(),
                 branch_search,
                 branch_create_input,
                 settings_search,

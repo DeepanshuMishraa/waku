@@ -965,6 +965,8 @@ impl RenderOnce for MenuCard {
             .id(self.id)
             .min_w(px(176.0))
             .max_w(px(320.0))
+            .max_h(px(420.0))
+            .overflow_y_scroll()
             .py(px(4.0))
             .rounded(px(9.0))
             .border_1()
@@ -998,6 +1000,25 @@ impl RenderOnce for MenuCard {
                 move |_: &DismissMenu, window, cx| {
                     handle.close(window, cx);
                     window.refresh();
+                }
+            })
+            .on_action({
+                let handle = self.handle.clone();
+                let items = self.items.clone();
+                let first = focusable.first().copied();
+                move |_: &ConfirmEntry, window, cx| {
+                    let index = handle.state.borrow().highlighted.or(first);
+                    let Some(index) = index else {
+                        return;
+                    };
+                    let Some(item) = items(cx).into_iter().nth(index) else {
+                        return;
+                    };
+                    if let Some(on_click) = item.click_handler() {
+                        handle.close(window, cx);
+                        on_click(window, cx);
+                        window.refresh();
+                    }
                 }
             })
             .on_mouse_down_out({
@@ -1163,7 +1184,12 @@ fn render_menu_item(
                 }
                 // Non-interactive rows still need the row's insets so they
                 // line up with the entries around them.
-                None => div().mx(px(4.0)).px(px(8.0)).child(body).into_any_element(),
+                None => div()
+                    .mx(px(4.0))
+                    .px(px(8.0))
+                    .pb(px(8.0))
+                    .child(body)
+                    .into_any_element(),
             }
         }
     }
@@ -1375,7 +1401,12 @@ fn on_menu_key(
 
     if matches!(key, "right" | "enter" | "space") {
         cx.stop_propagation();
-        let Some(highlighted) = handle.state.borrow().highlighted else {
+        let highlighted = handle
+            .state
+            .borrow()
+            .highlighted
+            .or_else(|| focusable.first().copied());
+        let Some(highlighted) = highlighted else {
             return;
         };
         // Rebuild to reach the entry's closure: the item list is intentionally

@@ -1,6 +1,25 @@
+use std::sync::{OnceLock, RwLock};
+
 use gpui::{App, Global, Hsla, Rems, Window, WindowAppearance, hsla, rems, rgb, transparent_black};
 
 pub use waku_client::theme::ThemePreference;
+
+static ACTIVE_UI_FONT_FAMILY: OnceLock<RwLock<&'static str>> = OnceLock::new();
+
+pub fn active_ui_font_family() -> &'static str {
+    *ACTIVE_UI_FONT_FAMILY
+        .get_or_init(|| RwLock::new(waku_client::persistence::DEFAULT_UI_FONT_FAMILY))
+        .read()
+        .expect("active UI font lock poisoned")
+}
+
+pub fn set_active_ui_font_family(family: String) {
+    let family: &'static str = Box::leak(family.into_boxed_str());
+    *ACTIVE_UI_FONT_FAMILY
+        .get_or_init(|| RwLock::new(waku_client::persistence::DEFAULT_UI_FONT_FAMILY))
+        .write()
+        .expect("active UI font lock poisoned") = family;
+}
 
 /// Scaled pixels: a dimension authored at the default 14px UI font size,
 /// expressed in rems so the UI font size setting scales it. The window's rem

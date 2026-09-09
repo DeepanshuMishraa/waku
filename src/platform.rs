@@ -1,5 +1,75 @@
 use gpui::Window;
 
+/// Returns the unique font family names available to the current user.
+/// Discovery is intentionally explicit and should run off the UI thread.
+#[cfg(target_os = "macos")]
+pub fn installed_font_families() -> Vec<String> {
+    use std::ffi::{c_char, c_void};
+
+    type CFArray = c_void;
+    type CFString = c_void;
+
+    #[link(name = "CoreFoundation", kind = "framework")]
+    unsafe extern "C" {
+        fn CFRelease(value: *const c_void);
+        fn CFArrayGetCount(array: *const CFArray) -> isize;
+        fn CFArrayGetValueAtIndex(array: *const CFArray, index: isize) -> *const c_void;
+        fn CFStringGetCString(
+            string: *const CFString,
+            buffer: *mut c_char,
+            buffer_size: isize,
+            encoding: u32,
+        ) -> bool;
+    }
+    #[link(name = "CoreText", kind = "framework")]
+    unsafe extern "C" {
+        fn CTFontManagerCopyAvailableFontFamilyNames() -> *const CFArray;
+    }
+
+    const K_CF_STRING_ENCODING_UTF8: u32 = 0x0800_0100;
+    let array = unsafe { CTFontManagerCopyAvailableFontFamilyNames() };
+    if array.is_null() {
+        return Vec::new();
+    }
+
+    let mut families = Vec::new();
+    let count = unsafe { CFArrayGetCount(array) };
+    for index in 0..count {
+        let value = unsafe { CFArrayGetValueAtIndex(array, index) };
+        if value.is_null() {
+            continue;
+        }
+        let mut buffer = [0 as c_char; 512];
+        let converted = unsafe {
+            CFStringGetCString(
+                value.cast(),
+                buffer.as_mut_ptr(),
+                buffer.len() as isize,
+                K_CF_STRING_ENCODING_UTF8,
+            )
+        };
+        if converted {
+            let bytes = buffer
+                .iter()
+                .take_while(|byte| **byte != 0)
+                .map(|byte| *byte as u8)
+                .collect::<Vec<_>>();
+            if let Ok(family) = String::from_utf8(bytes) {
+                families.push(family);
+            }
+        }
+    }
+    unsafe { CFRelease(array.cast()) };
+    families.sort_unstable_by_key(|family| family.to_lowercase());
+    families.dedup_by(|left, right| left.eq_ignore_ascii_case(right));
+    families
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn installed_font_families() -> Vec<String> {
+    Vec::new()
+}
+
 #[cfg(target_os = "macos")]
 pub fn show_about_panel() {
     use objc2::MainThreadMarker;
