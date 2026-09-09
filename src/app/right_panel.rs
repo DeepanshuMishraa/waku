@@ -1894,7 +1894,7 @@ impl Waku {
         self.right_panel_tabs_scroll_handle.scroll_to_item(index);
     }
 
-    fn active_right_panel_surface(&self) -> Option<&RightPanelSurface> {
+    pub(super) fn active_right_panel_surface(&self) -> Option<&RightPanelSurface> {
         self.right_panel_active_surface
             .and_then(|index| self.right_panel_surfaces.get(index))
     }
@@ -2012,62 +2012,42 @@ impl Waku {
     }
 
     fn open_right_panel_file(&mut self, relative_path: String, cx: &mut Context<Self>) {
-        self.ensure_initial_right_panel_file_editor_width();
-        let Some(active) = self.right_panel_active_surface else {
-            self.open_right_panel_surface(RightPanelSurface::File(relative_path), cx);
-            return;
-        };
-        match self.right_panel_surfaces.get(active).cloned() {
-            Some(RightPanelSurface::Files) => {
-                let dirty_file_would_be_replaced = self
-                    .right_panel_files_selected_path
-                    .as_deref()
-                    .is_some_and(|current_path| {
-                        current_path != relative_path
-                            && self.right_panel_file_is_dirty(current_path)
-                    });
-                if dirty_file_would_be_replaced {
-                    self.open_right_panel_surface(RightPanelSurface::File(relative_path), cx);
-                    return;
-                }
+        if !self.main_file_tabs.contains(&relative_path) {
+            self.main_file_tabs.push(relative_path.clone());
+        }
+        self.active_main_file_tab = Some(relative_path);
+        self.main_tabs_open = true;
 
-                self.right_panel_files_selected_path = Some(relative_path);
-                self.set_right_panel_visible(true, cx);
-                cx.notify();
-            }
-            Some(RightPanelSurface::File(current_path)) => {
-                if current_path == relative_path {
-                    return;
-                }
-                if self.right_panel_file_is_dirty(&current_path) {
-                    self.open_right_panel_surface(RightPanelSurface::File(relative_path), cx);
-                    return;
-                }
-
-                let requested = RightPanelSurface::File(relative_path);
-                if let Some(existing) =
-                    reusable_surface_index(&self.right_panel_surfaces, &requested)
-                {
-                    self.right_panel_surfaces.remove(active);
-                    let existing = if existing > active {
-                        existing - 1
-                    } else {
-                        existing
-                    };
-                    self.right_panel_active_surface = Some(existing);
-                    self.reveal_right_panel_tab(existing);
-                } else {
-                    self.right_panel_surfaces[active] = requested;
-                    self.reveal_right_panel_tab(active);
-                }
-                self.set_right_panel_visible(true, cx);
-                cx.notify();
-            }
-            _ => self.open_right_panel_surface(RightPanelSurface::File(relative_path), cx),
+        // The right panel stays a Files browser. The editor lives in the main
+        // content area, so selecting another file never replaces the browser
+        // or creates a duplicate editor there.
+        self.right_panel_files_selected_path = None;
+        if let Some(index) = self
+            .right_panel_surfaces
+            .iter()
+            .position(|surface| matches!(surface, RightPanelSurface::Files))
+        {
+            self.right_panel_active_surface = Some(index);
+            self.set_right_panel_visible(true, cx);
+            self.refresh_right_panel_working_tree(cx);
+            cx.notify();
+        } else {
+            self.open_right_panel_surface(RightPanelSurface::Files, cx);
         }
     }
 
-    fn close_right_panel_surface(&mut self, index: usize, cx: &mut Context<Self>) {
+    pub(super) fn close_main_file_tab(&mut self, path: &str, cx: &mut Context<Self>) {
+        self.main_file_tabs.retain(|tab| tab != path);
+        if self.active_main_file_tab.as_deref() == Some(path) {
+            self.active_main_file_tab = self.main_file_tabs.last().cloned();
+        }
+        if self.main_file_tabs.is_empty() && self.main_chat_tabs.is_empty() {
+            self.main_tabs_open = false;
+        }
+        cx.notify();
+    }
+
+    pub(super) fn close_right_panel_surface(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.right_panel_surfaces.len() {
             return;
         }
@@ -2836,7 +2816,7 @@ impl Waku {
             )
     }
 
-    fn render_right_panel_file(
+    pub(super) fn render_right_panel_file(
         &mut self,
         relative_path: String,
         panel_width: f32,

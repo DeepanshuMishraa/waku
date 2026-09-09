@@ -3,6 +3,7 @@ use gpui::{KeyBinding, actions};
 use std::time::Duration;
 
 use super::*;
+use super::right_panel::file_icon_for_path;
 
 actions!(waku_sidebar, [CancelSessionRename]);
 
@@ -676,33 +677,46 @@ impl Waku {
                 cx.notify();
             }));
 
+        let add_project_menu = self.menu_handle("add-project", cx);
         let add_project_weak = cx.entity().downgrade();
-        let add_project = div()
-            .id("add-project")
-            .tab_index(0)
-            .w(px(20.0))
-            .h(px(22.0))
-            .rounded(px(6.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .cursor_default()
-            .focus_visible(|style| style.border_1().border_color(theme.accent))
-            .hover(|element| element.bg(theme.overlay))
-            .active(|element| element.bg(theme.overlay_strong))
-            .tooltip(Tooltip::text(tr!("project.new_project")))
-            .child(icon("icons/folder-new.svg", 14.0, theme.text_secondary))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(move |_, window, cx| {
-                let _ = add_project_weak
-                    .update(cx, |this, cx| this.open_project_source_dialog(window, cx));
-            })
-            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                    this.open_project_source_dialog(window, cx);
-                    cx.stop_propagation();
-                }
-            }));
+        let local_project = add_project_weak.clone();
+        let github_project = add_project_weak.clone();
+        let add_project = dropdown_menu(
+            div()
+                .id("add-project")
+                .tab_index(0)
+                .w(px(20.0))
+                .h(px(22.0))
+                .rounded(px(6.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_default()
+                .focus_visible(|style| style.border_1().border_color(theme.accent))
+                .hover(|element| element.bg(theme.overlay))
+                .active(|element| element.bg(theme.overlay_strong))
+                .tooltip(Tooltip::text(tr!("project.new_project")))
+                .child(icon("icons/folder-new.svg", 14.0, theme.text_secondary))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            "add-project-menu",
+            &add_project_menu,
+            MenuAlign::BelowRight,
+            move |_| {
+                let local_project = local_project.clone();
+                let github_project = github_project.clone();
+                vec![
+                    MenuItem::new("Local project", move |_, cx| {
+                        let _ = local_project.update(cx, |waku, cx| waku.add_project(cx));
+                    })
+                    .icon("icons/folder-new.svg"),
+                    MenuItem::new("Import from GitHub", move |window, cx| {
+                        let _ = github_project
+                            .update(cx, |waku, cx| waku.open_github_project_dialog(window, cx));
+                    })
+                    .icon("icons/github.svg"),
+                ]
+            },
+        );
 
         div()
             .flex()
@@ -2099,11 +2113,9 @@ impl Waku {
             SessionStatus::Connecting | SessionStatus::Working
         );
         let branch_label = persisted_sidebar_branch_label(&session.workspace);
-        let title_str = if let Some(branch) = branch_label {
-            SharedString::from(branch.to_owned())
-        } else {
-            SharedString::from(localized_session_title(session))
-        };
+        let title_str = branch_label
+            .map(|branch| SharedString::from(branch.to_owned()))
+            .unwrap_or_else(|| SharedString::from(localized_session_title(session)));
         let is_flat = self.state.sidebar_grouping == SidebarGrouping::Chats;
         let left_margin = if is_flat { 4.0 } else { 12.0 };
         let right_margin = 4.0;
@@ -2414,14 +2426,195 @@ impl Waku {
                 ),
             )
             .child(self.render_background_work_summary(cx))
-            .when(!self.right_panel_visible, |element| {
-                element
-                    .when(self.fps_counter_visible, |element| {
-                        element.child(self.render_fps_counter(cx))
-                    })
-                    .child(self.render_right_panel_toggle(cx))
+            .when(self.fps_counter_visible, |element| {
+                element.child(self.render_fps_counter(cx))
             })
+            .child(self.render_right_panel_toggle(cx))
             .children(right_window_controls)
+    }
+
+    pub(super) fn render_session_tabs(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+        let theme = Theme::current(cx);
+        let waku = cx.entity().downgrade();
+        let mut tabs = Vec::new();
+        if self.main_tabs_open {
+            let project_id = self.selected_project().map(|project| project.id);
+            for session in self
+                .state
+                .sessions
+                .iter()
+                .filter(|session| {
+                    Some(session.project_id) == project_id
+                        && self.main_chat_tabs.contains(&session.id)
+                })
+            {
+                let session_id = session.id;
+                let selected = self.state.selected_session == Some(session_id);
+                let tab_waku = waku.clone();
+                let close_waku = waku.clone();
+                tabs.push(
+                    div()
+                        .id(SharedString::from(format!("main-chat-tab-{session_id}")))
+                        .h_full()
+                        .max_w(px(240.0))
+                        .px(px(14.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .cursor_default()
+                        .text_size(sp(13.0))
+                        .text_color(if selected { theme.text } else { theme.text_secondary })
+                        .when(selected, |element| {
+                            element.border_b_2().border_color(theme.accent)
+                        })
+                        .hover(|element| element.bg(theme.overlay))
+                        .on_click(move |_, _, cx| {
+                            let _ = tab_waku.update(cx, |waku, cx| {
+                                waku.select_session(session_id, cx)
+                            });
+                        })
+                        .child(div().min_w_0().truncate().child(SharedString::from(
+                            localized_session_title(session),
+                        )))
+                        .child(
+                            div()
+                                .id(SharedString::from(format!("main-chat-tab-close-{session_id}")))
+                                .w(px(18.0))
+                                .h(px(18.0))
+                                .flex()
+                                .items_center()
+                                .justify_center()
+                                .rounded(px(4.0))
+                                .hover(|element| element.bg(theme.overlay_strong))
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = close_waku.update(cx, |waku, cx| {
+                                        waku.main_chat_tabs.retain(|id| *id != session_id);
+                                        if waku.main_chat_tabs.is_empty()
+                                            && !waku.right_panel_surfaces.iter().any(|surface| {
+                                                matches!(surface, RightPanelSurface::File(_))
+                                            })
+                                        {
+                                            waku.main_tabs_open = false;
+                                        }
+                                        cx.notify();
+                                    });
+                                })
+                                .child(icon("icons/x.svg", 12.0, theme.text_tertiary)),
+                        )
+                        .into_any_element(),
+                );
+            }
+        }
+        let file_tabs = self
+            .main_file_tabs
+            .iter()
+            .enumerate()
+            .map(|(index, path)| {
+                let label = Path::new(path)
+                    .file_name()
+                    .and_then(|name| name.to_str())
+                    .unwrap_or(path)
+                    .to_owned();
+                let selected = self.active_main_file_tab.as_deref() == Some(path.as_str());
+                let activate_waku = waku.clone();
+                let close_waku = waku.clone();
+                let path_for_click = path.clone();
+                let path_for_close = path.clone();
+                div()
+                    .id(SharedString::from(format!("main-file-tab-{index}")))
+                    .h_full()
+                    .max_w(px(240.0))
+                    .px(px(14.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .cursor_default()
+                    .text_size(sp(13.0))
+                    .text_color(if selected { theme.text } else { theme.text_secondary })
+                    .when(selected, |element| {
+                        element.border_b_2().border_color(theme.accent)
+                    })
+                    .hover(|element| element.bg(theme.overlay))
+                    .on_click(move |_, _, cx| {
+                        let _ = activate_waku.update(cx, |waku, cx| {
+                            waku.active_main_file_tab = Some(path_for_click.clone());
+                            cx.notify();
+                        });
+                    })
+                    .child(icon(file_icon_for_path(path), 13.0, theme.text_tertiary))
+                    .child(div().min_w_0().truncate().child(SharedString::from(label)))
+                    .child(
+                        div()
+                            .id(SharedString::from(format!("main-file-tab-close-{index}")))
+                            .w(px(18.0))
+                            .h(px(18.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .rounded(px(4.0))
+                            .hover(|element| element.bg(theme.overlay_strong))
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                let _ = close_waku.update(cx, |waku, cx| {
+                                    waku.close_main_file_tab(&path_for_close, cx)
+                                });
+                            })
+                            .child(icon("icons/x.svg", 12.0, theme.text_tertiary)),
+                    )
+            })
+            .collect::<Vec<_>>();
+        tabs.extend(file_tabs.into_iter().map(IntoElement::into_any_element));
+        let new_tab_waku = cx.entity().downgrade();
+        let new_tab = div()
+            .id("session-tabs-new")
+            .w(px(42.0))
+            .h_full()
+            .flex_none()
+            .flex()
+            .items_center()
+            .justify_center()
+            .cursor_default()
+            .hover(|element| element.bg(theme.overlay))
+            .active(|element| element.bg(theme.overlay_strong))
+            .on_click(move |_, window, cx| {
+                let _ = new_tab_waku.update(cx, |waku, cx| {
+                    waku.main_tabs_open = true;
+                    if let Some(session_id) = waku.create_new_chat_tab(cx)
+                        && !waku.main_chat_tabs.contains(&session_id)
+                    {
+                        waku.main_chat_tabs.push(session_id);
+                    }
+                    let focus_handle = waku.composer_focus(cx);
+                    window.focus(&focus_handle, cx);
+                    cx.notify();
+                });
+            })
+            .child(icon("icons/plus.svg", 15.0, theme.text_secondary));
+
+        div()
+            .id("session-tabs")
+            .h(px(42.0))
+            .flex_none()
+            .flex()
+            .items_center()
+            .border_b_1()
+            .border_color(theme.border)
+            .bg(theme.surface)
+            .child(
+                div()
+                    .id("session-tabs-scroll")
+                    .flex_1()
+                    .h_full()
+                    .overflow_x_scroll()
+                    .track_scroll(&self.right_panel_tabs_scroll_handle)
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .children(tabs),
+            )
+            .child(new_tab)
     }
 
     // ── Empty states ───────────────────────────────────────────────────────

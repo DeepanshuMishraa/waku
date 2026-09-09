@@ -280,6 +280,8 @@ impl Render for Waku {
 
         let theme = Theme::current(cx);
         let empty = should_render_empty_state(self.selected_session());
+        let active_file = self.active_main_file_tab.clone();
+        let file_editor_width = self.right_panel_width.max(720.0);
         let permission = self.render_permission(cx);
         let computer_use = self.render_computer_use_overlay(cx);
         let command_palette = self.render_command_palette(window, cx);
@@ -364,7 +366,14 @@ impl Render for Waku {
                         element.border_l_1().border_color(theme.sidebar_border)
                     })
                     .child(self.render_header(window, cx))
-                    .child(if empty {
+                    .when(
+                        self.main_tabs_open || !self.main_file_tabs.is_empty(),
+                        |element| element.child(self.render_session_tabs(cx)),
+                    )
+                    .child(if let Some(path) = active_file.as_ref() {
+                        self.render_right_panel_file(path.clone(), file_editor_width, window, cx)
+                            .into_any_element()
+                    } else if empty {
                         self.render_empty_state(cx).into_any_element()
                     } else {
                         self.transcript_pane
@@ -373,7 +382,7 @@ impl Render for Waku {
                             .into_any_element()
                     })
                     .children(permission)
-                    .when(self.selected_project().is_some(), |element| {
+                    .when(self.selected_project().is_some() && active_file.is_none(), |element| {
                         element
                             .children(self.render_queued_messages(cx))
                             .child(self.render_composer(window, cx))
@@ -390,7 +399,7 @@ impl Render for Waku {
                         ))
                     }),
             )
-            .when(panels.right_panel > 0.0, |root| {
+            .when(panels.right_panel > 0.0 && active_file.is_none(), |root| {
                 root.child(
                     div()
                         .h_full()

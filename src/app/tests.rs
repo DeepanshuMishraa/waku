@@ -128,6 +128,24 @@ fn remote_task_catalog_adds_web_tasks_without_replacing_hydrated_detail() {
 }
 
 #[test]
+fn live_runtime_keeps_generated_title_when_remote_projection_is_stale() {
+    let project_id = Uuid::new_v4();
+    let mut local = AgentSession::new(project_id, ProviderKind::Codex);
+    local.auto_title = Some("Repair title generation".into());
+    let local_id = local.id;
+    let remote = local.list_projection();
+
+    let mut catalog = vec![local];
+    merge_remote_session_catalog(
+        &mut catalog,
+        vec![remote],
+        |session_id| session_id == local_id,
+    );
+
+    assert_eq!(catalog[0].auto_title.as_deref(), Some("Repair title generation"));
+}
+
+#[test]
 fn composer_only_offers_stop_after_submission_preparation() {
     assert_eq!(
         composer_submit_action(Some(SessionStatus::Idle), false),

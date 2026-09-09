@@ -138,14 +138,19 @@ pub(super) fn merge_remote_session_catalog(
 
     for remote in remote {
         if let Some(local) = local.iter_mut().find(|session| session.id == remote.id) {
-            local.title = remote.title;
-            local.auto_title = remote.auto_title;
+            let local_runtime = has_local_runtime(local.id);
+            if !local_runtime || remote.title != AgentSession::DEFAULT_TITLE {
+                local.title = remote.title;
+            }
+            if !local_runtime || remote.auto_title.is_some() {
+                local.auto_title = remote.auto_title;
+            }
             local.project_id = remote.project_id;
             local.provider = remote.provider;
             local.model = remote.model;
             local.created_at = remote.created_at;
             local.last_reply_at = remote.last_reply_at;
-            if !has_local_runtime(local.id) {
+            if !local_runtime {
                 local.status = remote.status;
                 local.updated_at = remote.updated_at;
             }
@@ -3308,7 +3313,6 @@ impl Waku {
             Vec::new()
         };
         let transcript_anchor = if let Some(session) = self.state.session_mut(session_id) {
-            session.set_title_from_prompt(&human_prompt);
             let turn_id = session.begin_turn_with_presentation(
                 &prompt,
                 submission.display_content.clone(),

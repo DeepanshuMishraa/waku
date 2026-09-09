@@ -1106,7 +1106,7 @@ fn write_json_line(writer: &mut impl Write, value: &Value) -> std::io::Result<()
     writer.flush()
 }
 
-const CODEX_TITLE_INSTRUCTIONS: &str = "Generate a concise title for the user's coding task. Return only a plain title of at most six words. Do not use tools, quotes, markdown, labels, or ending punctuation.";
+const CODEX_TITLE_INSTRUCTIONS: &str = "You generate the title for a coding-agent conversation. Infer the user's primary intent from the first message and write one specific, useful title. Return only the title as plain text. Use 2–6 words, sentence case, and concrete nouns or verbs. Omit filler, greetings, names, pronouns, markdown, quotes, labels, emojis, and ending punctuation. Do not answer the request, mention that you are generating a title, or invent details.";
 const CODEX_TITLE_MODEL: &str = "gpt-5.6-luna";
 const CODEX_TITLE_TIMEOUT: Duration = Duration::from_secs(60);
 

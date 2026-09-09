@@ -438,6 +438,17 @@ impl Waku {
         cx.notify();
     }
 
+    pub(super) fn create_new_chat_tab(&mut self, cx: &mut Context<Self>) -> Option<Uuid> {
+        let project_id = self.selected_project()?.id;
+        let runtime_mode = new_task_runtime_mode(self.selected_session(), self.state.last_runtime_mode);
+        let mut session = self.state.new_session(project_id, self.state.last_provider);
+        session.runtime_mode = runtime_mode;
+        let id = session.id;
+        self.state.push_session(session);
+        self.select_session(id, cx);
+        Some(id)
+    }
+
     pub(super) fn new_session_action(
         &mut self,
         _: &NewSession,
