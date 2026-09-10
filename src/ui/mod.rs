@@ -49,6 +49,22 @@ pub fn icon_button(id: impl Into<ElementId>, path: &'static str, theme: Theme) -
         .child(icon(path, 13.0, theme.text_tertiary))
 }
 
+/// Helper to construct a horizontal flex container centered vertically.
+pub fn h_flex() -> Div {
+    div().flex().flex_row().items_center()
+}
+
+/// Extension trait for scrollable elements.
+pub trait ScrollableElement: Sized {
+    fn overflow_x_scrollbar(self) -> Self;
+}
+
+impl ScrollableElement for Stateful<Div> {
+    fn overflow_x_scrollbar(self) -> Self {
+        self.overflow_x_scroll()
+    }
+}
+
 /// Keeps a wheel gesture in a nested scrollable while it can consume the
 /// delta, then lets it chain to the ancestor at either boundary. Call from an
 /// `on_scroll_wheel` listener. GPUI's own scroll handler runs first during the
@@ -500,7 +516,12 @@ impl RenderOnce for ProjectNameSelector {
             .flex_none()
             .cursor_default()
             .focus_visible(|style| style.border_1().border_color(theme.accent))
-            .child(self.label)
+            .child(
+                div()
+                    .truncate()
+                    .max_w(px(240.0))
+                    .child(self.label),
+            )
             .child(
                 canvas(
                     |_, _, _| {},

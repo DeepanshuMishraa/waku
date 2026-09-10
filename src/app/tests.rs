@@ -6,7 +6,7 @@ use super::runtime::{merge_remote_session_catalog, session_has_active_provider_t
 use super::settings::visible_settings_pages;
 use super::{
     ESCAPE_STOP_CONFIRMATION_TIMEOUT, EscapeStopConfirmation, EscapeStopPress, EscapeStopTarget,
-    NAVIGATION_RAIL_TICK_HEIGHT, NAVIGATION_RAIL_TURN_HEIGHT, PendingUserInput, SessionNavigation,
+    MainTab, NAVIGATION_RAIL_TICK_HEIGHT, NAVIGATION_RAIL_TURN_HEIGHT, PendingUserInput, SessionNavigation,
     StreamDeltaKind, TranscriptRowKind::*, active_navigation_turn_index,
     append_text_delta_to_session, assistant_response_footer, assistant_response_footer_index,
     assistant_response_footer_time, compact_driver_error, disclosure_leading_space, fenced_code,
@@ -2171,3 +2171,38 @@ fn the_rail_draws_only_installed_providers_the_settings_left_on() {
         ProviderKind::Claude
     ));
 }
+
+#[test]
+fn multiple_tabs_can_be_tracked_interleaved_and_closed() {
+    let mut main_tabs: Vec<MainTab> = Vec::new();
+    let chat1 = Uuid::new_v4();
+    let file1 = "src/main.rs".to_string();
+    let chat2 = Uuid::new_v4();
+
+    // Open chat1, then file1, then chat2
+    main_tabs.push(MainTab::Chat(chat1));
+    main_tabs.push(MainTab::File(file1.clone()));
+    main_tabs.push(MainTab::Chat(chat2));
+
+    assert_eq!(main_tabs.len(), 3);
+    assert_eq!(main_tabs[0], MainTab::Chat(chat1));
+    assert_eq!(main_tabs[1], MainTab::File(file1.clone()));
+    assert_eq!(main_tabs[2], MainTab::Chat(chat2));
+
+    // Close middle file tab
+    let close_tab = MainTab::File(file1);
+    let index = main_tabs.iter().position(|t| t == &close_tab);
+    main_tabs.retain(|t| t != &close_tab);
+    assert_eq!(main_tabs.len(), 2);
+    let next_index = index.unwrap_or(0).min(main_tabs.len().saturating_sub(1));
+    assert_eq!(main_tabs[next_index], MainTab::Chat(chat2));
+
+    // Close active last tab
+    let close_tab = MainTab::Chat(chat2);
+    let index = main_tabs.iter().position(|t| t == &close_tab);
+    main_tabs.retain(|t| t != &close_tab);
+    assert_eq!(main_tabs.len(), 1);
+    let next_index = index.unwrap_or(0).min(main_tabs.len().saturating_sub(1));
+    assert_eq!(main_tabs[next_index], MainTab::Chat(chat1));
+}
+

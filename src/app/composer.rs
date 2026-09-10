@@ -2662,7 +2662,7 @@ impl Waku {
         // compositing over it.
         let drop_wash = theme.composer.blend(theme.overlay_strong);
         let drop_ring = theme.accent.opacity(0.7);
-        div().flex_none().px(px(20.0)).child(
+        div().flex_none().w_full().min_w_0().px(px(20.0)).child(
             div()
                 .w_full()
                 .max_w(px(CONTENT_MAX_WIDTH))

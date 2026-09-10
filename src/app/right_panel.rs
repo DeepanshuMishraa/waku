@@ -2012,8 +2012,14 @@ impl Waku {
     }
 
     fn open_right_panel_file(&mut self, relative_path: String, cx: &mut Context<Self>) {
-        if !self.main_file_tabs.contains(&relative_path) {
-            self.main_file_tabs.push(relative_path.clone());
+        if self.main_tabs.is_empty() {
+            if let Some(session_id) = self.state.selected_session {
+                self.main_tabs.push(MainTab::Chat(session_id));
+            }
+        }
+        let file_tab = MainTab::File(relative_path.clone());
+        if !self.main_tabs.contains(&file_tab) {
+            self.main_tabs.push(file_tab);
         }
         self.active_main_file_tab = Some(relative_path);
         self.main_tabs_open = true;
@@ -2037,11 +2043,96 @@ impl Waku {
     }
 
     pub(super) fn close_main_file_tab(&mut self, path: &str, cx: &mut Context<Self>) {
-        self.main_file_tabs.retain(|tab| tab != path);
-        if self.active_main_file_tab.as_deref() == Some(path) {
-            self.active_main_file_tab = self.main_file_tabs.last().cloned();
+        let was_active = self.active_main_file_tab.as_deref() == Some(path);
+        let tab = MainTab::File(path.to_string());
+        let index = self.main_tabs.iter().position(|t| t == &tab);
+        self.main_tabs.retain(|t| t != &tab);
+
+        if was_active {
+            if !self.main_tabs.is_empty() {
+                let next_index = index.unwrap_or(0).min(self.main_tabs.len().saturating_sub(1));
+                match &self.main_tabs[next_index] {
+                    MainTab::File(next_path) => {
+                        self.active_main_file_tab = Some(next_path.clone());
+                    }
+                    MainTab::Chat(next_session_id) => {
+                        let next_session_id = *next_session_id;
+                        self.active_main_file_tab = None;
+                        if self.state.selected_session != Some(next_session_id) {
+                            self.select_session(next_session_id, cx);
+                        }
+                    }
+                }
+            } else {
+                self.active_main_file_tab = None;
+                self.main_tabs_open = false;
+                if let Some(session_id) = self.state.selected_session {
+                    self.select_session(session_id, cx);
+                }
+            }
+        } else if self.main_tabs.is_empty() {
+            self.main_tabs_open = false;
         }
-        if self.main_file_tabs.is_empty() && self.main_chat_tabs.is_empty() {
+        cx.notify();
+    }
+
+    pub(super) fn close_main_chat_tab(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
+        let was_active = self.active_main_file_tab.is_none()
+            && self.state.selected_session == Some(session_id);
+        let tab = MainTab::Chat(session_id);
+        let index = self.main_tabs.iter().position(|t| t == &tab);
+        self.main_tabs.retain(|t| t != &tab);
+
+        let is_empty_draft = self
+            .state
+            .sessions
+            .iter()
+            .find(|session| session.id == session_id)
+            .is_some_and(|session| {
+                !session.has_started()
+                    && session.messages.is_empty()
+                    && session.turns.is_empty()
+                    && session.queued_messages.is_empty()
+            });
+
+        if was_active {
+            if !self.main_tabs.is_empty() {
+                let next_index = index.unwrap_or(0).min(self.main_tabs.len().saturating_sub(1));
+                match &self.main_tabs[next_index] {
+                    MainTab::Chat(next_session_id) => {
+                        let next_session_id = *next_session_id;
+                        self.active_main_file_tab = None;
+                        self.select_session(next_session_id, cx);
+                    }
+                    MainTab::File(next_path) => {
+                        self.active_main_file_tab = Some(next_path.clone());
+                    }
+                }
+            } else {
+                self.active_main_file_tab = None;
+                self.main_tabs_open = false;
+                let current_project_id = self.selected_project().map(|p| p.id);
+                let fallback = self
+                    .state
+                    .sessions
+                    .iter()
+                    .filter(|s| {
+                        current_project_id.map_or(true, |pid| s.project_id == pid)
+                            && s.id != session_id
+                    })
+                    .max_by_key(|s| s.updated_at)
+                    .map(|s| s.id);
+                if let Some(fallback_id) = fallback {
+                    self.select_session(fallback_id, cx);
+                }
+            }
+        }
+
+        if is_empty_draft {
+            self.remove_session(session_id, cx);
+        }
+
+        if self.main_tabs.is_empty() {
             self.main_tabs_open = false;
         }
         cx.notify();
@@ -2684,7 +2775,7 @@ impl Waku {
         if let Some(relative_path) = self.right_panel_files_selected_path.clone() {
             self.render_right_panel_file(relative_path, panel_width, window, cx)
         } else {
-            self.render_right_panel_working_tree(None, cx)
+            self.render_right_panel_working_tree(self.active_main_file_tab.as_deref(), cx)
         }
     }
 
@@ -2824,7 +2915,6 @@ impl Waku {
         cx: &mut Context<Self>,
     ) -> Div {
         let theme = Theme::current(cx);
-        let file_tree_width = fitted_file_tree_width(panel_width, self.right_panel_file_tree_width);
         let (editor_state, writable, _) =
             self.ensure_right_panel_file_editor(&relative_path, window, cx);
 
@@ -2838,7 +2928,7 @@ impl Waku {
             self.render_file_editor_body(
                 &relative_path,
                 &editor_state,
-                panel_width - file_tree_width,
+                panel_width,
                 writable,
                 window,
                 cx,
@@ -2911,24 +3001,6 @@ impl Waku {
             .min_w_0()
             .flex()
             .child(editor)
-            .child(
-                div()
-                    .w(px(file_tree_width))
-                    .min_w(px(FILE_TREE_MIN_WIDTH))
-                    .h_full()
-                    .flex_none()
-                    .flex()
-                    .flex_col()
-                    .relative()
-                    .border_l_1()
-                    .border_color(theme.border_strong)
-                    .child(self.render_right_panel_working_tree(Some(&relative_path), cx))
-                    .child(self.render_panel_resize_handle(
-                        "right-panel-file-tree-resize-handle",
-                        PanelResizeTarget::FileTree,
-                        cx,
-                    )),
-            )
     }
 
     fn ensure_right_panel_file_editor(

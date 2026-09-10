@@ -24,6 +24,13 @@ impl Waku {
     }
 
     pub(super) fn select_session(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
+        if self.main_tabs_open || !self.main_tabs.is_empty() {
+            self.active_main_file_tab = None;
+            let tab = MainTab::Chat(session_id);
+            if !self.main_tabs.contains(&tab) {
+                self.main_tabs.push(tab);
+            }
+        }
         self.request_session_activation(session_id, SessionActivationTransition::Visit, cx);
     }
 
@@ -439,12 +446,21 @@ impl Waku {
     }
 
     pub(super) fn create_new_chat_tab(&mut self, cx: &mut Context<Self>) -> Option<Uuid> {
-        let project_id = self.selected_project()?.id;
-        let runtime_mode = new_task_runtime_mode(self.selected_session(), self.state.last_runtime_mode);
+        let project_id = self
+            .selected_project()
+            .map(|p| p.id)
+            .or_else(|| self.state.projects.first().map(|p| p.id))?;
+        let runtime_mode =
+            new_task_runtime_mode(self.selected_session(), self.state.last_runtime_mode);
         let mut session = self.state.new_session(project_id, self.state.last_provider);
         session.runtime_mode = runtime_mode;
         let id = session.id;
         self.state.push_session(session);
+        self.active_main_file_tab = None;
+        let tab = MainTab::Chat(id);
+        if !self.main_tabs.contains(&tab) {
+            self.main_tabs.push(tab);
+        }
         self.select_session(id, cx);
         Some(id)
     }

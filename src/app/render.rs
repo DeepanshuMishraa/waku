@@ -281,7 +281,8 @@ impl Render for Waku {
         let theme = Theme::current(cx);
         let empty = should_render_empty_state(self.selected_session());
         let active_file = self.active_main_file_tab.clone();
-        let file_editor_width = self.right_panel_width.max(720.0);
+        let file_editor_width =
+            (f32::from(window.viewport_size().width) - panels.sidebar - panels.right_panel).max(300.0);
         let permission = self.render_permission(cx);
         let computer_use = self.render_computer_use_overlay(cx);
         let command_palette = self.render_command_palette(window, cx);
@@ -359,6 +360,7 @@ impl Render for Waku {
                     .flex_1()
                     .h_full()
                     .min_w_0()
+                    .overflow_hidden()
                     .flex()
                     .flex_col()
                     .bg(theme.surface)
@@ -367,7 +369,7 @@ impl Render for Waku {
                     })
                     .child(self.render_header(window, cx))
                     .when(
-                        self.main_tabs_open || !self.main_file_tabs.is_empty(),
+                        (self.main_tabs_open || !self.main_tabs.is_empty()) && !empty,
                         |element| element.child(self.render_session_tabs(cx)),
                     )
                     .child(if let Some(path) = active_file.as_ref() {
@@ -399,7 +401,7 @@ impl Render for Waku {
                         ))
                     }),
             )
-            .when(panels.right_panel > 0.0 && active_file.is_none(), |root| {
+            .when(panels.right_panel > 0.0, |root| {
                 root.child(
                     div()
                         .h_full()

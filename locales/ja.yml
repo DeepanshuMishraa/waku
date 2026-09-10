@@ -237,6 +237,7 @@ common.rename: 名前を変更
 session.new_task: 新規タスク
 
 sidebar.today: 今日
+sidebar.home: ホーム
 sidebar.search: 検索
 sidebar.options: サイドバーオプション
 sidebar.grouping: グループ化

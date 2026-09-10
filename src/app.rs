@@ -62,8 +62,9 @@ use crate::terminal::TerminalView;
 use crate::theme::{Theme, ThemePreference, set_active_ui_font_family, sp};
 use crate::ui::text_field::TextField;
 use crate::ui::{
-    MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_scroll, file_icon, icon,
-    icon_button, motion, provider_color, provider_mark, status_color, toggle_switch,
+    MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_scroll, file_icon,
+    h_flex, icon, icon_button, motion, provider_color, provider_mark, status_color, toggle_switch,
+    ScrollableElement,
 };
 use crate::{
     CancelTaskSwitch, CancelTurn, CloseFind, CloseWindow, ConfirmTaskSwitch, CopySelection,
@@ -1033,6 +1034,12 @@ impl Default for ActivityScrollViewport {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) enum MainTab {
+    Chat(Uuid),
+    File(String),
+}
+
 pub struct Waku {
     /// Owns the headless provider process for exactly as long as the desktop
     /// app entity. Debug builds can replace it independently after a rebuild;
@@ -1339,9 +1346,9 @@ pub struct Waku {
     sidebar_visible: bool,
     sidebar_options_open: bool,
     main_tabs_open: bool,
-    main_chat_tabs: Vec<Uuid>,
-    main_file_tabs: Vec<String>,
+    main_tabs: Vec<MainTab>,
     active_main_file_tab: Option<String>,
+    main_tabs_scroll_handle: ScrollHandle,
     sidebar_width: f32,
     right_panel_visible: bool,
     right_panel_width: f32,
@@ -2912,9 +2919,9 @@ impl Waku {
                 sidebar_visible,
                 sidebar_options_open: false,
                 main_tabs_open: false,
-                main_chat_tabs: Vec::new(),
-                main_file_tabs: Vec::new(),
+                main_tabs: Vec::new(),
                 active_main_file_tab: None,
+                main_tabs_scroll_handle: ScrollHandle::new(),
                 sidebar_width,
                 right_panel_visible,
                 right_panel_width,

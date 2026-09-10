@@ -225,6 +225,7 @@ common.remove: 移除
 common.rename: 重命名
 session.new_task: 新任务
 sidebar.today: 今天
+sidebar.home: 首页
 sidebar.search: 搜索
 sidebar.options: 侧边栏选项
 sidebar.grouping: 分组

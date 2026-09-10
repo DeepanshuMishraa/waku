@@ -971,6 +971,39 @@ impl Waku {
             )
     }
 
+    fn render_sidebar_home(&self, cx: &mut Context<Self>) -> Div {
+        let home = self
+            .render_sidebar_action_row(
+                "sidebar-home",
+                "icons/home.svg",
+                tr!("sidebar.home"),
+                cx,
+            )
+            .on_click(cx.listener(|this, _, _, cx| {
+                this.open_home_screen(cx);
+            }))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                    this.open_home_screen(cx);
+                    cx.stop_propagation();
+                }
+            }));
+        div()
+            .w_full()
+            .h(px(SIDEBAR_ACTION_ROW_HEIGHT))
+            .flex_none()
+            .child(home)
+    }
+
+    pub(super) fn open_home_screen(&mut self, cx: &mut Context<Self>) {
+        self.state.selected_session = None;
+        self.state.selected_project = None;
+        self.active_main_file_tab = None;
+        self.main_tabs_open = false;
+        self.save();
+        cx.notify();
+    }
+
     fn render_sidebar_search(&self, cx: &mut Context<Self>) -> Div {
         let search = self
             .render_sidebar_action_row(
@@ -1302,6 +1335,7 @@ impl Waku {
                     .w_full()
                     .px(px(10.0))
                     .mt(px(6.0))
+                    .child(self.render_sidebar_home(cx))
                     .child(self.render_sidebar_search(cx)),
             )
             .child(
@@ -2297,9 +2331,7 @@ impl Waku {
     ) -> impl IntoElement {
         let theme = Theme::current(cx);
         let session = self.selected_session();
-        let title = session
-            .map(localized_session_title)
-            .unwrap_or_else(|| tr!("session.new_task"));
+        let title = session.map(localized_session_title);
         let agent_preset_label = session
             .filter(|session| session.provider == ProviderKind::DeepSeek && session.has_started())
             .and_then(|session| self.agent_preset_label_for_session(session));
@@ -2390,15 +2422,15 @@ impl Waku {
                         .flex()
                         .items_center()
                         .gap(px(7.0))
-                        .child(
+                        .children(title.map(|title| {
                             div()
                                 .min_w_0()
                                 .truncate()
                                 .text_size(sp(13.0))
                                 .font_weight(FontWeight::MEDIUM)
                                 .text_color(theme.text)
-                                .child(SharedString::from(title)),
-                        )
+                                .child(SharedString::from(title))
+                        }))
                         .children(agent_preset_label.map(|label| {
                             div()
                                 .h(px(22.0))
@@ -2429,7 +2461,9 @@ impl Waku {
             .when(self.fps_counter_visible, |element| {
                 element.child(self.render_fps_counter(cx))
             })
-            .child(self.render_right_panel_toggle(cx))
+            .when(!self.right_panel_visible, |element| {
+                element.child(self.render_right_panel_toggle(cx))
+            })
             .children(right_window_controls)
     }
 
@@ -2437,181 +2471,204 @@ impl Waku {
         let theme = Theme::current(cx);
         let waku = cx.entity().downgrade();
         let mut tabs = Vec::new();
-        if self.main_tabs_open {
-            let project_id = self.selected_project().map(|project| project.id);
-            for session in self
-                .state
-                .sessions
-                .iter()
-                .filter(|session| {
-                    Some(session.project_id) == project_id
-                        && self.main_chat_tabs.contains(&session.id)
-                })
-            {
-                let session_id = session.id;
-                let selected = self.state.selected_session == Some(session_id);
-                let tab_waku = waku.clone();
-                let close_waku = waku.clone();
-                tabs.push(
-                    div()
-                        .id(SharedString::from(format!("main-chat-tab-{session_id}")))
-                        .h_full()
-                        .max_w(px(240.0))
-                        .px(px(14.0))
-                        .flex_none()
-                        .flex()
-                        .items_center()
-                        .cursor_default()
-                        .text_size(sp(13.0))
-                        .text_color(if selected { theme.text } else { theme.text_secondary })
-                        .when(selected, |element| {
-                            element.border_b_2().border_color(theme.accent)
-                        })
-                        .hover(|element| element.bg(theme.overlay))
-                        .on_click(move |_, _, cx| {
-                            let _ = tab_waku.update(cx, |waku, cx| {
-                                waku.select_session(session_id, cx)
-                            });
-                        })
-                        .child(div().min_w_0().truncate().child(SharedString::from(
-                            localized_session_title(session),
-                        )))
-                        .child(
-                            div()
-                                .id(SharedString::from(format!("main-chat-tab-close-{session_id}")))
-                                .w(px(18.0))
-                                .h(px(18.0))
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .rounded(px(4.0))
-                                .hover(|element| element.bg(theme.overlay_strong))
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    let _ = close_waku.update(cx, |waku, cx| {
-                                        waku.main_chat_tabs.retain(|id| *id != session_id);
-                                        if waku.main_chat_tabs.is_empty()
-                                            && !waku.right_panel_surfaces.iter().any(|surface| {
-                                                matches!(surface, RightPanelSurface::File(_))
-                                            })
-                                        {
-                                            waku.main_tabs_open = false;
-                                        }
-                                        cx.notify();
-                                    });
-                                })
-                                .child(icon("icons/x.svg", 12.0, theme.text_tertiary)),
-                        )
-                        .into_any_element(),
-                );
-            }
-        }
-        let file_tabs = self
-            .main_file_tabs
-            .iter()
-            .enumerate()
-            .map(|(index, path)| {
-                let label = Path::new(path)
-                    .file_name()
-                    .and_then(|name| name.to_str())
-                    .unwrap_or(path)
-                    .to_owned();
-                let selected = self.active_main_file_tab.as_deref() == Some(path.as_str());
-                let activate_waku = waku.clone();
-                let close_waku = waku.clone();
-                let path_for_click = path.clone();
-                let path_for_close = path.clone();
-                div()
-                    .id(SharedString::from(format!("main-file-tab-{index}")))
-                    .h_full()
-                    .max_w(px(240.0))
-                    .px(px(14.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(8.0))
-                    .cursor_default()
-                    .text_size(sp(13.0))
-                    .text_color(if selected { theme.text } else { theme.text_secondary })
-                    .when(selected, |element| {
-                        element.border_b_2().border_color(theme.accent)
-                    })
-                    .hover(|element| element.bg(theme.overlay))
-                    .on_click(move |_, _, cx| {
-                        let _ = activate_waku.update(cx, |waku, cx| {
-                            waku.active_main_file_tab = Some(path_for_click.clone());
-                            cx.notify();
-                        });
-                    })
-                    .child(icon(file_icon_for_path(path), 13.0, theme.text_tertiary))
-                    .child(div().min_w_0().truncate().child(SharedString::from(label)))
-                    .child(
+        let current_project_id = self.selected_project().map(|project| project.id);
+        for (index, tab) in self.main_tabs.iter().enumerate() {
+            match tab {
+                MainTab::Chat(session_id) => {
+                    let session_id = *session_id;
+                    let Some(session) = self
+                        .state
+                        .sessions
+                        .iter()
+                        .find(|session| session.id == session_id)
+                    else {
+                        continue;
+                    };
+                    if let Some(project_id) = current_project_id {
+                        if session.project_id != project_id {
+                            continue;
+                        }
+                    }
+                    let selected = self.active_main_file_tab.is_none()
+                        && self.state.selected_session == Some(session_id);
+                    let tab_waku = waku.clone();
+                    let close_waku = waku.clone();
+                    tabs.push(
                         div()
-                            .id(SharedString::from(format!("main-file-tab-close-{index}")))
-                            .w(px(18.0))
-                            .h(px(18.0))
+                            .id(SharedString::from(format!("main-chat-tab-{session_id}")))
+                            .h_full()
+                            .max_w(px(200.0))
+                            .pl(px(10.0))
+                            .pr(px(6.0))
+                            .flex_none()
                             .flex()
                             .items_center()
-                            .justify_center()
-                            .rounded(px(4.0))
-                            .hover(|element| element.bg(theme.overlay_strong))
+                            .gap(px(6.0))
+                            .cursor_default()
+                            .text_size(sp(12.5))
+                            .text_color(if selected { theme.text } else { theme.text_secondary })
+                            .when(selected, |element| {
+                                element.border_b_2().border_color(theme.accent)
+                            })
+                            .hover(|element| element.bg(theme.overlay))
                             .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                let _ = close_waku.update(cx, |waku, cx| {
-                                    waku.close_main_file_tab(&path_for_close, cx)
+                                let _ = tab_waku.update(cx, |waku, cx| {
+                                    waku.active_main_file_tab = None;
+                                    waku.select_session(session_id, cx);
                                 });
                             })
-                            .child(icon("icons/x.svg", 12.0, theme.text_tertiary)),
-                    )
-            })
-            .collect::<Vec<_>>();
-        tabs.extend(file_tabs.into_iter().map(IntoElement::into_any_element));
+                            .child(icon(
+                                "icons/bot.svg",
+                                13.0,
+                                if selected { theme.accent } else { theme.text_tertiary },
+                            ))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .truncate()
+                                    .child(SharedString::from(localized_session_title(session))),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("main-chat-tab-close-{session_id}")))
+                                    .w(px(16.0))
+                                    .h(px(16.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(3.0))
+                                    .hover(|element| element.bg(theme.overlay_strong))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = close_waku.update(cx, |waku, cx| {
+                                            waku.close_main_chat_tab(session_id, cx);
+                                        });
+                                    })
+                                    .child(icon("icons/x.svg", 10.0, theme.text_tertiary)),
+                            )
+                            .into_any_element(),
+                    );
+                }
+                MainTab::File(path) => {
+                    let path = path.clone();
+                    let path_for_click = path.clone();
+                    let path_for_close = path.clone();
+                    let label = Path::new(&path)
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or(&path)
+                        .to_owned();
+                    let selected = self.active_main_file_tab.as_deref() == Some(path.as_str());
+                    let activate_waku = waku.clone();
+                    let close_waku = waku.clone();
+                    tabs.push(
+                        div()
+                            .id(SharedString::from(format!("main-file-tab-{index}")))
+                            .h_full()
+                            .max_w(px(200.0))
+                            .pl(px(10.0))
+                            .pr(px(6.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .cursor_default()
+                            .text_size(sp(12.5))
+                            .text_color(if selected { theme.text } else { theme.text_secondary })
+                            .when(selected, |element| {
+                                element.border_b_2().border_color(theme.accent)
+                            })
+                            .hover(|element| element.bg(theme.overlay))
+                            .on_click(move |_, _, cx| {
+                                let _ = activate_waku.update(cx, |waku, cx| {
+                                    waku.active_main_file_tab = Some(path_for_click.clone());
+                                    cx.notify();
+                                });
+                            })
+                            .child(icon(file_icon_for_path(&path), 13.0, theme.text_tertiary))
+                            .child(div().min_w_0().flex_1().truncate().child(SharedString::from(label)))
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("main-file-tab-close-{index}")))
+                                    .w(px(16.0))
+                                    .h(px(16.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(3.0))
+                                    .hover(|element| element.bg(theme.overlay_strong))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = close_waku.update(cx, |waku, cx| {
+                                            waku.close_main_file_tab(&path_for_close, cx);
+                                        });
+                                    })
+                                    .child(icon("icons/x.svg", 10.0, theme.text_tertiary)),
+                            )
+                            .into_any_element(),
+                    );
+                }
+            }
+        }
+
         let new_tab_waku = cx.entity().downgrade();
         let new_tab = div()
             .id("session-tabs-new")
-            .w(px(42.0))
-            .h_full()
+            .size(px(24.0))
+            .ml(px(4.0))
+            .mr(px(2.0))
             .flex_none()
             .flex()
             .items_center()
             .justify_center()
+            .rounded(px(4.0))
             .cursor_default()
             .hover(|element| element.bg(theme.overlay))
             .active(|element| element.bg(theme.overlay_strong))
+            .tooltip(|window, cx| Tooltip::new(tr!("session.new_task")).build(window, cx))
             .on_click(move |_, window, cx| {
                 let _ = new_tab_waku.update(cx, |waku, cx| {
                     waku.main_tabs_open = true;
-                    if let Some(session_id) = waku.create_new_chat_tab(cx)
-                        && !waku.main_chat_tabs.contains(&session_id)
-                    {
-                        waku.main_chat_tabs.push(session_id);
+                    waku.active_main_file_tab = None;
+                    if let Some(session_id) = waku.create_new_chat_tab(cx) {
+                        let tab = MainTab::Chat(session_id);
+                        if !waku.main_tabs.contains(&tab) {
+                            waku.main_tabs.push(tab);
+                        }
                     }
                     let focus_handle = waku.composer_focus(cx);
                     window.focus(&focus_handle, cx);
                     cx.notify();
                 });
             })
-            .child(icon("icons/plus.svg", 15.0, theme.text_secondary));
+            .child(icon("icons/plus.svg", 13.0, theme.text_secondary));
 
         div()
             .id("session-tabs")
-            .h(px(42.0))
+            .h(px(35.0))
             .flex_none()
             .flex()
             .items_center()
             .border_b_1()
             .border_color(theme.border)
             .bg(theme.surface)
+            .px(px(6.0))
             .child(
-                div()
+                h_flex()
                     .id("session-tabs-scroll")
+                    .min_w_0()
                     .flex_1()
                     .h_full()
-                    .overflow_x_scroll()
-                    .track_scroll(&self.right_panel_tabs_scroll_handle)
-                    .flex()
-                    .items_center()
-                    .gap(px(4.0))
+                    .overflow_x_scrollbar()
+                    .track_scroll(&self.main_tabs_scroll_handle)
+                    .gap(px(2.0))
                     .children(tabs),
             )
             .child(new_tab)
@@ -2624,16 +2681,20 @@ impl Waku {
         if self.selected_project().is_none() {
             return div()
                 .flex_1()
+                .w_full()
+                .min_w_0()
                 .flex()
                 .flex_col()
                 .items_center()
                 .justify_center()
-                .px_8()
+                .px(px(20.0))
                 .pb(px(46.0))
                 .child(icon("icons/sparkle.svg", 24.0, theme.accent))
                 .child(
                     div()
                         .mt(px(16.0))
+                        .max_w(px(380.0))
+                        .text_center()
                         .text_size(sp(20.0))
                         .font_weight(FontWeight::MEDIUM)
                         .text_color(theme.text)
@@ -2800,18 +2861,24 @@ impl Waku {
         );
         div()
             .flex_1()
+            .w_full()
+            .min_w_0()
             .flex()
             .flex_col()
             .items_center()
             .justify_center()
-            .px_8()
+            .px(px(20.0))
             .pb(px(52.0))
             .child(icon("icons/sparkle.svg", 20.0, theme.accent))
             .child(
                 div()
                     .mt(px(14.0))
+                    .max_w_full()
                     .flex()
-                    .items_baseline()
+                    .flex_wrap()
+                    .items_center()
+                    .justify_center()
+                    .text_center()
                     .text_size(sp(20.0))
                     .font_weight(FontWeight::MEDIUM)
                     .text_color(theme.text)
@@ -2820,9 +2887,19 @@ impl Waku {
                     })
                     .when(!projectless_selected, |element| {
                         element
-                            .child(tr_cow!("onboarding.what_should_we_build_in"))
-                            .child(project_selector)
-                            .child(tr_cow!("onboarding.question_mark"))
+                            .child(
+                                div()
+                                    .flex_none()
+                                    .child(tr_cow!("onboarding.what_should_we_build_in")),
+                            )
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .min_w_0()
+                                    .child(project_selector)
+                                    .child(tr_cow!("onboarding.question_mark")),
+                            )
                     }),
             )
     }
