@@ -40,6 +40,13 @@ fn start_driver(mut request: DriverStartRequest, cwd: PathBuf) -> anyhow::Result
 const SESSION_TITLE_INSTRUCTIONS: &str = "Write a short title for the conversation in the JSON below. Infer the task from both the user's request and the assistant's response. Return only the title as plain text. Use 2-6 words, sentence case, and concrete nouns or verbs. Do not use tools. Do not answer the conversation. Omit quotes, markdown, labels, emojis, and ending punctuation.";
 const SESSION_TITLE_TIMEOUT: Duration = Duration::from_secs(60);
 
+fn session_title_runtime_mode(provider: ProviderKind) -> RuntimeMode {
+    match provider {
+        ProviderKind::Amp | ProviderKind::Pi | ProviderKind::OhMyPi => RuntimeMode::FullAccess,
+        _ => RuntimeMode::Ask,
+    }
+}
+
 fn session_title_messages(session: &AgentSession) -> Option<(String, String)> {
     if session.title != AgentSession::DEFAULT_TITLE
         || session.auto_title.is_some()
@@ -124,9 +131,7 @@ fn generate_session_title(mut request: SessionTitleRequest) -> anyhow::Result<St
     let (wake, _wake_events) = smol::channel::bounded(1);
     request.driver_start.session_id = Uuid::new_v4();
     request.driver_start.event_wake = wake;
-    if request.driver_start.provider != ProviderKind::Amp {
-        request.driver_start.options.mode = RuntimeMode::Ask;
-    }
+    request.driver_start.options.mode = session_title_runtime_mode(request.driver_start.provider);
     request.driver_start.options.agent_preset = None;
     request.driver_start.options.computer_use_enabled = false;
     request.driver_start.options.provider_cursor = None;
@@ -3947,9 +3952,36 @@ impl Waku {
 
 #[cfg(test)]
 mod session_title_tests {
-    use super::{normalize_session_title, session_title_messages, session_title_prompt};
-    use crate::model::{AgentSession, Message, MessageRole, ProviderKind, TurnStatus};
+    use super::{
+        normalize_session_title, session_title_messages, session_title_prompt,
+        session_title_runtime_mode,
+    };
+    use crate::model::{AgentSession, Message, MessageRole, ProviderKind, RuntimeMode, TurnStatus};
     use uuid::Uuid;
+
+    #[test]
+    fn title_requests_use_a_mode_supported_by_each_provider() {
+        assert_eq!(
+            session_title_runtime_mode(ProviderKind::Codex),
+            RuntimeMode::Ask
+        );
+        assert_eq!(
+            session_title_runtime_mode(ProviderKind::Claude),
+            RuntimeMode::Ask
+        );
+        assert_eq!(
+            session_title_runtime_mode(ProviderKind::Pi),
+            RuntimeMode::FullAccess
+        );
+        assert_eq!(
+            session_title_runtime_mode(ProviderKind::OhMyPi),
+            RuntimeMode::FullAccess
+        );
+        assert_eq!(
+            session_title_runtime_mode(ProviderKind::Amp),
+            RuntimeMode::FullAccess
+        );
+    }
 
     #[test]
     fn title_waits_for_the_first_completed_user_assistant_exchange() {

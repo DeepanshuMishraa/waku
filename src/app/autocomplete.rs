@@ -439,7 +439,10 @@ impl Waku {
                     .gap(px(8.0))
                     .text_size(sp(12.5))
                     .text_color(theme.text_tertiary)
-                    .child(crate::app::components::dot_matrix_loader(theme.text_tertiary, 12.0))
+                    .child(crate::app::components::dot_matrix_loader(
+                        theme.text_tertiary,
+                        12.0,
+                    ))
                     .child(tr!("composer.loading_suggestions")),
             );
         } else {
@@ -461,6 +464,7 @@ impl Waku {
                             .w(card_bounds.size.width)
                             .max_h(px(302.0))
                             .rounded(px(11.0))
+                            .font_family(crate::theme::active_ui_font_family())
                             .border_1()
                             .border_color(theme.border_strong)
                             .bg(theme.raised)
@@ -490,7 +494,8 @@ impl Waku {
         cx: &mut Context<Self>,
     ) -> AnyElement {
         let highlighted = highlight == index;
-        let font = window.text_style().font();
+        let mut font = window.text_style().font();
+        font.family = SharedString::from(crate::theme::active_ui_font_family());
         let base = div()
             .id(index)
             .h(px(30.0))
