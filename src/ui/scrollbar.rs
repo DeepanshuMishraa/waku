@@ -220,6 +220,214 @@ fn arm_fade_wake(state: &Rc<ScrollbarState>, view: gpui::EntityId, delay: Durati
     .detach();
 }
 
+const HORIZONTAL_TRACK_HEIGHT: f32 = 8.0;
+const HORIZONTAL_THUMB_HEIGHT: f32 = 3.5;
+const HORIZONTAL_THUMB_HEIGHT_ACTIVE: f32 = 5.0;
+const HORIZONTAL_THUMB_MIN_WIDTH: f32 = 36.0;
+const HORIZONTAL_TRACK_BOTTOM_INSET: f32 = 1.0;
+
+/// Resolved horizontal scrollbar geometry, or `None` when the surface does not scroll.
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct HorizontalGeometry {
+    thumb: Bounds<Pixels>,
+    travel: Pixels,
+    max_offset: Pixels,
+}
+
+fn horizontal_geometry(
+    track: Bounds<Pixels>,
+    viewport_width: Pixels,
+    max_offset: Pixels,
+    offset: Pixels,
+    thumb_height: Pixels,
+) -> Option<HorizontalGeometry> {
+    if viewport_width <= Pixels::ZERO || max_offset <= px(0.5) || track.size.width <= Pixels::ZERO {
+        return None;
+    }
+    let content_width = viewport_width + max_offset;
+    let track_width = track.size.width;
+    let thumb_width = (track_width * (viewport_width / content_width))
+        .max(px(HORIZONTAL_THUMB_MIN_WIDTH))
+        .min(track_width);
+    let travel = (track_width - thumb_width).max(Pixels::ZERO);
+    let progress = (offset / max_offset).clamp(0.0, 1.0);
+    let thumb_top = track.bottom() - thumb_height - px(HORIZONTAL_TRACK_BOTTOM_INSET);
+    Some(HorizontalGeometry {
+        thumb: Bounds::new(
+            point(track.left() + travel * progress, thumb_top),
+            size(thumb_width, thumb_height),
+        ),
+        travel,
+        max_offset,
+    })
+}
+
+fn offset_for_thumb_left(
+    track_left: Pixels,
+    thumb_left: Pixels,
+    geometry: &HorizontalGeometry,
+) -> Pixels {
+    if geometry.travel <= Pixels::ZERO {
+        return Pixels::ZERO;
+    }
+    let progress = ((thumb_left - track_left) / geometry.travel).clamp(0.0, 1.0);
+    geometry.max_offset * progress
+}
+
+/// An overlay horizontal scrollbar pinned to the bottom edge of its parent.
+///
+/// The parent must be `relative()`; this element positions itself absolutely
+/// and never participates in layout, so adding it cannot change content size.
+pub fn horizontal(surface: &ScrollHandle, state: &Rc<ScrollbarState>) -> impl IntoElement {
+    let surface = surface.clone();
+    let state = state.clone();
+    canvas(
+        |_, _, _| (),
+        move |track: Bounds<Pixels>, _, window: &mut Window, cx: &mut App| {
+            let theme = Theme::current(cx);
+            let viewport_width = track.size.width;
+            let max_offset = surface.max_offset().x;
+            let offset = -surface.offset().x;
+            let now = Instant::now();
+            state.observe(offset, now);
+
+            let hovered = state.hovered.get();
+            let grabbed = state.is_grabbed();
+            let active = hovered || grabbed;
+            let thumb_height = px(if active {
+                HORIZONTAL_THUMB_HEIGHT_ACTIVE
+            } else {
+                HORIZONTAL_THUMB_HEIGHT
+            });
+
+            let Some(geometry) =
+                horizontal_geometry(track, viewport_width, max_offset, offset, thumb_height)
+            else {
+                state.grab_offset.set(None);
+                state.hovered.set(false);
+                return;
+            };
+
+            let since_scroll = state
+                .last_scroll
+                .get()
+                .map(|last| now.saturating_duration_since(last));
+            let current_opacity = opacity(since_scroll, hovered, grabbed);
+            if current_opacity > 0.0 {
+                window.paint_quad(quad(
+                    geometry.thumb,
+                    thumb_height / 2.0,
+                    if active {
+                        theme.text_tertiary
+                    } else {
+                        theme.text_ghost.opacity(0.6)
+                    }
+                    .opacity(current_opacity),
+                    px(0.0),
+                    gpui::transparent_black(),
+                    BorderStyle::default(),
+                ));
+                if !active {
+                    match since_scroll {
+                        Some(elapsed) if elapsed < HOLD => {
+                            arm_fade_wake(&state, window.current_view(), HOLD - elapsed, cx);
+                        }
+                        _ => super::motion::pulse_lease(window.current_view(), cx),
+                    }
+                }
+            }
+
+            window.on_mouse_event({
+                let state = state.clone();
+                move |event: &MouseMoveEvent, phase, window, _| {
+                    if phase != gpui::DispatchPhase::Bubble {
+                        return;
+                    }
+                    let hovering = track.contains(&event.position);
+                    if state.hovered.replace(hovering) != hovering {
+                        window.refresh();
+                    }
+                }
+            });
+
+            window.on_mouse_event({
+                let surface = surface.clone();
+                let state = state.clone();
+                move |event: &MouseDownEvent, phase, window, _| {
+                    if phase != gpui::DispatchPhase::Bubble
+                        || event.button != MouseButton::Left
+                        || !track.contains(&event.position)
+                    {
+                        return;
+                    }
+                    let since_scroll = state
+                        .last_scroll
+                        .get()
+                        .map(|last| Instant::now().saturating_duration_since(last));
+                    let visible =
+                        opacity(since_scroll, state.hovered.get(), state.is_grabbed()) > 0.0;
+                    if !visible {
+                        return;
+                    }
+                    if geometry.thumb.contains(&event.position) {
+                        state
+                            .grab_offset
+                            .set(Some(f32::from(event.position.x - geometry.thumb.left())));
+                    } else {
+                        let half = geometry.thumb.size.width / 2.0;
+                        state.grab_offset.set(Some(f32::from(half)));
+                        let target_offset = offset_for_thumb_left(
+                            track.left(),
+                            event.position.x - half,
+                            &geometry,
+                        )
+                        .clamp(Pixels::ZERO, geometry.max_offset);
+                        surface.set_offset(point(-target_offset, surface.offset().y));
+                    }
+                    window.refresh();
+                }
+            });
+
+            window.on_mouse_event({
+                let surface = surface.clone();
+                let state = state.clone();
+                move |event: &MouseMoveEvent, phase, window, _| {
+                    if phase != gpui::DispatchPhase::Bubble {
+                        return;
+                    }
+                    let Some(grab) = state.grab_offset.get() else {
+                        return;
+                    };
+                    let target_offset = offset_for_thumb_left(
+                        track.left(),
+                        event.position.x - px(grab),
+                        &geometry,
+                    )
+                    .clamp(Pixels::ZERO, geometry.max_offset);
+                    surface.set_offset(point(-target_offset, surface.offset().y));
+                    window.refresh();
+                }
+            });
+
+            window.on_mouse_event({
+                let state = state.clone();
+                move |_: &MouseUpEvent, phase, window, _| {
+                    if phase != gpui::DispatchPhase::Bubble || state.grab_offset.get().is_none() {
+                        return;
+                    }
+                    state.grab_offset.set(None);
+                    window.refresh();
+                }
+            });
+        },
+    )
+    .absolute()
+    .left_0()
+    .right_0()
+    .bottom_0()
+    .h(px(HORIZONTAL_TRACK_HEIGHT))
+}
+
 /// An overlay vertical scrollbar pinned to the right edge of its parent.
 ///
 /// The parent must be `relative()`; this element positions itself absolutely
@@ -496,5 +704,51 @@ mod tests {
         // A momentum overscroll can report more than max for a frame.
         let geometry = geometry(track, px(400.0), px(1200.0), px(5000.0), px(5.0)).unwrap();
         assert!(geometry.thumb.bottom() <= track.bottom() + px(0.001));
+    }
+
+    fn horizontal_track() -> Bounds<Pixels> {
+        Bounds::new(point(px(100.0), px(500.0)), size(px(400.0), px(8.0)))
+    }
+
+    #[test]
+    fn a_horizontal_surface_that_does_not_scroll_has_no_thumb() {
+        assert!(horizontal_geometry(
+            horizontal_track(),
+            px(400.0),
+            Pixels::ZERO,
+            Pixels::ZERO,
+            px(3.5)
+        )
+        .is_none());
+        assert!(horizontal_geometry(
+            horizontal_track(),
+            Pixels::ZERO,
+            px(900.0),
+            Pixels::ZERO,
+            px(3.5)
+        )
+        .is_none());
+    }
+
+    #[test]
+    fn horizontal_thumb_width_tracks_the_visible_fraction() {
+        let track = horizontal_track();
+        let geom =
+            horizontal_geometry(track, px(400.0), px(1200.0), Pixels::ZERO, px(3.5)).unwrap();
+        assert_eq!(geom.thumb.size.width, px(100.0));
+        assert_eq!(geom.thumb.left(), px(100.0));
+        assert_eq!(geom.travel, px(300.0));
+    }
+
+    #[test]
+    fn horizontal_thumb_position_and_offset_are_inverse() {
+        let track = horizontal_track();
+        let geom =
+            horizontal_geometry(track, px(400.0), px(1200.0), px(600.0), px(3.5)).unwrap();
+        assert_eq!(geom.thumb.left(), track.left() + px(150.0));
+        assert_eq!(
+            offset_for_thumb_left(track.left(), geom.thumb.left(), &geom),
+            px(600.0)
+        );
     }
 }

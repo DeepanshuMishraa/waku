@@ -2528,6 +2528,7 @@ impl Waku {
                                 let _ = tab_waku.update(cx, |waku, cx| {
                                     waku.active_main_file_tab = None;
                                     waku.select_session(session_id, cx);
+                                    waku.main_tabs_scroll_handle.scroll_to_item(index);
                                 });
                             })
                             .child(tab_mark)
@@ -2595,6 +2596,7 @@ impl Waku {
                             .on_click(move |_, _, cx| {
                                 let _ = activate_waku.update(cx, |waku, cx| {
                                     waku.active_main_file_tab = Some(path_for_click.clone());
+                                    waku.main_tabs_scroll_handle.scroll_to_item(index);
                                     cx.notify();
                                 });
                             })
@@ -2651,6 +2653,8 @@ impl Waku {
                         if !waku.main_tabs.contains(&tab) {
                             waku.main_tabs.push(tab);
                         }
+                        let index = waku.main_tabs.len().saturating_sub(1);
+                        waku.main_tabs_scroll_handle.scroll_to_item(index);
                     }
                     let focus_handle = waku.composer_focus(cx);
                     window.focus(&focus_handle, cx);
@@ -2670,16 +2674,28 @@ impl Waku {
             .bg(theme.surface)
             .px(px(6.0))
             .child(
-                h_flex()
-                    .id("session-tabs-scroll")
+                div()
+                    .id("session-tabs-wrapper")
+                    .relative()
                     .min_w_0()
-                    .w_full()
                     .flex_1()
                     .h_full()
-                    .overflow_x_scrollbar()
-                    .track_scroll(&self.main_tabs_scroll_handle)
-                    .gap(px(2.0))
-                    .children(tabs),
+                    .child(
+                        h_flex()
+                            .id("session-tabs-scroll")
+                            .size_full()
+                            .overflow_x_scroll()
+                            .track_scroll(&self.main_tabs_scroll_handle)
+                            .on_scroll_wheel(cx.listener(|this, _, _, cx| {
+                                contain_horizontal_scroll(&this.main_tabs_scroll_handle, cx);
+                            }))
+                            .gap(px(2.0))
+                            .children(tabs),
+                    )
+                    .child(scrollbar::horizontal(
+                        &self.main_tabs_scroll_handle,
+                        &self.main_tabs_scrollbar,
+                    )),
             )
             .child(new_tab)
     }

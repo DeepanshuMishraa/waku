@@ -819,6 +819,11 @@ impl Waku {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.active_main_file_tab.is_some() {
+            self.file_editor_input_expanded = true;
+            cx.notify();
+            return;
+        }
         self.settings_page = None;
         let focus_handle = self.composer_focus(cx);
         window.focus(&focus_handle, cx);
@@ -831,6 +836,11 @@ impl Waku {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
+        if self.file_editor_input_expanded {
+            self.file_editor_input_expanded = false;
+            cx.notify();
+            return;
+        }
         // The switcher focus lands after its deferred overlay is painted.
         // Route the root Escape action here too so an immediate press always
         // cancels the provisional selection instead of reaching the session.

@@ -62,9 +62,9 @@ use crate::terminal::TerminalView;
 use crate::theme::{ColorTheme, Theme, ThemePreference, set_active_ui_font_family, sp};
 use crate::ui::text_field::TextField;
 use crate::ui::{
-    MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_scroll, file_icon,
-    h_flex, icon, icon_button, motion, provider_color, provider_mark, status_color, toggle_switch,
-    ScrollableElement,
+    MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_horizontal_scroll,
+    contain_scroll, file_icon, h_flex, icon, icon_button, motion, provider_color, provider_mark,
+    status_color, toggle_switch,
 };
 use crate::{
     CancelTaskSwitch, CancelTurn, CloseFind, CloseWindow, ConfirmTaskSwitch, CopySelection,
@@ -1349,6 +1349,8 @@ pub struct Waku {
     main_tabs: Vec<MainTab>,
     active_main_file_tab: Option<String>,
     main_tabs_scroll_handle: ScrollHandle,
+    main_tabs_scrollbar: Rc<ScrollbarState>,
+    file_editor_input_expanded: bool,
     sidebar_width: f32,
     right_panel_visible: bool,
     right_panel_width: f32,
@@ -2927,6 +2929,8 @@ impl Waku {
                 main_tabs: Vec::new(),
                 active_main_file_tab: None,
                 main_tabs_scroll_handle: ScrollHandle::new(),
+                main_tabs_scrollbar: ScrollbarState::new(),
+                file_editor_input_expanded: false,
                 sidebar_width,
                 right_panel_visible,
                 right_panel_width,

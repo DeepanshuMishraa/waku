@@ -79,6 +79,14 @@ pub fn contain_scroll(handle: &ScrollHandle, cx: &mut App) {
     }
 }
 
+/// Keeps a wheel gesture in a horizontally scrollable element while it can consume
+/// the delta, stopping propagation to ancestors.
+pub fn contain_horizontal_scroll(handle: &ScrollHandle, cx: &mut App) {
+    if handle.max_offset().x > px(0.5) {
+        cx.stop_propagation();
+    }
+}
+
 fn nested_scroll_consumed_delta(offset: Pixels, max_offset: Pixels) -> bool {
     max_offset > px(0.5) && offset >= -max_offset && offset <= px(0.0)
 }
