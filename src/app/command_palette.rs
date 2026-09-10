@@ -1723,7 +1723,7 @@ impl Waku {
                     .items_center()
                     .justify_center()
                     .child(if spinning {
-                        motion::spin(empty_icon)
+                        dot_matrix_loader(theme.text_ghost, 18.0)
                     } else {
                         empty_icon.into_any_element()
                     })
@@ -1886,7 +1886,7 @@ impl Waku {
                                 .items_center()
                                 .justify_center()
                                 .child(if importing {
-                                    motion::spin(icon("icons/loader-circle.svg", 16.0, icon_color))
+                                    dot_matrix_loader(icon_color, 16.0)
                                 } else {
                                     row_mark
                                 }),

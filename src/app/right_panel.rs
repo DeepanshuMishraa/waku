@@ -3656,7 +3656,7 @@ impl Waku {
             });
         let refresh_focus = self.transcript_control_focus("right-panel-diff-refresh", cx);
         let refresh_icon: AnyElement = if self.right_panel_diff_loading {
-            motion::spin(icon("icons/loader-circle.svg", 12.0, theme.text_tertiary))
+            dot_matrix_loader(theme.text_tertiary, 12.0)
         } else {
             icon("icons/rotate-cw.svg", 12.0, theme.text_tertiary).into_any_element()
         };

@@ -2,7 +2,7 @@ use std::sync::{OnceLock, RwLock};
 
 use gpui::{App, Global, Hsla, Rems, Window, WindowAppearance, hsla, rems, rgb, transparent_black};
 
-pub use waku_client::theme::ThemePreference;
+pub use waku_client::theme::{ColorTheme, ThemePreference};
 
 static ACTIVE_UI_FONT_FAMILY: OnceLock<RwLock<&'static str>> = OnceLock::new();
 
@@ -118,6 +118,46 @@ impl Theme {
         }
     }
 
+    pub fn from_color_theme(color_theme: ColorTheme) -> Self {
+        // Preserve the original Waku graphite palettes as selectable themes,
+        // including their native sidebar, overlay, and semantic colors.
+        match color_theme {
+            ColorTheme::WakuLight => return Self::light(),
+            ColorTheme::WakuDark => return Self::dark(),
+            _ => {}
+        }
+        let palette = match color_theme {
+            ColorTheme::CatppuccinLatte => (0xfaf4ed, 0xfffaf3, 0xf2e9e1, 0x4c4f69, 0x6c6f85, 0x8839ef, 0x40a02b, 0xdf8e1d, 0xd20f39, false),
+            ColorTheme::CatppuccinFrappe => (0x303446, 0x292c3c, 0x414559, 0xc6d0f5, 0x949cbb, 0xca9ee6, 0xa6d189, 0xe5c890, 0xe78284, true),
+            ColorTheme::CatppuccinMacchiato => (0x24273a, 0x1e2030, 0x363a4f, 0xcad3f5, 0x939ab7, 0xc6a0f6, 0xa6da95, 0xeed49f, 0xed8796, true),
+            ColorTheme::CatppuccinMocha => (0x1e1e2e, 0x181825, 0x313244, 0xcdd6f4, 0x9399b2, 0xcba6f7, 0xa6e3a1, 0xf9e2af, 0xf38ba8, true),
+            ColorTheme::TokyoNight => (0x1a1b26, 0x16161e, 0x292e42, 0xc0caf5, 0xa9b1d6, 0x7aa2f7, 0x9ece6a, 0xe0af68, 0xf7768e, true),
+            ColorTheme::TokyoStorm => (0x24283b, 0x1f2335, 0x2f3549, 0xc0caf5, 0xa9b1d6, 0x7aa2f7, 0x9ece6a, 0xe0af68, 0xf7768e, true),
+            ColorTheme::TokyoMoon => (0x222436, 0x1e2030, 0x2d3045, 0xc8d3f5, 0xa9b1d6, 0x82aaff, 0xc3e88d, 0xffc777, 0xff757f, true),
+            ColorTheme::TokyoDay => (0xe1e2e7, 0xd5d6db, 0xc4c5ca, 0x3760bf, 0x52648a, 0x2e7de9, 0x587539, 0x8c6c3e, 0xf52a65, false),
+            ColorTheme::RosePine => (0x191724, 0x1f1d2e, 0x26233a, 0xe0def4, 0x908caa, 0x9ccfd8, 0x31748f, 0xf6c177, 0xeb6f92, true),
+            ColorTheme::RosePineMoon => (0x232136, 0x2a273f, 0x393552, 0xe0def4, 0x908caa, 0x9ccfd8, 0x3e8fb0, 0xf6c177, 0xeb6f92, true),
+            ColorTheme::RosePineDawn => (0xfaf4ed, 0xfffaf3, 0xf2e9e1, 0x575279, 0x9893a5, 0x56949f, 0x286983, 0xea9d34, 0xb4637a, false),
+            ColorTheme::GruvboxDark => (0x282828, 0x3c3836, 0x504945, 0xebdbb2, 0xa89984, 0x83a598, 0xb8bb26, 0xfabd2f, 0xfb4934, true),
+            ColorTheme::GruvboxLight => (0xfbf1c7, 0xf2e5bc, 0xebdbb2, 0x3c3836, 0x7c6f64, 0x076678, 0x79740e, 0xb57614, 0x9d0006, false),
+            ColorTheme::Vesper => (0x101010, 0x181818, 0x252525, 0xffffff, 0xa0a0a0, 0x99ffe4, 0x99ffe4, 0xffc799, 0xff8080, true),
+            ColorTheme::KanagawaWave => (0x1f1f28, 0x16161d, 0x2a2a37, 0xdcd7ba, 0x727169, 0x7e9cd8, 0x98bb6c, 0xe6c384, 0xe46876, true),
+            ColorTheme::KanagawaLotus => (0xf2ecbc, 0xe7dba0, 0xddd3a5, 0x545464, 0x8a8980, 0x4d699b, 0x6f894e, 0xcc6d00, 0xc84053, false),
+            ColorTheme::Nord => (0x2e3440, 0x3b4252, 0x434c5e, 0xe5e9f0, 0x81a1c1, 0x88c0d0, 0xa3be8c, 0xebcb8b, 0xbf616a, true),
+            ColorTheme::Dracula => (0x282a36, 0x21222c, 0x44475a, 0xf8f8f2, 0xa6a9c4, 0xbd93f9, 0x50fa7b, 0xf1fa8c, 0xff5555, true),
+            ColorTheme::OneDark => (0x282c34, 0x21252b, 0x3e4451, 0xabb2bf, 0x9da5b4, 0x61afef, 0x98c379, 0xe5c07b, 0xe06c75, true),
+            ColorTheme::SolarizedDark => (0x002b36, 0x073642, 0x0b4652, 0x839496, 0x93a1a1, 0x268bd2, 0x859900, 0xb58900, 0xdc322f, true),
+            ColorTheme::SolarizedLight => (0xfdf6e3, 0xeee8d5, 0xe5dfc9, 0x657b83, 0x586e75, 0x268bd2, 0x859900, 0xb58900, 0xdc322f, false),
+            ColorTheme::EverforestDark => (0x2d353b, 0x343f44, 0x3d484d, 0xd3c6aa, 0x859289, 0xa7c080, 0xa7c080, 0xdbbc7f, 0xe67e80, true),
+            ColorTheme::EverforestLight => (0xfdf6e3, 0xf4f0d9, 0xe8e4cf, 0x5c6a72, 0x939f91, 0x8da101, 0x8da101, 0xdfa000, 0xf85552, false),
+            ColorTheme::WakuLight | ColorTheme::WakuDark => unreachable!("Waku base themes return above"),
+        };
+        let (canvas, surface, raised, text, muted, accent, success, warning, danger, is_dark) = palette;
+        let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(if is_dark { surface } else { surface }).into() };
+        let base_overlay = if is_dark { hsla(0.0, 0.0, 1.0, 0.06) } else { hsla(0.0, 0.0, 0.0, 0.06) };
+        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
+    }
+
     pub fn dark() -> Self {
         Self {
             is_dark: true,
@@ -227,25 +267,26 @@ fn set_active_theme(theme: Theme, cx: &mut App) {
 /// Resolve and publish the startup palette, before any window exists.
 pub fn init(cx: &mut App) {
     let system_appearance = cx.window_appearance();
-    let theme = if resolves_to_dark(ThemePreference::System, system_appearance) {
-        Theme::dark()
-    } else {
-        Theme::light()
-    };
-    set_active_theme(theme, cx);
+    let dark = resolves_to_dark(ThemePreference::System, system_appearance);
+    set_active_theme(Theme::from_color_theme(ColorTheme::default_for_dark(dark)), cx);
 }
 
-pub fn apply_theme_preference(preference: ThemePreference, window: &mut Window, cx: &mut App) {
+pub fn apply_theme_preference(
+    preference: ThemePreference,
+    color_theme: ColorTheme,
+    window: &mut Window,
+    cx: &mut App,
+) {
     crate::platform::set_window_appearance(window, native_override(preference));
     let is_dark = resolves_to_dark(preference, cx.window_appearance());
-    set_active_theme(
-        if is_dark {
-            Theme::dark()
-        } else {
-            Theme::light()
-        },
-        cx,
-    );
-    crate::platform::configure_sidebar_material(window, is_dark);
+    let color_theme = if color_theme.for_dark(is_dark) {
+        color_theme
+    } else {
+        ColorTheme::default_for_dark(is_dark)
+    };
+    let theme = Theme::from_color_theme(color_theme);
+    let sidebar_color = theme.sidebar_drag_background;
+    set_active_theme(theme, cx);
+    crate::platform::configure_sidebar_material(window, is_dark, sidebar_color);
     window.refresh();
 }

@@ -42,11 +42,14 @@ export const sessions = sqliteTable(
     updatedAt: integer("updated_at").notNull(),
     /** Completion of the most recent assistant turn, unix seconds. */
     lastReplyAt: integer("last_reply_at"),
+    /** Root conversation for header-created child sessions. */
+    conversationRootId: text("conversation_root_id"),
   },
   (table) => [
     index("sessions_by_project").on(table.projectId, table.updatedAt),
     index("sessions_by_updated_at").on(table.updatedAt),
     index("sessions_by_last_reply_at").on(table.lastReplyAt),
+    index("sessions_by_conversation_root").on(table.conversationRootId, table.updatedAt),
   ],
 );
 

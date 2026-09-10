@@ -944,6 +944,11 @@ pub struct AgentSession {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_title: Option<String>,
     pub project_id: Uuid,
+    /// Root session that owns this conversation tab group. `None` marks a
+    /// sidebar-visible root conversation; child conversations created from
+    /// the main tab strip point at their root and stay out of the sidebar.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub conversation_root_id: Option<Uuid>,
     /// Local project checkout or an isolated Git worktree for this task.
     #[serde(default, skip_serializing_if = "SessionWorkspace::is_local")]
     pub workspace: SessionWorkspace,
@@ -1029,6 +1034,7 @@ impl AgentSession {
             title: Self::DEFAULT_TITLE.to_owned(),
             auto_title: None,
             project_id,
+            conversation_root_id: None,
             workspace: SessionWorkspace::Local,
             provider,
             model: None,
@@ -1066,6 +1072,7 @@ impl AgentSession {
             title: self.title.clone(),
             auto_title: self.auto_title.clone(),
             project_id: self.project_id,
+            conversation_root_id: self.conversation_root_id,
             workspace: SessionWorkspace::Local,
             provider: self.provider,
             model: self.model.clone(),

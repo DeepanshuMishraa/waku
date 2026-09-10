@@ -12,8 +12,7 @@ use std::collections::HashMap;
 use std::time::{Duration, Instant};
 
 use gpui::{
-    AnyElement, App, EntityId, Global, IntoElement, RenderOnce, Svg, Transformation, Window,
-    ease_out_quint, percentage,
+    AnyElement, App, EntityId, Global, IntoElement, RenderOnce, Window, ease_out_quint,
 };
 
 /// Repeat-tick interval, rounded up so spinner ticks never exceed 60 fps.
@@ -26,9 +25,6 @@ const PULSE_STRIDE: u32 = 2;
 /// lease outlives a few missed frames; an unmounted loader stops renewing and
 /// its view drops off, letting the clock park.
 const PULSE_LEASE: Duration = Duration::from_millis(300);
-
-/// The rotating `loader-circle` spinners' period.
-const SPINNER_PERIOD: Duration = Duration::from_millis(900);
 
 struct Lease {
     until: Instant,
@@ -150,28 +146,6 @@ pub fn pulse(period: Duration, render: impl FnOnce(f32) -> AnyElement + 'static)
         stride: PULSE_STRIDE,
         render: Box::new(render),
     }
-}
-
-/// A rotating loader icon riding the shared clock at up to 60 fps.
-pub fn spin(icon: Svg) -> AnyElement {
-    spin_with_stride(icon, 1)
-}
-
-/// A rotating loader at every second tick (~30 fps).
-/// For loaders on expensive surfaces: the
-/// sidebar rebuilds its whole subtree per notify, and a session row's working
-/// spinner is not worth pricing that at full rate.
-pub fn spin_slow(icon: Svg) -> AnyElement {
-    spin_with_stride(icon, 2)
-}
-
-fn spin_with_stride(icon: Svg, stride: u32) -> AnyElement {
-    let mut pulse = pulse(SPINNER_PERIOD, move |phase| {
-        icon.with_transformation(Transformation::rotate(percentage(phase)))
-            .into_any_element()
-    });
-    pulse.stride = stride;
-    pulse.into_any_element()
 }
 
 #[derive(IntoElement)]

@@ -1087,7 +1087,7 @@ impl Waku {
             });
 
         if !available {
-            let indicator = motion::spin_slow(icon("icons/loader-circle.svg", 14.0, foreground));
+            let indicator = dot_matrix_loader(foreground, 14.0);
             return Some(
                 button
                     .tooltip(Tooltip::text(tr!("updater.updating")))
@@ -1470,7 +1470,8 @@ impl Waku {
             .sessions
             .iter()
             .filter(|session| {
-                session.has_started() || self.state.selected_session == Some(session.id)
+                session.conversation_root_id.is_none()
+                    && (session.has_started() || self.state.selected_session == Some(session.id))
             })
             .collect::<Vec<_>>();
         sort_sidebar_sessions(&mut sessions, self.state.sidebar_ordering);

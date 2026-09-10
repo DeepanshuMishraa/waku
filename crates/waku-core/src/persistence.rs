@@ -33,7 +33,7 @@ use crate::model::{
     AgentSession, FavoriteModel, Message, MessageAttachment, MessageRole, Project, ProviderKind,
     RuntimeMode, SessionWorkspace,
 };
-use crate::theme::ThemePreference;
+use crate::theme::{ColorTheme, ThemePreference};
 pub use waku_protocol::persistence::{
     ComposerDraft, ComposerDraftAttachment, ComposerDraftChange, ComposerDraftKey,
     ComposerDraftTarget, ComposerDrafts, SessionMessageMatch,
@@ -190,6 +190,7 @@ pub struct AppSettings {
     pub analytics_enabled: bool,
     pub favorite_models: Vec<FavoriteModel>,
     pub theme: ThemePreference,
+    pub color_theme: ColorTheme,
     pub language: AppLanguage,
 }
 
@@ -199,6 +200,7 @@ impl Default for AppSettings {
             analytics_enabled: default_analytics_enabled(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
+            color_theme: ColorTheme::default(),
             language: AppLanguage::default(),
         }
     }
@@ -266,6 +268,8 @@ pub struct PersistedState {
     pub favorite_models: Vec<FavoriteModel>,
     #[serde(default)]
     pub theme: ThemePreference,
+    #[serde(default)]
+    pub color_theme: ColorTheme,
     #[serde(default)]
     pub language: AppLanguage,
     #[serde(default = "default_sidebar_visibility")]
@@ -382,6 +386,7 @@ impl PersistedState {
             remembered_model_traits: Vec::new(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
+            color_theme: ColorTheme::default(),
             language: AppLanguage::default(),
             sidebar_visible: true,
             right_panel_visible: false,
@@ -478,6 +483,7 @@ impl PersistedState {
             analytics_enabled: self.analytics_enabled,
             favorite_models: self.favorite_models.clone(),
             theme: self.theme,
+            color_theme: self.color_theme,
             language: self.language,
         }
     }
@@ -1148,7 +1154,7 @@ impl StateStore {
         let mut sessions = connection
             .prepare(
                 "SELECT id, project_id, title, auto_title, provider, model, status,
-                        created_at, updated_at, last_reply_at
+                        created_at, updated_at, last_reply_at, conversation_root_id
                  FROM sessions ORDER BY updated_at",
             )
             .map_err(to_io_error)?;
@@ -1166,6 +1172,7 @@ impl StateStore {
                     row.get::<_, i64>(7)?,
                     row.get::<_, i64>(8)?,
                     row.get::<_, Option<i64>>(9)?,
+                    row.get::<_, Option<String>>(10)?,
                 ))
             })
             .map_err(to_io_error)?
@@ -1511,6 +1518,7 @@ type SessionColumns = (
     i64,
     i64,
     Option<i64>,
+    Option<String>,
 );
 
 /// Builds a list-only session from its columns. `messages`,
@@ -1530,12 +1538,14 @@ fn session_skeleton(row: SessionColumns) -> Option<AgentSession> {
         created_at,
         updated_at,
         last_reply_at,
+        conversation_root_id,
     ) = row;
     Some(AgentSession {
         id: Uuid::parse_str(&id).ok()?,
         title,
         auto_title,
         project_id: Uuid::parse_str(&project_id).ok()?,
+        conversation_root_id: conversation_root_id.and_then(|id| Uuid::parse_str(&id).ok()),
         workspace: SessionWorkspace::Local,
         provider: serde_json::from_value(serde_json::Value::String(provider)).ok()?,
         model,
@@ -1757,8 +1767,8 @@ fn message_fingerprint(message: &Message, position: usize) -> u64 {
 /// listing sessions never has to deserialize a transcript.
 const UPSERT_SESSION: &str = "INSERT INTO sessions(
          id, project_id, title, auto_title, provider, model, status,
-         created_at, updated_at, last_reply_at
-     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+         created_at, updated_at, last_reply_at, conversation_root_id
+     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
      ON CONFLICT(id) DO UPDATE SET
          project_id    = excluded.project_id,
          title         = excluded.title,
@@ -1767,8 +1777,9 @@ const UPSERT_SESSION: &str = "INSERT INTO sessions(
          model         = excluded.model,
          status        = excluded.status,
          created_at    = excluded.created_at,
-         updated_at    = excluded.updated_at,
-         last_reply_at = excluded.last_reply_at";
+         updated_at           = excluded.updated_at,
+         last_reply_at        = excluded.last_reply_at,
+         conversation_root_id = excluded.conversation_root_id";
 
 const INSERT_PROJECT: &str = "INSERT INTO projects(id, name, path, position, created_at)
      VALUES(?1, ?2, ?3, ?4, ?5)
@@ -1807,6 +1818,9 @@ fn session_params(session: &AgentSession) -> Vec<rusqlite::types::Value> {
         session
             .last_reply_at
             .map_or(Value::Null, |at| Value::Integer(at as i64)),
+        session
+            .conversation_root_id
+            .map_or(Value::Null, |id| Value::Text(id.to_string())),
     ]
 }
 
@@ -2592,6 +2606,8 @@ mod tests {
             Some("1m".into()),
         );
         state.sessions[0].runtime_mode = crate::model::RuntimeMode::Auto;
+        let conversation_root_id = Uuid::new_v4();
+        state.sessions[0].conversation_root_id = Some(conversation_root_id);
         state.favorite_models.push(FavoriteModel {
             provider: ProviderKind::Codex,
             model: "gpt-5.6-luna".into(),
@@ -2637,6 +2653,7 @@ mod tests {
         restored.apply_daemon_settings(daemon_settings);
         assert_eq!(restored.projects[0].name, "project");
         assert_eq!(restored.sessions.len(), 1);
+        assert_eq!(restored.sessions[0].conversation_root_id, Some(conversation_root_id));
         assert_eq!(restored.sessions[0].model.as_deref(), Some("gpt-5.6-luna"));
         assert_eq!(restored.last_model.as_deref(), Some("gpt-5.6-luna"));
         assert_eq!(restored.last_reasoning_effort.as_deref(), Some("xhigh"));

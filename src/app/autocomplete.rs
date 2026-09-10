@@ -439,11 +439,7 @@ impl Waku {
                     .gap(px(8.0))
                     .text_size(sp(12.5))
                     .text_color(theme.text_tertiary)
-                    .child(crate::ui::motion::spin(icon(
-                        "icons/loader-circle.svg",
-                        12.0,
-                        theme.text_tertiary,
-                    )))
+                    .child(crate::app::components::dot_matrix_loader(theme.text_tertiary, 12.0))
                     .child(tr!("composer.loading_suggestions")),
             );
         } else {

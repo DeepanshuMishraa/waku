@@ -1258,6 +1258,7 @@ impl Waku {
     fn render_appearance_settings(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::current(cx);
         let selected_theme = self.state.theme;
+        let selected_color_theme = self.state.color_theme;
         let selected_language = self.state.language;
         let weak = cx.entity().downgrade();
         let theme_handle = self.menu_handle("theme-selector", cx);
@@ -1282,6 +1283,36 @@ impl Waku {
                             });
                         })
                         .selected(preference == selected_theme)
+                    })
+                    .collect()
+            },
+        );
+
+        let color_theme_weak = cx.entity().downgrade();
+        let color_theme_handle = self.menu_handle("color-theme-selector", cx);
+        let color_theme_selector = dropdown_menu(
+            MenuChip::new("color-theme-selector")
+                .label(selected_color_theme.label())
+                .outlined()
+                .selected(color_theme_handle.is_open())
+                .w(px(150.0))
+                .justify_between(),
+            "color-theme-selector-menu",
+            &color_theme_handle,
+            MenuAlign::BelowRight,
+            move |_| {
+                let dark = theme.is_dark;
+                ColorTheme::ALL
+                    .into_iter()
+                    .filter(|candidate| candidate.for_dark(dark))
+                    .map(|color_theme| {
+                        let weak = color_theme_weak.clone();
+                        MenuItem::new(color_theme.label(), move |window, cx| {
+                            let _ = weak.update(cx, |this, cx| {
+                                this.set_color_theme(color_theme, window, cx);
+                            });
+                        })
+                        .selected(color_theme == selected_color_theme)
                     })
                     .collect()
             },
@@ -1545,6 +1576,37 @@ impl Waku {
                             ),
                     )
                     .child(theme_selector),
+            )
+            .child(
+                div()
+                    .w_full()
+                    .min_h(px(60.0))
+                    .px(px(20.0))
+                    .py(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(24.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(sp(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text)
+                                    .child("Color theme"),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(5.0))
+                                    .text_size(sp(12.5))
+                                    .line_height(sp(18.0))
+                                    .text_color(theme.text_secondary)
+                                    .child("Choose a light or dark palette."),
+                            ),
+                    )
+                    .child(color_theme_selector),
             )
             .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
             .child(
@@ -2620,7 +2682,30 @@ impl Waku {
             return;
         }
         self.state.theme = preference;
-        crate::theme::apply_theme_preference(preference, window, cx);
+        let dark = match preference {
+            ThemePreference::Dark => true,
+            ThemePreference::Light => false,
+            ThemePreference::System => self.state.color_theme.is_dark(),
+        };
+        if !self.state.color_theme.for_dark(dark) {
+            self.state.color_theme = ColorTheme::default_for_dark(dark);
+        }
+        crate::theme::apply_theme_preference(preference, self.state.color_theme, window, cx);
+        self.save();
+        cx.notify();
+    }
+
+    fn set_color_theme(
+        &mut self,
+        color_theme: ColorTheme,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.state.color_theme == color_theme {
+            return;
+        }
+        self.state.color_theme = color_theme;
+        crate::theme::apply_theme_preference(self.state.theme, color_theme, window, cx);
         self.save();
         cx.notify();
     }

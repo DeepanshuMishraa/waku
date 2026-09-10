@@ -22,7 +22,7 @@ use waku_protocol::model::{
     AgentSession, FavoriteModel, Project, ProviderKind, ProviderResumeCursor,
     ProviderSessionHistory, ProviderSessionSummary, RuntimeMode,
 };
-use waku_protocol::theme::ThemePreference;
+use waku_protocol::theme::{ColorTheme, ThemePreference};
 
 pub use waku_protocol::persistence::{
     ComposerDraft, ComposerDraftAttachment, ComposerDraftChange, ComposerDraftKey,
@@ -254,6 +254,7 @@ pub struct AppSettings {
     pub analytics_enabled: bool,
     pub favorite_models: Vec<FavoriteModel>,
     pub theme: ThemePreference,
+    pub color_theme: ColorTheme,
     pub language: AppLanguage,
     /// Base text size for the interface, in pixels: chrome and prose are
     /// authored against the 14px default and scale from it. Hand-edited
@@ -282,6 +283,7 @@ impl Default for AppSettings {
             analytics_enabled: default_analytics_enabled(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
+            color_theme: ColorTheme::default(),
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
             ui_font_family: DEFAULT_UI_FONT_FAMILY.to_owned(),
@@ -394,6 +396,8 @@ pub struct PersistedState {
     #[serde(default)]
     pub theme: ThemePreference,
     #[serde(default)]
+    pub color_theme: ColorTheme,
+    #[serde(default)]
     pub language: AppLanguage,
     #[serde(default = "default_ui_font_size")]
     pub ui_font_size: f32,
@@ -477,6 +481,7 @@ impl PersistedState {
             remembered_model_traits: Vec::new(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
+            color_theme: ColorTheme::default(),
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
             ui_font_family: DEFAULT_UI_FONT_FAMILY.to_owned(),
@@ -604,6 +609,7 @@ impl PersistedState {
             analytics_enabled: self.analytics_enabled,
             favorite_models: self.favorite_models.clone(),
             theme: self.theme,
+            color_theme: self.color_theme,
             language: self.language,
             ui_font_size: self.ui_font_size,
             ui_font_family: self.ui_font_family.clone(),

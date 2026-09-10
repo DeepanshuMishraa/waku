@@ -25,6 +25,12 @@ title: string,
  */
 auto_title?: string | null, project_id: string,
 /**
+ * Root session that owns this conversation tab group. `None` marks a
+ * sidebar-visible root conversation; child conversations created from
+ * the main tab strip point at their root and stay out of the sidebar.
+ */
+conversation_root_id?: string | null,
+/**
  * Local project checkout or an isolated Git worktree for this task.
  */
 workspace?: SessionWorkspace, provider: ProviderKind, model?: string | null, runtime_mode: RuntimeMode, reasoning_effort?: string | null, service_tier?: string | null,

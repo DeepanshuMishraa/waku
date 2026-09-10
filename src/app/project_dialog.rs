@@ -655,11 +655,7 @@ impl Waku {
                                         })
                                 })
                                 .when(is_busy, |button| {
-                                    button.child(motion::spin_slow(icon(
-                                        "icons/loader-circle.svg",
-                                        14.0,
-                                        theme.on_inverse,
-                                    )))
+                                    button.child(dot_matrix_loader(theme.on_inverse, 14.0))
                                 })
                                 .child(match stage {
                                     CloneStage::Idle => tr!("project.clone"),

@@ -452,7 +452,11 @@ impl Waku {
             .or_else(|| self.state.projects.first().map(|p| p.id))?;
         let runtime_mode =
             new_task_runtime_mode(self.selected_session(), self.state.last_runtime_mode);
+        let conversation_root_id = self
+            .selected_session()
+            .map(|session| session.conversation_root_id.unwrap_or(session.id));
         let mut session = self.state.new_session(project_id, self.state.last_provider);
+        session.conversation_root_id = conversation_root_id;
         session.runtime_mode = runtime_mode;
         let id = session.id;
         self.state.push_session(session);

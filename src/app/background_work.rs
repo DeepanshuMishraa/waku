@@ -460,7 +460,7 @@ fn rendered_work_status_icon(status: BackgroundWorkStatus, size: f32, color: Hsl
             | BackgroundWorkStatus::Monitoring
     ) {
         // Background work runs for minutes; don't price its pane at full rate.
-        motion::spin_slow(icon)
+        dot_matrix_loader(color, size)
     } else {
         icon.into_any_element()
     }
@@ -1747,7 +1747,7 @@ fn render_environment_action_row(
         theme.text_ghost
     };
     let indicator = if active {
-        motion::spin_slow(icon("icons/loader-circle.svg", 14.0, theme.text_secondary))
+        dot_matrix_loader(theme.text_secondary, 14.0)
     } else {
         icon(icon_path, 14.0, icon_foreground).into_any_element()
     };

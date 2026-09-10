@@ -525,7 +525,14 @@ impl Waku {
                             .child(provider.display_name()),
                     )
                     .when_some(status_icon, |row, icon_path| {
-                        row.child(icon(icon_path, 12.0, status_color(&theme, session.status)))
+                        if icon_path == "icons/loader-circle.svg" {
+                            row.child(dot_matrix_loader(
+                                status_color(&theme, session.status),
+                                12.0,
+                            ))
+                        } else {
+                            row.child(icon(icon_path, 12.0, status_color(&theme, session.status)))
+                        }
                     }),
             )
             .child(

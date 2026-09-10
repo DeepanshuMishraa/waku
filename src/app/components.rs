@@ -19,11 +19,40 @@ pub(super) fn pulse_dot(size: f32, color: Hsla) -> AnyElement {
     .into_any_element()
 }
 
-/// A 3x3 animated matrix dot loader that sweeps columns on and off.
-pub(super) fn dot_matrix_loader(color: Hsla, size: f32) -> AnyElement {
-    let dot_size = 2.2;
-    let dot_gap = 2.0;
-    motion::pulse(Duration::from_millis(1200), move |phase| {
+/// Reusable themed 3x3 animated matrix loader.
+///
+/// When no color is supplied, the loader follows the active palette's accent;
+/// callers may provide a semantic status color for status-specific progress.
+#[derive(IntoElement)]
+pub(super) struct DotMatrixLoader {
+    base: Div,
+    color: Option<Hsla>,
+    size: f32,
+}
+
+impl DotMatrixLoader {
+    pub(super) fn new(size: f32) -> Self {
+        Self {
+            base: div(),
+            color: None,
+            size,
+        }
+    }
+
+    pub(super) fn color(mut self, color: Hsla) -> Self {
+        self.color = Some(color);
+        self
+    }
+}
+
+impl RenderOnce for DotMatrixLoader {
+    fn render(self, _window: &mut Window, cx: &mut App) -> impl IntoElement {
+        let color = self.color.unwrap_or_else(|| Theme::current(cx).accent);
+        let size = self.size;
+        let dot_size = (size * 0.14).max(1.8);
+        let dot_gap = (size * 0.12).max(1.5);
+        self.base.child(
+            motion::pulse(Duration::from_millis(1200), move |phase| {
         let mut grid = div()
             .flex()
             .flex_col()
@@ -70,9 +99,14 @@ pub(super) fn dot_matrix_loader(color: Hsla, size: f32) -> AnyElement {
             .justify_center()
             .child(grid)
             .into_any_element()
-    })
-    .every(1)
-    .into_any_element()
+            })
+            .every(1),
+        )
+    }
+}
+
+pub(super) fn dot_matrix_loader(color: Hsla, size: f32) -> AnyElement {
+    DotMatrixLoader::new(size).color(color).into_any_element()
 }
 
 /// Animated 3x3 dot matrix loader for the live turn's footer before "Working for Ns".
@@ -305,7 +339,7 @@ pub(super) fn render_message_footer(
         if let Some(action) = assistant_message_action {
             let fork_waku = waku.clone();
             let fork_icon = if action.preparing {
-                motion::spin(icon("icons/loader-circle.svg", 14.0, footer_color))
+                dot_matrix_loader(footer_color, 14.0)
             } else {
                 icon("icons/fork.svg", 14.0, footer_color).into_any_element()
             };
