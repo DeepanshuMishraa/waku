@@ -84,7 +84,7 @@ pub(super) enum ProjectDialogState {
 
 fn default_clone_location() -> PathBuf {
     if let Some(home) = dirs::home_dir() {
-        home.join("waku").join("repos")
+        home.join("insulator").join("repos")
     } else {
         PathBuf::from(".")
     }
@@ -251,7 +251,7 @@ impl Waku {
 
         *stage = CloneStage::Fetching;
         *error = None;
-        let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
         let window_handle = window.window_handle();
         let url_to_clone = repository_url.clone();
 
@@ -271,11 +271,11 @@ impl Waku {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    match workspace.request(waku_client::WorkspaceOperation::CloneRepository {
+                    match workspace.request(insulator_client::WorkspaceOperation::CloneRepository {
                         url: url_to_clone,
                         destination,
                     }) {
-                        Ok(waku_client::WorkspaceResult::ClonedRepository { path }) => Ok(path),
+                        Ok(insulator_client::WorkspaceResult::ClonedRepository { path }) => Ok(path),
                         Ok(_) => Err("the daemon returned an invalid clone response".to_owned()),
                         Err(error) => Err(error.to_string()),
                     }

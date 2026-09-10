@@ -120,7 +120,7 @@ impl Waku {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    match waku_client::persistence::hydrate_session(&daemon, session_id)? {
+                    match insulator_client::persistence::hydrate_session(&daemon, session_id)? {
                         Some(session) => Ok(session),
                         None => {
                             anyhow::bail!("the task no longer exists")
@@ -403,10 +403,10 @@ impl Waku {
             }
         }
         if let Some(project_path) = project_path {
-            let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+            let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
             cx.background_executor()
                 .spawn(async move {
-                    let _ = workspace.request(waku_client::WorkspaceOperation::DeleteSessionRefs {
+                    let _ = workspace.request(insulator_client::WorkspaceOperation::DeleteSessionRefs {
                         cwd: project_path,
                         session_id,
                     });
@@ -1852,17 +1852,17 @@ impl Waku {
             return;
         }
 
-        let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     match workspace.request(
-                        waku_client::WorkspaceOperation::CreateProjectlessWorkspace {
+                        insulator_client::WorkspaceOperation::CreateProjectlessWorkspace {
                             prompt: None,
                         },
                     )? {
-                        waku_client::WorkspaceResult::ProjectlessWorkspace { cwd } => Ok(cwd),
+                        insulator_client::WorkspaceResult::ProjectlessWorkspace { cwd } => Ok(cwd),
                         _ => anyhow::bail!("the daemon returned an invalid projectless response"),
                     }
                 })

@@ -30,7 +30,7 @@ window.restore: 元に戻す
 
 updater.update: アップデート
 updater.updating: アップデート中…
-updater.up_to_date: Waku は最新です
+updater.up_to_date: Insulator は最新です
 updater.failed: "アップデートに失敗しました：%{error}"
 
 command_palette.placeholder: タスクを検索、またはコマンドを実行…
@@ -65,14 +65,14 @@ command_palette.no_results_hint: タスク名、メッセージ、プロジェ�
 command_palette.no_matching_providers: 一致するプロバイダーはありません
 command_palette.loading_sessions: ターミナルセッションを読み込み中…
 command_palette.no_resume_sessions: 再開できるターミナルセッションはありません
-command_palette.no_resume_sessions_hint: Waku にすでにあるセッションは表示されません。エージェント CLI でセッションを開始して、もう一度お試しください。
+command_palette.no_resume_sessions_hint: Insulator にすでにあるセッションは表示されません。エージェント CLI でセッションを開始して、もう一度お試しください。
 command_palette.could_not_load_sessions: ターミナルセッションを読み込めませんでした
 command_palette.loading_selected_session: 会話を読み込み中…
 command_palette.resume_failed: "セッションを再開できませんでした：%{error}"
 
 language.title: 言語
 language.system: システム
-language.description: Waku 全体で使用する言語を選択します
+language.description: Insulator 全体で使用する言語を選択します
 
 settings.general: 一般
 settings.appearance: 外観
@@ -91,7 +91,7 @@ settings.computer_use_keywords: コンピュータ 操作 画面収録 アクセ
 settings.back: 戻る
 settings.search: 設定を検索
 daemon.expose_title: 管理対象デーモンを公開
-daemon.expose_description: このマシン以外の Waku クライアントから接続できるようにします。変更時はデーモンだけが再起動します。
+daemon.expose_description: このマシン以外の Insulator クライアントから接続できるようにします。変更時はデーモンだけが再起動します。
 daemon.status_local: このマシンのみ
 daemon.status_exposed: 公開中
 daemon.status_restarting: 再起動中
@@ -102,11 +102,11 @@ daemon.port_description: 公開中は、すべてのネットワークインタ�
 daemon.port_placeholder: "34123"
 daemon.allowed_origins: 許可するブラウザオリジン
 daemon.allowed_origins_description: WebSocket を開ける正確な http:// または https:// オリジンです。
-daemon.allowed_origins_placeholder: https://waku.example.com, http://localhost:3001
+daemon.allowed_origins_placeholder: https://insulator.example.com, http://localhost:3001
 daemon.apply: 適用
 daemon.restarting: 再起動中…
 daemon.credentials_title: 接続情報
-daemon.credentials_description: Waku Web に入力してください。URL にはこのマシンのローカルネットワーク用ホスト名が使われます。
+daemon.credentials_description: Insulator Web に入力してください。URL にはこのマシンのローカルネットワーク用ホスト名が使われます。
 daemon.websocket_url: WebSocket URL
 daemon.token: トークン
 daemon.reveal_token: トークンを表示
@@ -114,8 +114,8 @@ daemon.hide_token: トークンを隠す
 daemon.regenerate_token: 再生成
 daemon.security_warning: このトークンは、このマシン上のタスク、ファイル、Git、添付ファイル、コーディングエージェントへの完全なアクセス権を持ちます。プライベートネットワーク外では信頼できる TLS プロキシ経由で WSS を使用してください。
 daemon.external_title: 外部デーモン
-daemon.external_description: このデスクトップは Waku の外部で管理されているデーモンに接続しています。リスナー、ブラウザオリジン、トークンは接続先ホストで設定してください。
-daemon.web_external_description: Waku Web はブラウザの外部で管理されているデーモンに接続します。リスナー、ブラウザオリジン、トークンは接続先ホストで設定してください。
+daemon.external_description: このデスクトップは Insulator の外部で管理されているデーモンに接続しています。リスナー、ブラウザオリジン、トークンは接続先ホストで設定してください。
+daemon.web_external_description: Insulator Web はブラウザの外部で管理されているデーモンに接続します。リスナー、ブラウザオリジン、トークンは接続先ホストで設定してください。
 daemon.web_connection_description: このブラウザがデーモンを起動または停止することはありません。
 daemon.not_configured: 未設定
 daemon.status: 状態
@@ -134,7 +134,7 @@ daemon.settings_applied: デーモンのアクセス設定を更新しました
 daemon.restart_failed: デーモンを再起動できませんでした：%{error}
 daemon.url_copied: WebSocket URL をコピーしました
 daemon.token_copied: デーモントークンをコピーしました
-web.connect_title: Waku デーモンに接続
+web.connect_title: Insulator デーモンに接続
 web.connect_description: デスクトップアプリの「設定 → デーモン」に表示されるリモートリスナー URL とトークンを入力してください。
 web.token_placeholder: デーモンアクセストークン
 web.remember_device: このデバイスに保存
@@ -142,10 +142,10 @@ web.remember_device_description: 保存しない場合、ブラウザセッシ�
 web.connect: 接続
 web.connecting: 接続中…
 web.security_warning: ブラウザはこの WebSocket にのみトークンを送信します。プライベートネットワーク外では信頼できる TLS プロキシ経由で WSS を使用してください。
-web.starting: Waku を起動中…
-web.starting_label: Waku を起動中
-web.start_failed_label: Waku を起動できませんでした
-web.load_failed: Waku を読み込めませんでした
+web.starting: Insulator を起動中…
+web.starting_label: Insulator を起動中
+web.start_failed_label: Insulator を起動できませんでした
+web.load_failed: Insulator を読み込めませんでした
 web.try_again: もう一度試す
 web.daemon_connection_closed: デーモンとの接続が閉じられました
 web.daemon_not_configured: デーモンが設定されていません
@@ -153,7 +153,7 @@ web.error_daemon_url_required: デーモン URL を入力してください
 web.error_daemon_url_invalid: 有効な ws:// または wss:// のデーモン URL を入力してください
 web.error_daemon_url_scheme: デーモン URL には ws:// または wss:// を使用してください
 web.error_daemon_url_host: デーモン URL にはホストが必要で、認証情報は含められません
-web.error_secure_websocket_required: 安全な Waku Web ページからは wss:// でのみ接続できます
+web.error_secure_websocket_required: 安全な Insulator Web ページからは wss:// でのみ接続できます
 web.error_daemon_token_required: デーモントークンを入力してください
 settings.theme: テーマ
 settings.theme_description: システム、ライト、ダークのいずれかのテーマを選択します
@@ -187,15 +187,15 @@ common.creating: 作成中…
 
 settings.local_by_default: デフォルトでローカルに保存
 settings.local_by_default_description: プロジェクト、会話、設定はこのコンピュータに保存されます
-settings.local_by_default_web_description: プロジェクト、会話、添付ファイルは接続先デーモンのホストに保存されます。Waku Web の設定はこのブラウザに保存されます。
+settings.local_by_default_web_description: プロジェクト、会話、添付ファイルは接続先デーモンのホストに保存されます。Insulator Web の設定はこのブラウザに保存されます。
 settings.automatic_updates: 自動アップデート
 settings.automatic_updates_description: バックグラウンドで新しいバージョンを確認し、インストールを案内します
 settings.share_anonymous_usage_data: 匿名の使用状況データを共有
-settings.share_anonymous_usage_data_description: 機能の利用状況と信頼性に関するデータを共有して、Waku の改善にご協力ください。プロンプト、回答、プロジェクト名、ファイルパスなどの個人データは一切含まれません
+settings.share_anonymous_usage_data_description: 機能の利用状況と信頼性に関するデータを共有して、Insulator の改善にご協力ください。プロンプト、回答、プロジェクト名、ファイルパスなどの個人データは一切含まれません
 
 providers.coding_agents: コーディングエージェント
-providers.description: Waku はこのコンピュータにインストールされたエージェントの CLI を使用します。各エージェントの CLI をインストールするかログインしてから、更新してください
-providers.web_description: Waku はデーモンホストにインストールされたエージェント CLI を使用します。各エージェントの CLI をインストールするかログインしてから、更新してください
+providers.description: Insulator はこのコンピュータにインストールされたエージェントの CLI を使用します。各エージェントの CLI をインストールするかログインしてから、更新してください
+providers.web_description: Insulator はデーモンホストにインストールされたエージェント CLI を使用します。各エージェントの CLI をインストールするかログインしてから、更新してください
 providers.check_failed: "%{command} を確認できませんでした：%{error}"
 providers.show_settings: "%{provider} の設定を表示"
 providers.hide_settings: "%{provider} の設定を隠す"
@@ -209,23 +209,23 @@ providers.using_override: PATH の自動検出ではなく %{path} を使用し�
 providers.invalid_override: このパスには実行可能なファイルがありません。空欄にすると PATH から自動検出します
 providers.detected_at: "%{path} で検出されました"
 providers.detected_as: "%{command} として検出されました"
-providers.searches_path: Waku は PATH で %{command} を検出できませんでした
+providers.searches_path: Insulator は PATH で %{command} を検出できませんでした
 providers.binary_path: 実行ファイルのパス
-providers.binary_path_description: Waku が %{provider} の起動に使用する実行ファイルです。Return キーで適用します。空欄にすると PATH から自動検出します
+providers.binary_path_description: Insulator が %{provider} の起動に使用する実行ファイルです。Return キーで適用します。空欄にすると PATH から自動検出します
 providers.checked_just_now: たった今確認済み
 providers.checked_minutes_ago: "%{count} 分前に確認済み"
 providers.checked_hours_ago: "%{count} 時間前に確認済み"
 
-computer_use.allow_apps: Waku にアプリの操作を許可
+computer_use.allow_apps: Insulator にアプリの操作を許可
 computer_use.availability: コンピュータ操作は Codex、OpenCode、Grok、Pi で利用できます
 computer_use.macos_access: macOS のアクセス権
-computer_use.helper_access: Waku の分離された操作ヘルパー %{helper} にアクセスを許可してください
+computer_use.helper_access: Insulator の分離された操作ヘルパー %{helper} にアクセスを許可してください
 computer_use.screen_recording: 画面収録
 computer_use.screen_recording_description: 許可されたアプリのウインドウのみを取り込みます
 computer_use.accessibility: アクセシビリティ
 computer_use.accessibility_description: 承認後にポインタとキーボードのイベントを送信します
 computer_use.always_allowed_apps: 常に許可するアプリ
-computer_use.always_allowed_apps_description: Waku はこれらの許可をアプリの Bundle ID と署名チームに紐付けます
+computer_use.always_allowed_apps_description: Insulator はこれらの許可をアプリの Bundle ID と署名チームに紐付けます
 computer_use.no_always_allowed_apps: 常に許可されているアプリはありません。タスクごとの許可はメモリにのみ保持されます
 computer_use.access_granted: アクセス許可済み
 computer_use.grant_access: アクセスを許可
@@ -281,7 +281,7 @@ project.without_a_project: プロジェクトなし
 project.your_project: あなたのプロジェクト
 
 onboarding.open_project_to_begin: プロジェクトを開いて始めましょう
-onboarding.description: Waku は選択したフォルダでコーディングエージェントを実行します。コード、タスク、履歴はこのコンピュータに保存されます
+onboarding.description: Insulator は選択したフォルダでコーディングエージェントを実行します。コード、タスク、履歴はこのコンピュータに保存されます
 onboarding.web_description: デーモンホスト上のパスを選ぶか、プロジェクトなしで開始してください。
 onboarding.open_project_folder: プロジェクトフォルダを開く…
 onboarding.what_should_we_build: 何を作りましょうか？
@@ -446,7 +446,7 @@ agent_preset.no_description: 説明はありません。
 
 computer_use.allow_for_task: このタスクで許可
 computer_use.always_allow_app: このアプリを常に許可
-computer_use.allow_control: Waku に「%{app}」の操作を許可しますか？
+computer_use.allow_control: Insulator に「%{app}」の操作を許可しますか？
 computer_use.screenshot_shared: このウインドウのスクリーンショットが、使用中の Codex モデルと共有されます
 computer_use.sensitive_action: この操作ではテキストの入力やキー操作が行われる可能性があります
 computer_use.bundle_id: "Bundle ID：%{id}"
@@ -514,7 +514,7 @@ command_scope.project: プロジェクト
 command_scope.user: ユーザー
 command_scope.skill: スキル
 command_scope.builtin: 組み込み
-command_scope.waku: waku
+command_scope.insulator: insulator
 
 skills.search: スキルを検索…
 skills.count_one: 1 個のスキル
@@ -602,7 +602,7 @@ composer.preparing_task: タスクを準備中…
 composer.queue_followup: フォローアップとしてキューに追加（⏎）
 composer.message: メッセージ
 composer.queue_placeholder: フォローアップを追加…
-composer.prompt_placeholder: Waku に作業を依頼…
+composer.prompt_placeholder: Insulator に作業を依頼…
 composer.attach_daemon: デーモンホストからファイルまたはフォルダを添付
 composer.attach_daemon_title: デーモンホストから添付
 composer.stop: 停止
@@ -649,9 +649,9 @@ session.agent_declined_turn: エージェントはこのターンを辞退しま
 session.agent_stopped_reason: "エージェントが停止しました：%{reason}"
 
 errors.open_session: "そのタスクを開けませんでした：%{error}"
-errors.create_projectless_task: "~/.waku/projects 内にタスクを作成できませんでした：%{error}"
+errors.create_projectless_task: "~/.insulator/projects 内にタスクを作成できませんでした：%{error}"
 errors.save_projectless_migration: "プロジェクトなしタスクの移行を保存できませんでした：%{error}"
-errors.move_projectless_task: "以前のルート直下のプロジェクトなしタスクを ~/.waku/projects 内に移動できませんでした：%{error}"
+errors.move_projectless_task: "以前のルート直下のプロジェクトなしタスクを ~/.insulator/projects 内に移動できませんでした：%{error}"
 errors.remote_host_path: このパスはデーモンホスト上にあるため、デスクトップアプリでは開けません
 errors.change_branch: "ブランチを変更できませんでした：%{error}"
 errors.capture_pre_turn_checkpoint: "ターン開始前のチェックポイントを取得できませんでした：%{error}"
@@ -662,7 +662,7 @@ errors.provider_native_session_unavailable: "%{provider} のネイティブセ�
 errors.provider_native_thread_unavailable: "%{provider} のネイティブスレッドは利用できません"
 errors.provider_native_cursor_unavailable: "%{provider} のネイティブセッションカーソルは利用できません"
 errors.provider_native_thread_cursor_unavailable: "%{provider} のネイティブスレッドカーソルは利用できません"
-errors.provider_waku_task_unavailable: "%{provider} の Waku タスクは利用できません"
+errors.provider_insulator_task_unavailable: "%{provider} の Insulator タスクは利用できません"
 errors.provider_not_installed: "%{provider} はインストールされていません"
 errors.provider_not_found: "%{provider} はインストールされていないか、見つかりませんでした"
 errors.claude_fork_checkpoint_missing: Claude からフォーク用チェックポイントが返されませんでした
@@ -683,7 +683,7 @@ errors.task_already_forking: このタスクはすでにフォーク中です
 errors.task_already_rewinding: このタスクはすでに巻き戻し中です
 errors.no_live_runtime: このタスクには実行中のエージェントがありません
 errors.unexpected_daemon_response: "デーモンから %{expected} が返るはずでしたが、%{actual} を受信しました"
-errors.daemon_disconnected: Waku デーモンに接続されていません
+errors.daemon_disconnected: Insulator デーモンに接続されていません
 errors.path_outside_workspace: このパスはデーモンホスト上の現在のワークスペース外にあります
 errors.rename_task: "タスクの名前を変更できませんでした：%{error}"
 errors.remove_task: "タスクを削除できませんでした：%{error}"
@@ -715,7 +715,7 @@ errors.read_provider_event_stream: "%{provider} のイベントストリーム�
 errors.answer_provider_permission: "%{provider} の権限リクエストに回答できませんでした：%{error}"
 errors.answer_provider_question: "%{provider} の質問に回答できませんでした：%{error}"
 errors.initialize_codex_app_server: Codex app-server を初期化できませんでした
-errors.register_computer_use_skill: Waku のコンピュータ操作スキルを Codex に登録できませんでした
+errors.register_computer_use_skill: Insulator のコンピュータ操作スキルを Codex に登録できませんでした
 errors.codex_thread_open_incomplete: Codex はスレッドを開く処理を完了しませんでした
 errors.codex_goals_unsupported: このバージョンの Codex はスレッドゴールに対応していません
 errors.provider_receive_prompt: "%{provider} はプロンプトを受信できませんでした"

@@ -104,12 +104,12 @@ impl Waku {
                     match daemon.request(
                         Uuid::nil(),
                         Uuid::nil(),
-                        waku_client::Command::LoadUsageHistory {
+                        insulator_client::Command::LoadUsageHistory {
                             window,
                             project_roots,
                         },
                     )? {
-                        waku_client::ResponsePayload::UsageHistory { history } => Ok(history),
+                        insulator_client::ResponsePayload::UsageHistory { history } => Ok(history),
                         _ => anyhow::bail!("the daemon returned an invalid usage response"),
                     }
                 })

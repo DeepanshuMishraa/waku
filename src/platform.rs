@@ -56,7 +56,7 @@ pub fn local_user_full_name() -> Option<String> {
 }
 
 pub fn local_user_login_avatar_path() -> Option<PathBuf> {
-    let cache_dir = dirs::home_dir()?.join(".waku").join("cache");
+    let cache_dir = dirs::home_dir()?.join(".insulator").join("cache");
     ["jpg", "png"]
         .into_iter()
         .map(|extension| cache_dir.join(format!("login-avatar.{extension}")))
@@ -65,7 +65,7 @@ pub fn local_user_login_avatar_path() -> Option<PathBuf> {
 
 pub fn local_user_github_avatar_path() -> Option<PathBuf> {
     let path = dirs::home_dir()?
-        .join(".waku")
+        .join(".insulator")
         .join("cache")
         .join("github-avatar.png");
     path.is_file().then_some(path)
@@ -77,9 +77,9 @@ pub fn set_font_smoothing_enabled(enabled: bool) {
     #[cfg(target_os = "macos")]
     {
         let bundle_id = if cfg!(debug_assertions) {
-            "sh.waku.dev"
+            "sh.insulator.dev"
         } else {
-            "sh.waku"
+            "sh.insulator"
         };
         let value = if enabled { "1" } else { "0" };
         let _ = std::process::Command::new("defaults")
@@ -115,7 +115,7 @@ pub fn ensure_user_login_avatar_cached() {
     #[cfg(target_os = "macos")]
     {
         let Some(home) = dirs::home_dir() else { return };
-        let cache_dir = home.join(".waku").join("cache");
+        let cache_dir = home.join(".insulator").join("cache");
         let Some(user) = std::env::var_os("USER") else {
             return;
         };
@@ -174,7 +174,7 @@ pub fn ensure_user_login_avatar_cached() {
 
 pub fn ensure_user_github_avatar_cached() {
     let Some(home) = dirs::home_dir() else { return };
-    let cache_dir = home.join(".waku").join("cache");
+    let cache_dir = home.join(".insulator").join("cache");
     let target = cache_dir.join("github-avatar.png");
     if target.exists() {
         return;
@@ -789,7 +789,7 @@ pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hs
             return;
         };
 
-        if CURRENT_WINDOW_STYLE.get() != waku_protocol::theme::WindowStyle::Solid {
+        if CURRENT_WINDOW_STYLE.get() != insulator_protocol::theme::WindowStyle::Solid {
             SIDEBAR_TINT_VIEW.with_borrow(|slot| {
                 if let Some(tint_view) = slot.as_ref() {
                     tint_view.setHidden(true);
@@ -858,8 +858,8 @@ pub fn configure_sidebar_material(_: &Window, _: bool, _: Hsla) {}
 thread_local! {
     static LIQUID_GLASS_VIEW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSView>>> =
         const { std::cell::RefCell::new(None) };
-    static CURRENT_WINDOW_STYLE: std::cell::Cell<waku_protocol::theme::WindowStyle> =
-        const { std::cell::Cell::new(waku_protocol::theme::WindowStyle::Solid) };
+    static CURRENT_WINDOW_STYLE: std::cell::Cell<insulator_protocol::theme::WindowStyle> =
+        const { std::cell::Cell::new(insulator_protocol::theme::WindowStyle::Solid) };
     static MAIN_WINDOW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSWindow>>> =
         const { std::cell::RefCell::new(None) };
     static MAIN_VIEW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSView>>> =
@@ -894,8 +894,8 @@ pub fn restart_application() -> bool {
 unsafe fn apply_native_window_style(
     native_window: &objc2_app_kit::NSWindow,
     view: &objc2_app_kit::NSView,
-    style: waku_protocol::theme::WindowStyle,
-    color_theme: waku_protocol::theme::ColorTheme,
+    style: insulator_protocol::theme::WindowStyle,
+    color_theme: insulator_protocol::theme::ColorTheme,
     main_thread: objc2::MainThreadMarker,
 ) {
     use objc2::msg_send;
@@ -912,7 +912,7 @@ unsafe fn apply_native_window_style(
     let rgb = active_theme.surface.to_rgb();
 
     match style {
-        waku_protocol::theme::WindowStyle::LiquidGlass => {
+        insulator_protocol::theme::WindowStyle::LiquidGlass => {
             native_window.setOpaque(false);
             native_window.setHasShadow(true);
             native_window.setBackgroundColor(Some(&NSColor::clearColor()));
@@ -1008,7 +1008,7 @@ unsafe fn apply_native_window_style(
                 });
             }
         }
-        waku_protocol::theme::WindowStyle::Image => {
+        insulator_protocol::theme::WindowStyle::Image => {
             native_window.setOpaque(true);
             native_window.setHasShadow(true);
             let tint_color = NSColor::colorWithSRGBRed_green_blue_alpha(
@@ -1035,7 +1035,7 @@ unsafe fn apply_native_window_style(
                 }
             }
         }
-        waku_protocol::theme::WindowStyle::Solid => {
+        insulator_protocol::theme::WindowStyle::Solid => {
             native_window.setOpaque(true);
             native_window.setHasShadow(true);
             let tint_color = NSColor::colorWithSRGBRed_green_blue_alpha(
@@ -1068,8 +1068,8 @@ unsafe fn apply_native_window_style(
 #[cfg(target_os = "macos")]
 pub fn configure_window_style(
     window: &Window,
-    style: waku_protocol::theme::WindowStyle,
-    color_theme: waku_protocol::theme::ColorTheme,
+    style: insulator_protocol::theme::WindowStyle,
+    color_theme: insulator_protocol::theme::ColorTheme,
     _image_path: Option<&str>,
 ) {
     use objc2_app_kit::NSView;
@@ -1094,8 +1094,8 @@ pub fn configure_window_style(
 
 #[cfg(target_os = "macos")]
 pub fn reapply_window_style(
-    style: waku_protocol::theme::WindowStyle,
-    color_theme: waku_protocol::theme::ColorTheme,
+    style: insulator_protocol::theme::WindowStyle,
+    color_theme: insulator_protocol::theme::ColorTheme,
     _image_path: Option<&str>,
 ) {
     let Some(main_thread) = objc2::MainThreadMarker::new() else { return };
@@ -1114,15 +1114,15 @@ pub fn reapply_window_style(
 #[cfg(not(target_os = "macos"))]
 pub fn configure_window_style(
     _: &Window,
-    _: waku_protocol::theme::WindowStyle,
-    _: waku_protocol::theme::ColorTheme,
+    _: insulator_protocol::theme::WindowStyle,
+    _: insulator_protocol::theme::ColorTheme,
     _: Option<&str>,
 ) {}
 
 #[cfg(not(target_os = "macos"))]
 pub fn reapply_window_style(
-    _: waku_protocol::theme::WindowStyle,
-    _: waku_protocol::theme::ColorTheme,
+    _: insulator_protocol::theme::WindowStyle,
+    _: insulator_protocol::theme::ColorTheme,
     _: Option<&str>,
 ) {}
 

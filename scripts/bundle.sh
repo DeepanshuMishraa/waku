@@ -38,15 +38,15 @@ else
 fi
 case "$profile" in
   debug)
-    app_name="Waku Debug"
-    helper_name="Waku Debug Computer Use"
-    bundle_identifier="sh.waku.dev"
+    app_name="Insulator Debug"
+    helper_name="Insulator Debug Computer Use"
+    bundle_identifier="sh.insulator.dev"
     icon_file="AppIconDev.icns"
     ;;
   release)
-    app_name="Waku"
-    helper_name="Waku Computer Use"
-    bundle_identifier="sh.waku"
+    app_name="Insulator"
+    helper_name="Insulator Computer Use"
+    bundle_identifier="sh.insulator"
     icon_file="AppIcon.icns"
     ;;
   *)
@@ -61,19 +61,19 @@ fi
 debug_adhoc_requirement="=designated => identifier \"$bundle_identifier\""
 if [ "${WAKU_SKIP_CARGO_BUILD:-0}" != "1" ]; then
   if [ "$profile" = "release" ]; then
-    cargo build --release --package waku --bin waku --bin waku_js_repl --package waku-daemon --bin waku-daemon
+    cargo build --release --package insulator --bin insulator --bin insulator_js_repl --package insulator-daemon --bin insulator-daemon
   else
-    cargo build --package waku --bin waku --bin waku_js_repl
+    cargo build --package insulator --bin insulator --bin insulator_js_repl
   fi
 fi
 
 bundle="$cargo_target_dir/$profile/$app_name.app"
 contents="$bundle/Contents"
 helper_bundle="$contents/Helpers/$helper_name.app"
-repl_executable="$contents/Resources/waku_js_repl"
-daemon_executable="$contents/MacOS/waku-daemon"
+repl_executable="$contents/Resources/insulator_js_repl"
+daemon_executable="$contents/MacOS/insulator-daemon"
 swift_module_cache="$cargo_target_dir/$profile/swift-module-cache"
-helper_source="resources/computer-use/WakuComputerUse.swift"
+helper_source="resources/computer-use/InsulatorComputerUse.swift"
 menu_bar_cursor_resource="resources/computer-use/menubar-cursor.png"
 overlay_cursor_resource="resources/computer-use/overlay-cursor.svg"
 helper_fingerprint="$({
@@ -151,18 +151,18 @@ if [ ! -d "$sparkle_framework_source" ]; then
 fi
 
 rm -rf "$bundle"
-mkdir -p "$contents/MacOS" "$contents/Resources/computer-use" "$contents/Resources/skills/waku-computer-use" "$contents/Helpers"
-cp "$cargo_target_dir/$profile/waku" "$contents/MacOS/$app_name"
-cp "$cargo_target_dir/$profile/waku_js_repl" "$repl_executable"
+mkdir -p "$contents/MacOS" "$contents/Resources/computer-use" "$contents/Resources/skills/insulator-computer-use" "$contents/Helpers"
+cp "$cargo_target_dir/$profile/insulator" "$contents/MacOS/$app_name"
+cp "$cargo_target_dir/$profile/insulator_js_repl" "$repl_executable"
 chmod 755 "$repl_executable"
 if [ "$profile" = "release" ]; then
-  cp "$cargo_target_dir/$profile/waku-daemon" "$daemon_executable"
+  cp "$cargo_target_dir/$profile/insulator-daemon" "$daemon_executable"
   chmod 755 "$daemon_executable"
 fi
 cp resources/Info.plist "$contents/Info.plist"
 cp "resources/$icon_file" "$contents/Resources/AppIcon.icns"
 cp resources/computer-use/pi-extension.ts "$contents/Resources/computer-use/pi-extension.ts"
-cp resources/computer-use/SKILL.md "$contents/Resources/skills/waku-computer-use/SKILL.md"
+cp resources/computer-use/SKILL.md "$contents/Resources/skills/insulator-computer-use/SKILL.md"
 frameworks_directory="$contents/Frameworks"
 sparkle_framework="$frameworks_directory/Sparkle.framework"
 mkdir -p "$frameworks_directory"

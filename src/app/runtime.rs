@@ -1,25 +1,25 @@
 use super::*;
 
 fn workspace_ack(
-    workspace: &waku_client::WorkspaceClient,
-    operation: waku_client::WorkspaceOperation,
+    workspace: &insulator_client::WorkspaceClient,
+    operation: insulator_client::WorkspaceOperation,
 ) -> anyhow::Result<()> {
     match workspace.request(operation)? {
-        waku_client::WorkspaceResult::Ack => Ok(()),
+        insulator_client::WorkspaceResult::Ack => Ok(()),
         _ => anyhow::bail!("the daemon returned an invalid workspace response"),
     }
 }
 
 fn workspace_has_ref(
-    workspace: &waku_client::WorkspaceClient,
+    workspace: &insulator_client::WorkspaceClient,
     cwd: &Path,
     git_ref: &str,
 ) -> anyhow::Result<bool> {
-    match workspace.request(waku_client::WorkspaceOperation::HasRef {
+    match workspace.request(insulator_client::WorkspaceOperation::HasRef {
         cwd: cwd.to_path_buf(),
         git_ref: git_ref.to_owned(),
     })? {
-        waku_client::WorkspaceResult::Bool { value } => Ok(value),
+        insulator_client::WorkspaceResult::Bool { value } => Ok(value),
         _ => anyhow::bail!("the daemon returned an invalid checkpoint response"),
     }
 }
@@ -184,16 +184,16 @@ fn generate_session_title(mut request: SessionTitleRequest) -> anyhow::Result<St
 }
 
 fn attach_driver(
-    daemon: waku_client::DaemonSupervisor,
+    daemon: insulator_client::DaemonSupervisor,
     session_id: Uuid,
     event_wake: smol::channel::Sender<()>,
 ) -> anyhow::Result<Option<(AgentSession, PreparedDriver)>> {
-    let Some(session) = waku_client::persistence::hydrate_session(&daemon, session_id)? else {
+    let Some(session) = insulator_client::persistence::hydrate_session(&daemon, session_id)? else {
         return Ok(None);
     };
     let client = daemon.client();
-    let response = client.request(session_id, Uuid::nil(), waku_client::Command::AttachSession)?;
-    let waku_client::ResponsePayload::SessionRuntime {
+    let response = client.request(session_id, Uuid::nil(), insulator_client::Command::AttachSession)?;
+    let insulator_client::ResponsePayload::SessionRuntime {
         runtime_id,
         supports_steer,
     } = response
@@ -217,14 +217,14 @@ fn attach_driver(
 }
 
 fn load_remote_task_state(
-    client: &waku_client::DaemonClient,
+    client: &insulator_client::DaemonClient,
 ) -> anyhow::Result<RemoteTaskStateSnapshot> {
     let response = client.request(
         Uuid::nil(),
         Uuid::nil(),
-        waku_client::Command::LoadTaskState,
+        insulator_client::Command::LoadTaskState,
     )?;
-    let waku_client::ResponsePayload::TaskState {
+    let insulator_client::ResponsePayload::TaskState {
         projects,
         mut sessions,
         ..
@@ -312,7 +312,7 @@ pub(super) fn merge_remote_session_catalog(
 /// starting its provider. This function is called only from the background
 /// executor; the UI thread owns applying the returned workspace afterward.
 fn prepare_submission(
-    workspace_client: waku_client::WorkspaceClient,
+    workspace_client: insulator_client::WorkspaceClient,
     project: Project,
     workspace: SessionWorkspace,
     driver_start: Option<anyhow::Result<DriverStartRequest>>,
@@ -326,14 +326,14 @@ fn prepare_submission(
                 anyhow::bail!("a projectless task cannot create a Git worktree");
             }
             let created =
-                match workspace_client.request(waku_client::WorkspaceOperation::CreateWorktree {
+                match workspace_client.request(insulator_client::WorkspaceOperation::CreateWorktree {
                     project_path: project.path.clone(),
                     project_id: project.id,
                     session_id,
                     prompt: prompt.to_owned(),
                     base_branch,
                 })? {
-                    waku_client::WorkspaceResult::WorktreeCreated { worktree } => worktree,
+                    insulator_client::WorkspaceResult::WorktreeCreated { worktree } => worktree,
                     _ => anyhow::bail!("the daemon returned an invalid worktree response"),
                 };
             SessionWorkspace::Worktree {
@@ -350,7 +350,7 @@ fn prepare_submission(
     // made between turns to the next response.
     let checkpoint_warning = workspace_ack(
         &workspace_client,
-        waku_client::WorkspaceOperation::CaptureTurnStart {
+        insulator_client::WorkspaceOperation::CaptureTurnStart {
             cwd: project_path.to_path_buf(),
             session_id,
             turn_count,
@@ -380,7 +380,7 @@ fn prepare_submission(
 /// startup, and native transcript reads all happen in
 /// [`perform_message_rewind`] on the background executor.
 struct MessageRewindRequest {
-    workspace_client: waku_client::WorkspaceClient,
+    workspace_client: insulator_client::WorkspaceClient,
     session_id: Uuid,
     provider: ProviderKind,
     provider_cursor: Option<ProviderResumeCursor>,
@@ -402,7 +402,7 @@ struct MessageRewindRequest {
 
 struct PreparedMessageRewind {
     provider_rewind_cursor: Option<ProviderResumeCursor>,
-    claude_fork: Option<waku_client::provider_session::ProviderSessionFork>,
+    claude_fork: Option<insulator_client::provider_session::ProviderSessionFork>,
     prepared_driver: Option<PreparedDriver>,
     reset_native_session: bool,
     cleanup_error: Option<String>,
@@ -439,7 +439,7 @@ fn perform_message_rewind(
     let safety_ref = format!("refs/waku/revert-backup-{session_id}-{}", Uuid::new_v4());
     workspace_ack(
         &request.workspace_client,
-        waku_client::WorkspaceOperation::CaptureRef {
+        insulator_client::WorkspaceOperation::CaptureRef {
             cwd: request.project_path.clone(),
             git_ref: safety_ref.clone(),
         },
@@ -447,7 +447,7 @@ fn perform_message_rewind(
     .map_err(|error| tr!("errors.create_rewind_snapshot", error = error))?;
     if let Err(error) = workspace_ack(
         &request.workspace_client,
-        waku_client::WorkspaceOperation::RestoreRef {
+        insulator_client::WorkspaceOperation::RestoreRef {
             cwd: request.project_path.clone(),
             git_ref: restore_ref.clone(),
         },
@@ -455,7 +455,7 @@ fn perform_message_rewind(
         return Err(
             match workspace_ack(
                 &request.workspace_client,
-                waku_client::WorkspaceOperation::RestoreRef {
+                insulator_client::WorkspaceOperation::RestoreRef {
                     cwd: request.project_path.clone(),
                     git_ref: safety_ref.clone(),
                 },
@@ -463,7 +463,7 @@ fn perform_message_rewind(
                 Ok(()) => {
                     let _ = workspace_ack(
                         &request.workspace_client,
-                        waku_client::WorkspaceOperation::DeleteRef {
+                        insulator_client::WorkspaceOperation::DeleteRef {
                             cwd: request.project_path.clone(),
                             git_ref: safety_ref.clone(),
                         },
@@ -487,7 +487,7 @@ fn perform_message_rewind(
             return Err(
                 match workspace_ack(
                     &request.workspace_client,
-                    waku_client::WorkspaceOperation::RestoreRef {
+                    insulator_client::WorkspaceOperation::RestoreRef {
                         cwd: request.project_path.clone(),
                         git_ref: safety_ref.clone(),
                     },
@@ -495,7 +495,7 @@ fn perform_message_rewind(
                     Ok(()) => {
                         let _ = workspace_ack(
                             &request.workspace_client,
-                            waku_client::WorkspaceOperation::DeleteRef {
+                            insulator_client::WorkspaceOperation::DeleteRef {
                                 cwd: request.project_path.clone(),
                                 git_ref: safety_ref.clone(),
                             },
@@ -515,14 +515,14 @@ fn perform_message_rewind(
 
     let _ = workspace_ack(
         &request.workspace_client,
-        waku_client::WorkspaceOperation::DeleteRef {
+        insulator_client::WorkspaceOperation::DeleteRef {
             cwd: request.project_path.clone(),
             git_ref: safety_ref,
         },
     );
     let cleanup_error = workspace_ack(
         &request.workspace_client,
-        waku_client::WorkspaceOperation::DeleteTurnRefsAfter {
+        insulator_client::WorkspaceOperation::DeleteTurnRefsAfter {
             cwd: request.project_path.clone(),
             session_id,
             retained_turn_count: request.retained_turn_count,
@@ -548,7 +548,7 @@ fn perform_message_rewind(
 
 type ProviderRewindResult = (
     Option<ProviderResumeCursor>,
-    Option<waku_client::provider_session::ProviderSessionFork>,
+    Option<insulator_client::provider_session::ProviderSessionFork>,
     Option<PreparedDriver>,
 );
 
@@ -579,7 +579,7 @@ fn perform_provider_rewind(
                 ));
             };
             let fork = request.workspace_client.fork_provider_session(
-                waku_client::provider_session::ProviderSessionForkRequest::Claude {
+                insulator_client::provider_session::ProviderSessionForkRequest::Claude {
                     session_id: native_session_id.clone(),
                     resume_at: request.provider_resume_at.clone(),
                     turn_count: request.provider_turn_count,
@@ -612,7 +612,7 @@ fn perform_provider_rewind(
                 request
                     .workspace_client
                     .fork_provider_session(
-                        waku_client::provider_session::ProviderSessionForkRequest::OpenCode {
+                        insulator_client::provider_session::ProviderSessionForkRequest::OpenCode {
                             binary: binary.to_owned(),
                             cwd: request.project_path.clone(),
                             session_id: native_session_id.clone(),
@@ -645,7 +645,7 @@ fn perform_provider_rewind(
                 request
                     .workspace_client
                     .fork_provider_session(
-                        waku_client::provider_session::ProviderSessionForkRequest::OpenCode2 {
+                        insulator_client::provider_session::ProviderSessionForkRequest::OpenCode2 {
                             binary: binary.to_owned(),
                             session_id: native_session_id.clone(),
                             turn_count: request.provider_turn_count,
@@ -672,7 +672,7 @@ fn perform_provider_rewind(
             let cursor = request
                 .workspace_client
                 .fork_provider_session(
-                    waku_client::provider_session::ProviderSessionForkRequest::Amp {
+                    insulator_client::provider_session::ProviderSessionForkRequest::Amp {
                         binary: binary.to_owned(),
                         cwd: request.project_path.clone(),
                         thread_id: native_thread_id.clone(),
@@ -695,7 +695,7 @@ fn perform_provider_rewind(
                     request
                         .workspace_client
                         .fork_provider_session(
-                            waku_client::provider_session::ProviderSessionForkRequest::Cursor {
+                            insulator_client::provider_session::ProviderSessionForkRequest::Cursor {
                                 source: source.clone(),
                                 turn_count: request.retained_turn_count,
                             },
@@ -722,7 +722,7 @@ fn perform_provider_rewind(
             let cursor = request
                 .workspace_client
                 .fork_provider_session(
-                    waku_client::provider_session::ProviderSessionForkRequest::Grok {
+                    insulator_client::provider_session::ProviderSessionForkRequest::Grok {
                         binary: binary.to_owned(),
                         cwd: request.project_path.clone(),
                         session_id: native_session_id.clone(),
@@ -770,7 +770,7 @@ fn perform_provider_rewind(
 /// native transcript I/O, and Git ref copying are all performed by
 /// [`perform_response_fork`] on the background executor.
 struct ResponseForkRequest {
-    workspace_client: waku_client::WorkspaceClient,
+    workspace_client: insulator_client::WorkspaceClient,
     source: AgentSession,
     source_workspace_path: PathBuf,
     fork_title: String,
@@ -872,7 +872,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                     .get(request.turn_count.saturating_sub(1))
                     .and_then(|turn| turn.provider_resume_at.clone());
                 let fork = request.workspace_client.fork_provider_session(
-                    waku_client::provider_session::ProviderSessionForkRequest::Claude {
+                    insulator_client::provider_session::ProviderSessionForkRequest::Claude {
                         session_id: native_session_id.clone(),
                         resume_at,
                         turn_count: request.provider_turn_count,
@@ -911,7 +911,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                 request
                     .workspace_client
                     .fork_provider_session(
-                        waku_client::provider_session::ProviderSessionForkRequest::Cursor {
+                        insulator_client::provider_session::ProviderSessionForkRequest::Cursor {
                             source: request.source.clone(),
                             turn_count: request.turn_count,
                         },
@@ -938,7 +938,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                     request
                         .workspace_client
                         .fork_provider_session(
-                            waku_client::provider_session::ProviderSessionForkRequest::Amp {
+                            insulator_client::provider_session::ProviderSessionForkRequest::Amp {
                                 binary: binary.to_owned(),
                                 cwd: request.source_workspace_path.clone(),
                                 thread_id: native_thread_id.clone(),
@@ -968,7 +968,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                     request
                         .workspace_client
                         .fork_provider_session(
-                            waku_client::provider_session::ProviderSessionForkRequest::OpenCode {
+                            insulator_client::provider_session::ProviderSessionForkRequest::OpenCode {
                                 binary: binary.to_owned(),
                                 cwd: request.source_workspace_path.clone(),
                                 session_id: native_session_id.clone(),
@@ -1001,7 +1001,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                     request
                         .workspace_client
                         .fork_provider_session(
-                            waku_client::provider_session::ProviderSessionForkRequest::OpenCode2 {
+                            insulator_client::provider_session::ProviderSessionForkRequest::OpenCode2 {
                                 binary: binary.to_owned(),
                                 session_id: native_session_id.clone(),
                                 turn_count: request.provider_turn_count,
@@ -1032,7 +1032,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
                     request
                         .workspace_client
                         .fork_provider_session(
-                            waku_client::provider_session::ProviderSessionForkRequest::Grok {
+                            insulator_client::provider_session::ProviderSessionForkRequest::Grok {
                                 binary: binary.to_owned(),
                                 cwd: request.source_workspace_path.clone(),
                                 session_id: native_session_id.clone(),
@@ -1112,7 +1112,7 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
     }
     let checkpoint_warning = workspace_ack(
         &request.workspace_client,
-        waku_client::WorkspaceOperation::CopySessionRefs {
+        insulator_client::WorkspaceOperation::CopySessionRefs {
             cwd: request.source_workspace_path.clone(),
             source_session_id: request.source.id,
             target_session_id: fork_id,
@@ -1560,14 +1560,14 @@ impl Waku {
                 let discovered = match daemon.request(
                     Uuid::nil(),
                     Uuid::nil(),
-                    waku_client::Command::ProbeProvider {
+                    insulator_client::Command::ProbeProvider {
                         provider,
                         binary_override,
                         discover_models: true,
                         probe_version: false,
                     },
                 ) {
-                    Ok(waku_client::ResponsePayload::ProviderProbe { probe, .. }) => probe,
+                    Ok(insulator_client::ResponsePayload::ProviderProbe { probe, .. }) => probe,
                     _ => probe,
                 };
                 if provider_probe_tx.send(discovered).is_ok() {
@@ -1618,14 +1618,14 @@ impl Waku {
                     let version = match daemon.request(
                         Uuid::nil(),
                         Uuid::nil(),
-                        waku_client::Command::ProbeProvider {
+                        insulator_client::Command::ProbeProvider {
                             provider,
                             binary_override,
                             discover_models: false,
                             probe_version: true,
                         },
                     ) {
-                        Ok(waku_client::ResponsePayload::ProviderProbe { version, .. }) => version,
+                        Ok(insulator_client::ResponsePayload::ProviderProbe { version, .. }) => version,
                         _ => None,
                     };
                     if provider_version_tx.send((provider, version)).is_ok() {
@@ -1674,7 +1674,7 @@ impl Waku {
                     let response = daemon.request(
                         Uuid::nil(),
                         Uuid::nil(),
-                        waku_client::Command::ProbeProvider {
+                        insulator_client::Command::ProbeProvider {
                             provider,
                             binary_override: overrides.get(&provider).cloned(),
                             discover_models: false,
@@ -1682,7 +1682,7 @@ impl Waku {
                         },
                     );
                     let probe = match response {
-                        Ok(waku_client::ResponsePayload::ProviderProbe { probe, .. }) => probe,
+                        Ok(insulator_client::ResponsePayload::ProviderProbe { probe, .. }) => probe,
                         _ => ProviderProbe {
                             provider,
                             installed: false,
@@ -1920,7 +1920,7 @@ impl Waku {
             {
                 continue;
             }
-            let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+            let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
             cx.spawn(async move |waku, cx| {
                 let captured = cx
                     .background_executor()
@@ -1928,13 +1928,13 @@ impl Waku {
                         let project_path = project_path.clone();
                         async move {
                             match workspace.request(
-                                waku_client::WorkspaceOperation::CaptureTurn {
+                                insulator_client::WorkspaceOperation::CaptureTurn {
                                     cwd: project_path,
                                     session_id,
                                     turn_count,
                                 },
                             )? {
-                                waku_client::WorkspaceResult::Checkpoint { checkpoint } => {
+                                insulator_client::WorkspaceResult::Checkpoint { checkpoint } => {
                                     Ok(checkpoint)
                                 }
                                 _ => anyhow::bail!(
@@ -2120,7 +2120,7 @@ impl Waku {
             None
         };
         let request = ResponseForkRequest {
-            workspace_client: waku_client::WorkspaceClient::new(self.daemon.client()),
+            workspace_client: insulator_client::WorkspaceClient::new(self.daemon.client()),
             source,
             source_workspace_path,
             fork_title,
@@ -2521,7 +2521,7 @@ impl Waku {
             return;
         };
         let request = MessageRewindRequest {
-            workspace_client: waku_client::WorkspaceClient::new(self.daemon.client()),
+            workspace_client: insulator_client::WorkspaceClient::new(self.daemon.client()),
             session_id,
             provider,
             provider_cursor,
@@ -3057,7 +3057,7 @@ impl Waku {
             .unwrap_or_else(|| tr!("goal.title"));
         self.goal_runtime_starts.insert(session_id);
         cx.notify();
-        let workspace_client = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let prepared = cx
                 .background_executor()
@@ -3585,7 +3585,7 @@ impl Waku {
         cx.notify();
 
         let preparation_prompt = human_prompt;
-        let workspace_client = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let prepared = cx
                 .background_executor()

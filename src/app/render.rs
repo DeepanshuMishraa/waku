@@ -310,7 +310,7 @@ impl Render for Waku {
         let goal_dialog = self.render_goal_dialog(window, cx);
         let toast = self.render_active_toast(cx);
         let content = div()
-            .key_context("Waku")
+            .key_context("Insulator")
             .on_action(cx.listener(Self::close_window_or_right_panel_tab_action))
             .on_action(cx.listener(Self::new_session_action))
             .on_action(cx.listener(Self::new_project_action))
@@ -409,7 +409,8 @@ impl Render for Waku {
                     // separate new-chat page and left no way to see its tab
                     // context while composing the first message.
                     .when(
-                        self.main_tabs_open || !self.main_tabs.is_empty(),
+                        (self.main_tabs_open || !self.main_tabs.is_empty())
+                            && self.selected_session().is_some(),
                         |element| element.child(self.render_session_tabs(cx)),
                     )
                     .child(if let Some(path) = active_file.as_ref() {
@@ -424,12 +425,15 @@ impl Render for Waku {
                             .into_any_element()
                     })
                     .children(permission)
-                    .when(self.selected_project().is_some() && active_file.is_none(), |element| {
-                        element
-                            .children(self.render_queued_messages(cx))
-                            .child(self.render_composer(window, cx))
-                            .child(self.render_workspace_footer(cx))
-                    })
+                    .when(
+                        self.selected_session().is_some() && active_file.is_none(),
+                        |element| {
+                            element
+                                .children(self.render_queued_messages(cx))
+                                .child(self.render_composer(window, cx))
+                                .child(self.render_workspace_footer(cx))
+                        },
+                    )
                     .relative()
                     .children(toast)
                     .children(computer_use)

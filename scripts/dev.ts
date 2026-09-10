@@ -6,15 +6,15 @@ import { join, resolve } from "node:path";
 
 const root = resolve(import.meta.dir, "..");
 const isMacOS = process.platform === "darwin";
-const appName = "Waku Debug";
+const appName = "Insulator Debug";
 const targetDir = resolve(root, process.env.CARGO_TARGET_DIR || "target");
 const executableSuffix = process.platform === "win32" ? ".exe" : "";
 const appPath = isMacOS
-  ? join(targetDir, "debug/Waku Debug.app")
-  : join(targetDir, `debug/waku${executableSuffix}`);
+  ? join(targetDir, "debug/Insulator Debug.app")
+  : join(targetDir, `debug/insulator${executableSuffix}`);
 const daemonPath = join(
   targetDir,
-  `debug/waku-debug-daemon${executableSuffix}`,
+  `debug/insulator-debug-daemon${executableSuffix}`,
 );
 const watchedDirectories = ["src", "crates", "assets", "resources", "locales"];
 const watchedFiles = ["Cargo.toml", "Cargo.lock", "build.rs"];
@@ -310,18 +310,18 @@ async function build(target: BuildTarget): Promise<boolean> {
   }
   const result = isMacOS
     ? await $`${join(root, "scripts/bundle.sh")} debug`.nothrow()
-    : await $`cargo build --package waku --bin waku --bin waku_js_repl`.nothrow();
+    : await $`cargo build --package insulator --bin insulator --bin insulator_js_repl`.nothrow();
   if (result.exitCode !== 0) {
-    console.error("[waku-dev] Build failed; keeping the current app open.");
+    console.error("[insulator-dev] Build failed; keeping the current app open.");
     return false;
   }
   return true;
 }
 
 async function buildDaemon(): Promise<boolean> {
-  console.log("[waku-dev] Building daemon...");
+  console.log("[insulator-dev] Building daemon...");
   const result =
-    await $`cargo build --package waku-daemon --features dev-binary --bin waku-debug-daemon`.nothrow();
+    await $`cargo build --package insulator-daemon --features dev-binary --bin insulator-debug-daemon`.nothrow();
   if (result.exitCode !== 0) {
     console.error(
       "[waku-dev] Daemon build failed; keeping the current daemon running.",
@@ -396,8 +396,8 @@ function targetForChange(
   if (directory !== "crates" || filename === null) return "app";
   const relativePath = filename.toString().replaceAll("\\", "/");
   if (
-    relativePath.startsWith("waku-daemon/") ||
-    relativePath.startsWith("waku-core/")
+    relativePath.startsWith("insulator-daemon/") ||
+    relativePath.startsWith("insulator-core/")
   ) {
     return "daemon";
   }

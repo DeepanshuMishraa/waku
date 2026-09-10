@@ -915,12 +915,12 @@ mod feed {
     <item>
       <title>0.1.4</title>
       <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
-      <enclosure url="https://releases.waku.sh/Waku-0.1.4-x86_64-Setup.exe" length="1024" type="application/octet-stream" sparkle:edSignature="oldsig" />
+      <enclosure url="https://releases.insulator.sh/Waku-0.1.4-x86_64-Setup.exe" length="1024" type="application/octet-stream" sparkle:edSignature="oldsig" />
     </item>
     <item>
       <title>0.2.0</title>
       <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
-      <enclosure url="https://releases.waku.sh/Waku-0.2.0-x86_64-Setup.exe" length="2048" type="application/octet-stream" sparkle:edSignature="newsig" />
+      <enclosure url="https://releases.insulator.sh/Waku-0.2.0-x86_64-Setup.exe" length="2048" type="application/octet-stream" sparkle:edSignature="newsig" />
     </item>
   </channel>
 </rss>"#;
@@ -994,9 +994,9 @@ mod windows {
     /// binary an item is for, and guessing from the enclosure filename would
     /// be a contract hiding in a string.
     #[cfg(target_arch = "aarch64")]
-    const FEED_URL: &str = "https://releases.waku.sh/appcast-windows-aarch64.xml";
+    const FEED_URL: &str = "https://releases.insulator.sh/appcast-windows-aarch64.xml";
     #[cfg(not(target_arch = "aarch64"))]
-    const FEED_URL: &str = "https://releases.waku.sh/appcast-windows-x86_64.xml";
+    const FEED_URL: &str = "https://releases.insulator.sh/appcast-windows-x86_64.xml";
 
     /// Read out of `resources/Info.plist` by the build script, so macOS and
     /// Windows cannot end up trusting different keys.
@@ -1341,7 +1341,7 @@ mod windows {
     fn preference_path() -> Option<PathBuf> {
         Some(
             dirs::data_local_dir()?
-                .join(waku_protocol::identity::DATA_DIRECTORY_NAME)
+                .join(insulator_protocol::identity::DATA_DIRECTORY_NAME)
                 .join("updater.json"),
         )
     }

@@ -602,6 +602,8 @@ mod tests {
             "icons/chevron-up.svg",
             "icons/chevrons-up-down.svg",
             "icons/folder.svg",
+            "icons/folder-outline.svg",
+            "icons/folder-plus.svg",
             "icons/folder-new.svg",
             "icons/laptop.svg",
             "icons/file-diff.svg",

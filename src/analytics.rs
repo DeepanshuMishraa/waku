@@ -280,7 +280,7 @@ fn run(
                 Context::new()
                     .hostname("waku.sh")
                     .url("/desktop")
-                    .title("Waku")
+                    .title("Insulator")
                     .language(language)
                     .os(std::env::consts::OS)
                     .device("desktop"),

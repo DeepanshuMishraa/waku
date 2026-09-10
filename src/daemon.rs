@@ -4,32 +4,32 @@ use std::path::PathBuf;
 
 use anyhow::{Context as _, anyhow, bail};
 
-pub fn start_process() -> anyhow::Result<waku_client::DaemonSupervisor> {
-    let address = std::env::var(waku_client::DAEMON_ADDRESS_ENV)
+pub fn start_process() -> anyhow::Result<insulator_client::DaemonSupervisor> {
+    let address = std::env::var(insulator_client::DAEMON_ADDRESS_ENV)
         .ok()
         .filter(|value| !value.trim().is_empty());
-    let token = std::env::var(waku_client::DAEMON_TOKEN_ENV)
+    let token = std::env::var(insulator_client::DAEMON_TOKEN_ENV)
         .ok()
         .filter(|value| !value.is_empty());
     match (address, token) {
         (Some(address), Some(token)) => {
-            return waku_client::DaemonSupervisor::connect(address.trim(), token);
+            return insulator_client::DaemonSupervisor::connect(address.trim(), token);
         }
         (Some(_), None) => bail!(
             "{} is set but {} is missing",
-            waku_client::DAEMON_ADDRESS_ENV,
-            waku_client::DAEMON_TOKEN_ENV
+            insulator_client::DAEMON_ADDRESS_ENV,
+            insulator_client::DAEMON_TOKEN_ENV
         ),
         (None, Some(_)) => bail!(
             "{} is set but {} is missing",
-            waku_client::DAEMON_TOKEN_ENV,
-            waku_client::DAEMON_ADDRESS_ENV
+            insulator_client::DAEMON_TOKEN_ENV,
+            insulator_client::DAEMON_ADDRESS_ENV
         ),
         (None, None) => {}
     }
-    let app_settings = waku_client::persistence::load_or_create_app_settings()
+    let app_settings = insulator_client::persistence::load_or_create_app_settings()
         .context("could not load desktop daemon settings")?;
-    waku_client::DaemonSupervisor::spawn_configured(
+    insulator_client::DaemonSupervisor::spawn_configured(
         &daemon_executable_path()?,
         cfg!(debug_assertions),
         app_settings.daemon_exposure,

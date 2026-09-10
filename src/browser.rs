@@ -452,7 +452,7 @@ mod host {
     /// program directory.
     fn user_data_folder() -> Option<HSTRING> {
         let path = dirs::data_local_dir()?
-            .join(waku_protocol::identity::DATA_DIRECTORY_NAME)
+            .join(insulator_protocol::identity::DATA_DIRECTORY_NAME)
             .join("WebView2");
         std::fs::create_dir_all(&path).ok()?;
         Some(HSTRING::from(path.as_path()))

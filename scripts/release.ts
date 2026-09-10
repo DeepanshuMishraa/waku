@@ -14,12 +14,12 @@ import { parseArgs } from "node:util";
 import { defaultDownloadUrlPrefix, generateAppcast } from "./appcast";
 import { extractReleaseNotes } from "./changelog";
 
-const appName = "Waku";
-const executableName = "Waku";
-const jsReplExecutableName = "waku_js_repl";
-const daemonExecutableName = "waku-daemon";
-const computerUseHelperName = "Waku Computer Use";
-const packageName = "waku";
+const appName = "Insulator";
+const executableName = "Insulator";
+const jsReplExecutableName = "insulator_js_repl";
+const daemonExecutableName = "insulator-daemon";
+const computerUseHelperName = "Insulator Computer Use";
+const packageName = "insulator";
 const defaultNotaryProfile = "NOTARY";
 const projectRoot = resolve(import.meta.dir, "..");
 

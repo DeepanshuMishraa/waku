@@ -159,19 +159,19 @@ impl Waku {
                     self.slash_command_index_key = None;
                 }
                 let path = project_path.clone();
-                let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+                let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
                 cx.spawn(async move |waku, cx| {
                     let commands = cx
                         .background_executor()
                         .spawn(async move {
                             match workspace.request(
-                                waku_client::WorkspaceOperation::DiscoverSlashCommands {
+                                insulator_client::WorkspaceOperation::DiscoverSlashCommands {
                                     provider,
                                     project_root: path,
                                     binary_override,
                                 },
                             ) {
-                                Ok(waku_client::WorkspaceResult::SlashCommands { commands }) => {
+                                Ok(insulator_client::WorkspaceResult::SlashCommands { commands }) => {
                                     commands
                                 }
                                 Ok(_) | Err(_) => Vec::new(),
@@ -210,18 +210,18 @@ impl Waku {
                     self.mention_file_index_path = None;
                 }
                 let path = project_path.clone();
-                let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+                let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
                 cx.spawn(async move |waku, cx| {
                     let files = cx
                         .background_executor()
                         .spawn(async move {
                             match workspace.request(
-                                waku_client::WorkspaceOperation::ListProjectFiles {
+                                insulator_client::WorkspaceOperation::ListProjectFiles {
                                     root: path,
                                     cap: FILE_INDEX_CAP,
                                 },
                             ) {
-                                Ok(waku_client::WorkspaceResult::ProjectFiles { entries }) => {
+                                Ok(insulator_client::WorkspaceResult::ProjectFiles { entries }) => {
                                     entries
                                 }
                                 Ok(_) | Err(_) => Vec::new(),

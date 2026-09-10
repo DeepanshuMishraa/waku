@@ -1266,7 +1266,7 @@ impl Waku {
             return;
         }
 
-        let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let labels = cx
                 .background_executor()
@@ -1274,9 +1274,9 @@ impl Waku {
                     let mut labels = HashMap::new();
                     for path in paths {
                         let branch = match workspace.request(
-                            waku_client::WorkspaceOperation::InspectBranches { cwd: path.clone() },
+                            insulator_client::WorkspaceOperation::InspectBranches { cwd: path.clone() },
                         ) {
-                            Ok(waku_client::WorkspaceResult::Branches {
+                            Ok(insulator_client::WorkspaceResult::Branches {
                                 snapshot: Some(snapshot),
                             }) => snapshot.display_branch().map(str::to_owned),
                             _ => None,
@@ -2917,112 +2917,164 @@ impl Waku {
 
     // ── Empty states ───────────────────────────────────────────────────────
 
+    pub(super) fn render_home_screen(&self, cx: &mut Context<Self>) -> Div {
+        let theme = Theme::current(cx);
+        div()
+            .flex_1()
+            .w_full()
+            .h_full()
+            .min_w_0()
+            .flex()
+            .flex_col()
+            .items_center()
+            .justify_center()
+            .pb(px(40.0))
+            .child(
+                div()
+                    .font_family(crate::assets::OPENCODE_FONT_FAMILY)
+                    .text_size(sp(68.0))
+                    .line_height(sp(72.0))
+                    .text_color(theme.text)
+                    .mb(px(44.0))
+                    .child("INSULATOR"),
+            )
+            .child(
+                div()
+                    .flex()
+                    .flex_row()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(14.0))
+                    .child(
+                        div()
+                            .id("home-card-open-project")
+                            .track_focus(&self.onboarding_add_project_focus)
+                            .tab_index(0)
+                            .w(px(210.0))
+                            .h(px(140.0))
+                            .p(px(20.0))
+                            .rounded(px(10.0))
+                            .border_1()
+                            .border_color(theme.border_strong)
+                            .bg(theme.raised)
+                            .cursor_pointer()
+                            .focus_visible(|s| s.border_color(theme.accent))
+                            .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
+                            .flex()
+                            .flex_col()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .child(icon("icons/folder-outline.svg", 20.0, theme.text)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(sp(14.0))
+                                    .text_color(theme.text)
+                                    .font_weight(FontWeight::NORMAL)
+                                    .child("Open project"),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.add_project(cx);
+                            }))
+                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    this.add_project(cx);
+                                    cx.stop_propagation();
+                                }
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("home-card-open-github")
+                            .track_focus(&self.onboarding_github_project_focus)
+                            .tab_index(1)
+                            .w(px(210.0))
+                            .h(px(140.0))
+                            .p(px(20.0))
+                            .rounded(px(10.0))
+                            .border_1()
+                            .border_color(theme.border_strong)
+                            .bg(theme.raised)
+                            .cursor_pointer()
+                            .focus_visible(|s| s.border_color(theme.accent))
+                            .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
+                            .flex()
+                            .flex_col()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .child(icon("icons/globe.svg", 20.0, theme.text)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(sp(14.0))
+                                    .text_color(theme.text)
+                                    .font_weight(FontWeight::NORMAL)
+                                    .child("Open GitHub project"),
+                            )
+                            .on_click(cx.listener(|this, _, window, cx| {
+                                this.open_github_project_dialog(window, cx);
+                            }))
+                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    this.open_github_project_dialog(window, cx);
+                                    cx.stop_propagation();
+                                }
+                            })),
+                    )
+                    .child(
+                        div()
+                            .id("home-card-quick-start")
+                            .track_focus(&self.onboarding_projectless_focus)
+                            .tab_index(2)
+                            .w(px(210.0))
+                            .h(px(140.0))
+                            .p(px(20.0))
+                            .rounded(px(10.0))
+                            .border_1()
+                            .border_color(theme.border_strong)
+                            .bg(theme.raised)
+                            .cursor_pointer()
+                            .focus_visible(|s| s.border_color(theme.accent))
+                            .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
+                            .flex()
+                            .flex_col()
+                            .justify_between()
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_start()
+                                    .child(icon("icons/folder-plus.svg", 20.0, theme.text)),
+                            )
+                            .child(
+                                div()
+                                    .text_size(sp(14.0))
+                                    .text_color(theme.text)
+                                    .font_weight(FontWeight::NORMAL)
+                                    .child("Quick start"),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.create_projectless_session(cx);
+                            }))
+                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                    this.create_projectless_session(cx);
+                                    cx.stop_propagation();
+                                }
+                            })),
+                    ),
+            )
+    }
+
     pub(super) fn render_empty_state(&self, cx: &mut Context<Self>) -> Div {
         let theme = Theme::current(cx);
-        if self.selected_project().is_none() {
-            return div()
-                .flex_1()
-                .w_full()
-                .min_w_0()
-                .flex()
-                .flex_col()
-                .items_center()
-                .justify_center()
-                .px(px(20.0))
-                .pb(px(46.0))
-                .child(icon("icons/sparkle.svg", 24.0, theme.accent))
-                .child(
-                    div()
-                        .mt(px(16.0))
-                        .max_w(px(380.0))
-                        .text_center()
-                        .text_size(sp(20.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(theme.text)
-                        .child(tr_cow!("onboarding.open_project_to_begin")),
-                )
-                .child(
-                    div()
-                        .mt(px(8.0))
-                        .max_w(px(380.0))
-                        .text_center()
-                        .text_size(sp(12.5))
-                        .line_height(sp(19.0))
-                        .text_color(theme.text_tertiary)
-                        .child(tr_cow!("onboarding.description")),
-                )
-                .child(
-                    div()
-                        .mt(px(20.0))
-                        .flex()
-                        .flex_col()
-                        .items_center()
-                        .gap(px(8.0))
-                        .tab_index(0)
-                        .tab_group()
-                        .tab_stop(false)
-                        .child(
-                            div()
-                                .id("onboarding-add-project")
-                                .track_focus(&self.onboarding_add_project_focus)
-                                .tab_index(0)
-                                .focus_visible(|style| style.border_1().border_color(theme.accent))
-                                .h(px(32.0))
-                                .px(px(14.0))
-                                .rounded_full()
-                                .flex()
-                                .items_center()
-                                .cursor_default()
-                                .bg(theme.inverse)
-                                .text_color(theme.on_inverse)
-                                .text_size(sp(12.5))
-                                .font_weight(FontWeight::SEMIBOLD)
-                                .hover(|element| element.opacity(0.9))
-                                .active(|element| element.opacity(0.8))
-                                .child(tr_cow!("project.open_project"))
-                                .on_click(cx.listener(|this, _, window, cx| {
-                                    this.open_project_source_dialog(window, cx)
-                                }))
-                                .on_key_down(cx.listener(
-                                    |this, event: &KeyDownEvent, window, cx| {
-                                        if matches!(event.keystroke.key.as_str(), "enter" | "space")
-                                        {
-                                            this.open_project_source_dialog(window, cx);
-                                            cx.stop_propagation();
-                                        }
-                                    },
-                                )),
-                        )
-                        .child(
-                            div()
-                                .id("onboarding-projectless")
-                                .track_focus(&self.onboarding_projectless_focus)
-                                .tab_index(1)
-                                .focus_visible(|style| style.border_1().border_color(theme.accent))
-                                .h(px(30.0))
-                                .px(px(12.0))
-                                .rounded_full()
-                                .flex()
-                                .items_center()
-                                .gap(px(6.0))
-                                .cursor_default()
-                                .text_color(theme.text_secondary)
-                                .text_size(sp(12.5))
-                                .hover(|element| element.bg(theme.overlay))
-                                .active(|element| element.bg(theme.overlay_strong))
-                                .child(icon("icons/x.svg", 11.0, theme.text_tertiary))
-                                .child(tr_cow!("project.no_project"))
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    this.create_projectless_session(cx);
-                                }))
-                                .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                                    if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                        this.create_projectless_session(cx);
-                                        cx.stop_propagation();
-                                    }
-                                })),
-                        ),
-                );
+        if self.selected_project().is_none() || self.selected_session().is_none() {
+            return self.render_home_screen(cx);
         }
         let selected_project_id = self.state.selected_project;
         let projectless_selected = self.selected_project().is_some_and(Project::is_projectless);
@@ -3390,7 +3442,7 @@ mod tests {
 
     #[test]
     fn projectless_sidebar_projects_are_paths_under_the_workspace_root() {
-        let root = Path::new("/tmp/.waku/projects");
+        let root = Path::new("/tmp/.insulator/projects");
         let projectless = Project {
             id: Uuid::from_u128(1),
             name: "Task".to_owned(),

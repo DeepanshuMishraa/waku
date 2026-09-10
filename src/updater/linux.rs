@@ -37,9 +37,9 @@ const MAX_ERROR_BYTES: u64 = 16 * 1024;
 static TEMPORARY_NONCE: AtomicU64 = AtomicU64::new(0);
 
 #[cfg(target_arch = "aarch64")]
-const FEED_URL: Option<&str> = Some("https://releases.waku.sh/appcast-linux-aarch64.xml");
+const FEED_URL: Option<&str> = Some("https://releases.insulator.sh/appcast-linux-aarch64.xml");
 #[cfg(target_arch = "x86_64")]
-const FEED_URL: Option<&str> = Some("https://releases.waku.sh/appcast-linux-x86_64.xml");
+const FEED_URL: Option<&str> = Some("https://releases.insulator.sh/appcast-linux-x86_64.xml");
 #[cfg(not(any(target_arch = "aarch64", target_arch = "x86_64")))]
 const FEED_URL: Option<&str> = None;
 
@@ -61,7 +61,7 @@ impl InstallLayout {
         }
 
         let executable = std::env::current_exe().ok()?.canonicalize().ok()?;
-        if executable.file_name()? != "waku" || executable.parent()?.file_name()? != "bin" {
+        if executable.file_name()? != "insulator" || executable.parent()?.file_name()? != "bin" {
             return None;
         }
         let prefix = executable.parent()?.parent()?.to_path_buf();
@@ -512,7 +512,7 @@ fn validate_packaged_layout(prefix: &Path) -> anyhow::Result<()> {
             && fs::read_to_string(&marker).ok().as_deref() == Some(MANAGED_MARKER_CONTENTS),
         "the install is not marked as a Waku-managed tarball"
     );
-    for executable in ["waku", "waku-daemon", HELPER_EXECUTABLE] {
+    for executable in ["insulator", "waku-daemon", HELPER_EXECUTABLE] {
         let path = prefix.join("bin").join(executable);
         let metadata = fs::symlink_metadata(&path)?;
         anyhow::ensure!(
@@ -539,10 +539,10 @@ fn validate_download_url(value: &str) -> anyhow::Result<()> {
     let url = url::Url::parse(value)?;
     anyhow::ensure!(
         url.scheme() == "https"
-            && url.host_str() == Some("releases.waku.sh")
+            && url.host_str() == Some("releases.insulator.sh")
             && url.username().is_empty()
             && url.password().is_none(),
-        "the update feed points outside releases.waku.sh"
+        "the update feed points outside releases.insulator.sh"
     );
     Ok(())
 }
@@ -688,7 +688,7 @@ fn concise_stderr(bytes: &[u8]) -> String {
 fn preference_path() -> Option<PathBuf> {
     Some(
         dirs::data_local_dir()?
-            .join(waku_protocol::identity::DATA_DIRECTORY_NAME)
+            .join(insulator_protocol::identity::DATA_DIRECTORY_NAME)
             .join("updater.json"),
     )
 }

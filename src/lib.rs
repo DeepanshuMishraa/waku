@@ -45,7 +45,7 @@ mod theme;
 mod ui;
 mod updater;
 
-pub use waku_client::{
+pub use insulator_client::{
     checkpoint, command_env, composer_complete, git_branch, git_commit, i18n, identity, model,
     model_catalog, persistence, projectless, skills, usage, usage_history, worktree,
 };
@@ -241,12 +241,12 @@ pub fn run() {
                 KeyBinding::new("secondary-shift-b", ToggleRightPanel, None),
                 KeyBinding::new("secondary-k", ToggleCommandPalette, None),
                 KeyBinding::new("secondary-alt-shift-f", ToggleFpsCounter, None),
-                KeyBinding::new("secondary-[", NavigateBack, Some("Waku")),
-                KeyBinding::new("secondary-]", NavigateForward, Some("Waku")),
-                KeyBinding::new("ctrl-tab", SwitchTaskForward, Some("Waku")),
-                KeyBinding::new("ctrl-shift-tab", SwitchTaskBackward, Some("Waku")),
-                KeyBinding::new("ctrl-escape", CancelTaskSwitch, Some("Waku")),
-                KeyBinding::new("ctrl-shift-escape", CancelTaskSwitch, Some("Waku")),
+                KeyBinding::new("secondary-[", NavigateBack, Some("Insulator")),
+                KeyBinding::new("secondary-]", NavigateForward, Some("Insulator")),
+                KeyBinding::new("ctrl-tab", SwitchTaskForward, Some("Insulator")),
+                KeyBinding::new("ctrl-shift-tab", SwitchTaskBackward, Some("Insulator")),
+                KeyBinding::new("ctrl-escape", CancelTaskSwitch, Some("Insulator")),
+                KeyBinding::new("ctrl-shift-escape", CancelTaskSwitch, Some("Insulator")),
                 KeyBinding::new("down", SwitchTaskForward, Some("TaskSwitcher")),
                 KeyBinding::new("right", SwitchTaskForward, Some("TaskSwitcher")),
                 KeyBinding::new("up", SwitchTaskBackward, Some("TaskSwitcher")),
@@ -259,21 +259,21 @@ pub fn run() {
                 KeyBinding::new("secondary-/", ToggleModelPicker, None),
                 KeyBinding::new("secondary-u", ToggleUsagePanel, None),
                 KeyBinding::new("secondary-s", SaveFile, None),
-                KeyBinding::new("escape", CancelTurn, Some("Waku")),
-                KeyBinding::new("secondary-c", CopySelection, Some("Waku")),
+                KeyBinding::new("escape", CancelTurn, Some("Insulator")),
+                KeyBinding::new("secondary-c", CopySelection, Some("Insulator")),
                 // Find and replace in the right panel's file editor, on the
                 // conventional VS Code bindings. The primary shortcut + G cycles matches from
                 // the editor without moving focus to the bar.
-                KeyBinding::new("secondary-f", OpenFind, Some("Waku")),
+                KeyBinding::new("secondary-f", OpenFind, Some("Insulator")),
                 // The text input's macOS-style Ctrl-F caret binding is more
                 // specific than Waku's root context. Reassert the platform
                 // primary shortcut for inputs inside this window so Ctrl-F
                 // remains find-in-page on Linux/Windows while Cmd-F keeps the
                 // native behavior on macOS.
                 KeyBinding::new("secondary-f", OpenFind, Some("Waku > TextInput")),
-                KeyBinding::new("secondary-alt-f", OpenFindReplace, Some("Waku")),
-                KeyBinding::new("secondary-g", FindNext, Some("Waku")),
-                KeyBinding::new("secondary-shift-g", FindPrevious, Some("Waku")),
+                KeyBinding::new("secondary-alt-f", OpenFindReplace, Some("Insulator")),
+                KeyBinding::new("secondary-g", FindNext, Some("Insulator")),
+                KeyBinding::new("secondary-shift-g", FindPrevious, Some("Insulator")),
                 // Scoped to the editor pane: escape closes the bar there and
                 // falls through to CancelTurn anywhere else.
                 KeyBinding::new("escape", CloseFind, Some("FileEditorPane")),
@@ -291,7 +291,7 @@ pub fn run() {
                 KeyBinding::new("secondary-alt-r", ToggleFindRegex, Some("FileEditorPane")),
                 KeyBinding::new("shift-enter", FindPrevious, Some("FindBar")),
                 KeyBinding::new("secondary-alt-enter", ReplaceAllMatches, Some("FindBar")),
-                // Browser surface. Deeper than "Waku", so while focus is on the
+                // Browser surface. Deeper than "Insulator", so while focus is on the
                 // page or its address bar the browser reads the platform's
                 // conventional navigation shortcuts; the same keys elsewhere
                 // keep their app meanings. The clipboard trio is rebound

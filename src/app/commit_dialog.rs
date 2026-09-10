@@ -178,15 +178,15 @@ impl Waku {
         });
         cx.notify();
 
-        let workspace_client = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
-                    match workspace_client.request(waku_client::WorkspaceOperation::InspectCommit {
+                    match workspace_client.request(insulator_client::WorkspaceOperation::InspectCommit {
                         cwd: workspace.clone(),
                     }) {
-                        Ok(waku_client::WorkspaceResult::CommitSnapshot { snapshot }) => {
+                        Ok(insulator_client::WorkspaceResult::CommitSnapshot { snapshot }) => {
                             Ok(snapshot)
                         }
                         Ok(_) => Err("the daemon returned an invalid Git response".to_owned()),
@@ -323,20 +323,20 @@ impl Waku {
         window_handle: gpui::AnyWindowHandle,
         cx: &mut Context<Self>,
     ) {
-        let workspace_client = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let generation_workspace = workspace.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     match workspace_client.request(
-                        waku_client::WorkspaceOperation::GenerateCommitMessage {
+                        insulator_client::WorkspaceOperation::GenerateCommitMessage {
                             cwd: generation_workspace,
                             include_unstaged,
                             invocation,
                         },
                     ) {
-                        Ok(waku_client::WorkspaceResult::CommitMessage { message }) => Ok(message),
+                        Ok(insulator_client::WorkspaceResult::CommitMessage { message }) => Ok(message),
                         Ok(_) => {
                             Err("the daemon returned an invalid commit message response".into())
                         }
@@ -405,31 +405,31 @@ impl Waku {
         window_handle: gpui::AnyWindowHandle,
         cx: &mut Context<Self>,
     ) {
-        let workspace_client = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let operation_workspace = workspace.clone();
             let result = cx
                 .background_executor()
                 .spawn(async move {
                     let operation = match action {
-                        CommitAction::Commit => waku_client::WorkspaceOperation::Commit {
+                        CommitAction::Commit => insulator_client::WorkspaceOperation::Commit {
                             cwd: operation_workspace.clone(),
                             message,
                             include_unstaged,
                             push: false,
                         },
-                        CommitAction::CommitAndPush => waku_client::WorkspaceOperation::Commit {
+                        CommitAction::CommitAndPush => insulator_client::WorkspaceOperation::Commit {
                             cwd: operation_workspace.clone(),
                             message,
                             include_unstaged,
                             push: true,
                         },
-                        CommitAction::Push => waku_client::WorkspaceOperation::Push {
+                        CommitAction::Push => insulator_client::WorkspaceOperation::Push {
                             cwd: operation_workspace.clone(),
                         },
                     };
                     let result = match workspace_client.request(operation) {
-                        Ok(waku_client::WorkspaceResult::Ack) => Ok(()),
+                        Ok(insulator_client::WorkspaceResult::Ack) => Ok(()),
                         Ok(_) => Err(anyhow::anyhow!(
                             "the daemon returned an invalid Git response"
                         )),
@@ -437,11 +437,11 @@ impl Waku {
                     };
                     let snapshot = result.as_ref().err().and_then(|_| {
                         match workspace_client.request(
-                            waku_client::WorkspaceOperation::InspectCommit {
+                            insulator_client::WorkspaceOperation::InspectCommit {
                                 cwd: operation_workspace.clone(),
                             },
                         ) {
-                            Ok(waku_client::WorkspaceResult::CommitSnapshot { snapshot }) => {
+                            Ok(insulator_client::WorkspaceResult::CommitSnapshot { snapshot }) => {
                                 Some(snapshot)
                             }
                             _ => None,

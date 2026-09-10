@@ -61,7 +61,7 @@ use crate::query::{Query, QueryCache};
 use crate::review_diff::{Snapshot as ReviewDiffSnapshot, Source as ReviewDiffSource};
 use crate::terminal::TerminalView;
 use crate::theme::{ColorTheme, Theme, ThemePreference, set_active_ui_font_family, sp};
-use waku_protocol::theme::WindowStyle;
+use insulator_protocol::theme::WindowStyle;
 use crate::ui::text_field::TextField;
 use crate::ui::{
     MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_horizontal_scroll,
@@ -562,7 +562,7 @@ struct DriverStartRequest {
     provider: ProviderKind,
     options: DriverStartOptions,
     event_wake: smol::channel::Sender<()>,
-    daemon: waku_client::DaemonSupervisor,
+    daemon: insulator_client::DaemonSupervisor,
 }
 
 struct SessionTitleRequest {
@@ -1060,7 +1060,7 @@ pub struct Waku {
     /// Owns the headless provider process for exactly as long as the desktop
     /// app entity. Debug builds can replace it independently after a rebuild;
     /// all live driver handles below are lightweight RPC proxies.
-    daemon: waku_client::DaemonSupervisor,
+    daemon: insulator_client::DaemonSupervisor,
     /// Cached once at construction for the Daemon settings connection URL;
     /// rendering must not query account or network configuration.
     daemon_hostname: String,
@@ -1099,6 +1099,7 @@ pub struct Waku {
     settings_focus: FocusHandle,
     window_style_restart_dialog: Option<WindowStyle>,
     onboarding_add_project_focus: FocusHandle,
+    onboarding_github_project_focus: FocusHandle,
     onboarding_projectless_focus: FocusHandle,
     /// Mirror of Sparkle's persisted automatic-check setting. Refreshed when
     /// settings opens and on toggle, so frames never read user defaults —
@@ -1725,7 +1726,7 @@ pub(super) fn next_time_label_change(sessions: &[AgentSession], now: u64) -> Opt
 
 fn migrate_legacy_projectless_projects(
     state: &mut PersistedState,
-    workspace: &waku_client::WorkspaceClient,
+    workspace: &insulator_client::WorkspaceClient,
 ) -> (bool, Option<anyhow::Error>) {
     let legacy_indices = state
         .projects
@@ -1743,9 +1744,9 @@ fn migrate_legacy_projectless_projects(
     for index in legacy_indices {
         let path = state.projects[index].path.clone();
         let response = workspace
-            .request(waku_client::WorkspaceOperation::MigrateProjectlessWorkspace { path });
+            .request(insulator_client::WorkspaceOperation::MigrateProjectlessWorkspace { path });
         let cwd = match response {
-            Ok(waku_client::WorkspaceResult::ProjectlessWorkspace { cwd }) => cwd,
+            Ok(insulator_client::WorkspaceResult::ProjectlessWorkspace { cwd }) => cwd,
             Ok(_) => {
                 return (
                     changed,
@@ -1973,7 +1974,7 @@ impl Waku {
     pub fn new(
         window: &mut Window,
         cx: &mut App,
-        daemon: waku_client::DaemonSupervisor,
+        daemon: insulator_client::DaemonSupervisor,
     ) -> Entity<Self> {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let store = StateStore::remote(daemon.clone());
@@ -1995,7 +1996,7 @@ impl Waku {
         crate::md::render::set_active_mono_family(state.code_font_family.clone());
         // Chrome text is authored in `sp` rems against the default UI font
         // size, so the window's rem size *is* the UI font size setting.
-        window.set_rem_size(px(waku_client::persistence::sanitized_ui_font_size(
+        window.set_rem_size(px(insulator_client::persistence::sanitized_ui_font_size(
             state.ui_font_size,
         )));
         let analytics = crate::analytics::Analytics::new(
@@ -2090,12 +2091,12 @@ impl Waku {
         let sidebar_pane = WakuPane::new(Waku::sidebar_pane_content, cx);
         let transcript_pane = WakuPane::new(Waku::transcript_pane_content, cx);
         let right_panel_pane = WakuPane::new(Waku::right_panel_pane_content, cx);
-        let workspace_client = waku_client::WorkspaceClient::new(daemon.client());
+        let workspace_client = insulator_client::WorkspaceClient::new(daemon.client());
         let (projectless_migrated, projectless_migration_error) =
             migrate_legacy_projectless_projects(&mut state, &workspace_client);
-        // Every launch starts on the selected workspace's new-task screen.
-        // Running sessions are still recovered below from their busy status.
+        // Every launch starts on the home screen.
         state.selected_session = None;
+        state.selected_project = None;
         let pinned_project_ids = state.pinned_projects.iter().copied().collect();
         let projectless_save_error = projectless_migrated
             .then(|| store.save(&mut state).err())
@@ -2267,9 +2268,9 @@ impl Waku {
                     let result = match daemon.request(
                         Uuid::nil(),
                         Uuid::nil(),
-                        waku_client::Command::ProbeComputerPermissions { prompt: false },
+                        insulator_client::Command::ProbeComputerPermissions { prompt: false },
                     ) {
-                        Ok(waku_client::ResponsePayload::ComputerPermissions { permissions }) => {
+                        Ok(insulator_client::ResponsePayload::ComputerPermissions { permissions }) => {
                             Ok(permissions)
                         }
                         Ok(_) => Err("the daemon returned an invalid permission response".into()),
@@ -2355,6 +2356,7 @@ impl Waku {
         let entity = cx.new(|cx| {
             let settings_focus = cx.focus_handle();
             let onboarding_add_project_focus = cx.focus_handle();
+            let onboarding_github_project_focus = cx.focus_handle();
             let onboarding_projectless_focus = cx.focus_handle();
             let updater_button_focus = cx.focus_handle();
             let model_picker_empty_focus = cx.focus_handle();
@@ -2826,6 +2828,7 @@ impl Waku {
                 settings_focus,
                 window_style_restart_dialog: None,
                 onboarding_add_project_focus,
+                onboarding_github_project_focus,
                 onboarding_projectless_focus,
                 automatic_updates_enabled: cx
                     .try_global::<crate::updater::UpdaterState>()

@@ -836,15 +836,15 @@ fn file_highlighter_language(relative_path: &str) -> &'static str {
 /// One unbounded `read_to_string`, so callers keep it off the UI thread; the
 /// only caller is [`Waku::read_right_panel_file_into_editor`].
 fn read_right_panel_file(
-    workspace: &waku_client::WorkspaceClient,
+    workspace: &insulator_client::WorkspaceClient,
     project_path: &Path,
     relative_path: &str,
 ) -> (String, bool) {
-    match workspace.request(waku_client::WorkspaceOperation::ReadTextFile {
+    match workspace.request(insulator_client::WorkspaceOperation::ReadTextFile {
         root: project_path.to_path_buf(),
         relative_path: PathBuf::from(relative_path),
     }) {
-        Ok(waku_client::WorkspaceResult::TextFile { content }) => (content, true),
+        Ok(insulator_client::WorkspaceResult::TextFile { content }) => (content, true),
         Ok(_) => (
             tr!(
                 "files.unable_to_edit",
@@ -3147,7 +3147,7 @@ impl Waku {
         editor.reading = true;
         editor.read_epoch += 1;
         let epoch = editor.read_epoch;
-        let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
 
         cx.spawn(async move |waku, cx| {
             let read = cx
@@ -3491,7 +3491,7 @@ impl Waku {
         } else {
             return;
         };
-        let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let result = cx
                 .background_executor()
@@ -3500,12 +3500,12 @@ impl Waku {
                     let relative_path = relative_path.clone();
                     let content = content.clone();
                     async move {
-                        match workspace.request(waku_client::WorkspaceOperation::WriteTextFile {
+                        match workspace.request(insulator_client::WorkspaceOperation::WriteTextFile {
                             root: project_path,
                             relative_path: PathBuf::from(relative_path),
                             content,
                         })? {
-                            waku_client::WorkspaceResult::Ack => Ok(()),
+                            insulator_client::WorkspaceResult::Ack => Ok(()),
                             _ => anyhow::bail!("the daemon returned an invalid file response"),
                         }
                     }
@@ -4467,18 +4467,18 @@ impl Waku {
             Query::Pending => {}
             Query::Missing(token) => {
                 let expanded = self.right_panel_expanded_paths.clone();
-                let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+                let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
                 cx.spawn(async move |waku, cx| {
                     let entries = cx
                         .background_executor()
                         .spawn({
                             let path = project_path.clone();
                             async move {
-                                match workspace.request(waku_client::WorkspaceOperation::ListTree {
+                                match workspace.request(insulator_client::WorkspaceOperation::ListTree {
                                     root: path,
                                     expanded_paths: expanded.into_iter().collect(),
                                 }) {
-                                    Ok(waku_client::WorkspaceResult::WorkingTree { entries }) => {
+                                    Ok(insulator_client::WorkspaceResult::WorkingTree { entries }) => {
                                         entries
                                             .into_iter()
                                             .map(|entry| WorkingTreeEntry {
@@ -4615,7 +4615,7 @@ impl Waku {
         self.right_panel_diff_error = None;
         cx.notify();
 
-        let workspace = waku_client::WorkspaceClient::new(self.daemon.client());
+        let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
         cx.spawn(async move |waku, cx| {
             let result = cx
                 .background_executor()
@@ -4623,12 +4623,12 @@ impl Waku {
                     let project_path = project_path.clone();
                     async move {
                         match workspace.request(
-                            waku_client::WorkspaceOperation::CollectReviewDiff {
+                            insulator_client::WorkspaceOperation::CollectReviewDiff {
                                 cwd: project_path,
                                 source: crate::review_diff::wire_source(source),
                             },
                         )? {
-                            waku_client::WorkspaceResult::ReviewDiff { data } => {
+                            insulator_client::WorkspaceResult::ReviewDiff { data } => {
                                 Ok(crate::review_diff::parse_collected(
                                     source,
                                     &data.numstat,
