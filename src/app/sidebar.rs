@@ -971,14 +971,33 @@ impl Waku {
             )
     }
 
-    fn render_sidebar_home(&self, cx: &mut Context<Self>) -> Div {
-        let home = self
+    fn render_sidebar_new_task(&self, cx: &mut Context<Self>) -> Div {
+        let new_task = self
             .render_sidebar_action_row(
-                "sidebar-home",
-                "icons/home.svg",
-                tr!("sidebar.home"),
+                "sidebar-new-task",
+                "icons/compose.svg",
+                tr!("menu.new_task"),
                 cx,
             )
+            .on_click(cx.listener(|this, _, window, cx| {
+                this.new_session_action(&NewSession, window, cx);
+            }))
+            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                    this.new_session_action(&NewSession, window, cx);
+                    cx.stop_propagation();
+                }
+            }));
+        div()
+            .w_full()
+            .h(px(SIDEBAR_ACTION_ROW_HEIGHT))
+            .flex_none()
+            .child(new_task)
+    }
+
+    fn render_sidebar_home(&self, cx: &mut Context<Self>) -> Div {
+        let home = self
+            .render_sidebar_action_row("sidebar-home", "icons/home.svg", tr!("sidebar.home"), cx)
             .on_click(cx.listener(|this, _, _, cx| {
                 this.open_home_screen(cx);
             }))
@@ -1337,6 +1356,7 @@ impl Waku {
                     .px(px(10.0))
                     .mt(px(6.0))
                     .child(self.render_sidebar_home(cx))
+                    .child(self.render_sidebar_new_task(cx))
                     .child(self.render_sidebar_search(cx)),
             )
             .child(
@@ -2519,7 +2539,11 @@ impl Waku {
                             .gap(px(6.0))
                             .cursor_default()
                             .text_size(sp(12.5))
-                            .text_color(if selected { theme.text } else { theme.text_secondary })
+                            .text_color(if selected {
+                                theme.text
+                            } else {
+                                theme.text_secondary
+                            })
                             .when(selected, |element| {
                                 element.border_b_2().border_color(theme.accent)
                             })
@@ -2541,7 +2565,9 @@ impl Waku {
                             )
                             .child(
                                 div()
-                                    .id(SharedString::from(format!("main-chat-tab-close-{session_id}")))
+                                    .id(SharedString::from(format!(
+                                        "main-chat-tab-close-{session_id}"
+                                    )))
                                     .w(px(16.0))
                                     .h(px(16.0))
                                     .flex()
@@ -2588,7 +2614,11 @@ impl Waku {
                             .gap(px(6.0))
                             .cursor_default()
                             .text_size(sp(12.5))
-                            .text_color(if selected { theme.text } else { theme.text_secondary })
+                            .text_color(if selected {
+                                theme.text
+                            } else {
+                                theme.text_secondary
+                            })
                             .when(selected, |element| {
                                 element.border_b_2().border_color(theme.accent)
                             })
@@ -2601,7 +2631,13 @@ impl Waku {
                                 });
                             })
                             .child(icon(file_icon_for_path(&path), 13.0, theme.text_tertiary))
-                            .child(div().min_w_0().flex_1().truncate().child(SharedString::from(label)))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .truncate()
+                                    .child(SharedString::from(label)),
+                            )
                             .child(
                                 div()
                                     .id(SharedString::from(format!("main-file-tab-close-{index}")))

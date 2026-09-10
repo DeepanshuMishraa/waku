@@ -575,6 +575,7 @@ mod tests {
         let mut paths = vec![
             "icons/panel-left.svg",
             "icons/plus.svg",
+            "icons/compose.svg",
             "icons/arrow-left.svg",
             "icons/arrow-right.svg",
             "icons/arrow-up.svg",
