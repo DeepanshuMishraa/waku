@@ -1,68 +1,6 @@
 use gpui::{Hsla, Window};
 use std::path::PathBuf;
 
-/// A stable, human-readable label for the local desktop shown in navigation.
-/// Resolve it once during app startup. Rendering must not spawn processes or
-/// query the environment.
-pub fn local_device_label() -> String {
-    let name = local_user_full_name().unwrap_or_else(|| {
-        std::env::var("USER")
-            .ok()
-            .filter(|value| !value.trim().is_empty())
-            .unwrap_or_else(|| "My".to_owned())
-    });
-    let first_name = name.split_whitespace().next().unwrap_or(&name);
-    let trimmed = first_name.strip_suffix("'s").unwrap_or(first_name);
-    #[cfg(target_os = "macos")]
-    {
-        return format!("{trimmed}'s Mac");
-    }
-    #[cfg(not(target_os = "macos"))]
-    {
-        let computer = local_computer_name().unwrap_or_else(|| "Device".to_owned());
-        format!("{trimmed}'s {computer}")
-    }
-}
-
-pub fn local_user_full_name() -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        if let Ok(output) = std::process::Command::new("id").arg("-F").output() {
-            let name = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-            if !name.is_empty() {
-                return Some(name);
-            }
-        }
-        if let Ok(user) = std::env::var("USER") {
-            if let Ok(output) = std::process::Command::new("dscl")
-                .args([".", "-read", &format!("/Users/{user}"), "RealName"])
-                .output()
-            {
-                let text = String::from_utf8_lossy(&output.stdout);
-                let name = text
-                    .lines()
-                    .filter(|line| !line.starts_with("RealName:"))
-                    .collect::<Vec<_>>()
-                    .join(" ")
-                    .trim()
-                    .to_owned();
-                if !name.is_empty() {
-                    return Some(name);
-                }
-            }
-        }
-    }
-    None
-}
-
-pub fn local_user_login_avatar_path() -> Option<PathBuf> {
-    let cache_dir = dirs::home_dir()?.join(".insulator").join("cache");
-    ["jpg", "png"]
-        .into_iter()
-        .map(|extension| cache_dir.join(format!("login-avatar.{extension}")))
-        .find(|path| path.is_file())
-}
-
 pub fn local_user_github_avatar_path() -> Option<PathBuf> {
     let path = dirs::home_dir()?
         .join(".insulator")
@@ -71,8 +9,6 @@ pub fn local_user_github_avatar_path() -> Option<PathBuf> {
     path.is_file().then_some(path)
 }
 
-/// Cache the macOS login picture for the device row. The cached file keeps
-/// rendering synchronous and lets the avatar appear immediately on relaunch.
 pub fn set_font_smoothing_enabled(enabled: bool) {
     #[cfg(target_os = "macos")]
     {
@@ -193,21 +129,6 @@ pub fn ensure_user_github_avatar_cached() {
             }
         }
     });
-}
-
-fn local_computer_name() -> Option<String> {
-    #[cfg(target_os = "macos")]
-    {
-        let output = std::process::Command::new("scutil")
-            .args(["--get", "ComputerName"])
-            .output()
-            .ok()?;
-        let name = String::from_utf8_lossy(&output.stdout).trim().to_owned();
-        if !name.is_empty() {
-            return Some(name);
-        }
-    }
-    crate::daemon::local_hostname()
 }
 
 /// Returns the unique font family names available to the current user.

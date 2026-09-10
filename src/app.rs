@@ -1064,7 +1064,6 @@ pub struct Waku {
     /// Cached once at construction for the Daemon settings connection URL;
     /// rendering must not query account or network configuration.
     daemon_hostname: String,
-    sidebar_device_label: String,
     /// Session details currently being fetched from the daemon. Sidebar rows
     /// stay usable while the selected transcript hydrates asynchronously.
     session_hydrations: HashSet<Uuid>,
@@ -1352,8 +1351,8 @@ pub struct Waku {
     /// Groups the user has unfolded in the sidebar view. This is
     /// intentionally runtime-only, like transcript disclosure state.
     sidebar_expanded_groups: HashSet<SidebarGroup>,
-    /// Projects whose recent chats are shown in the pinned section.
-    pinned_project_ids: HashSet<Uuid>,
+    /// Conversations shown in the pinned section.
+    pinned_session_ids: HashSet<Uuid>,
     /// Number of older sessions revealed inside each project section. This is
     /// runtime-only so every launch starts with the recent three-day view.
     sidebar_project_reveal_counts: HashMap<SidebarGroup, usize>,
@@ -1979,7 +1978,6 @@ impl Waku {
         let cwd = std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."));
         let store = StateStore::remote(daemon.clone());
         let daemon_hostname = crate::daemon::local_hostname().unwrap_or_else(|| "this-mac".into());
-        let sidebar_device_label = crate::platform::local_device_label();
         crate::platform::ensure_user_login_avatar_cached();
         crate::platform::ensure_user_github_avatar_cached();
         let composer_draft_store = ComposerDraftStore::remote(daemon.clone());
@@ -2097,7 +2095,7 @@ impl Waku {
         // Every launch starts on the home screen.
         state.selected_session = None;
         state.selected_project = None;
-        let pinned_project_ids = state.pinned_projects.iter().copied().collect();
+        let pinned_session_ids = state.pinned_sessions.iter().copied().collect();
         let projectless_save_error = projectless_migrated
             .then(|| store.save(&mut state).err())
             .flatten();
@@ -2799,8 +2797,7 @@ impl Waku {
             Self {
                 daemon,
                 daemon_hostname,
-                sidebar_device_label,
-                session_hydrations: HashSet::new(),
+                    session_hydrations: HashSet::new(),
                 pending_session_activation: None,
                 analytics,
                 state,
@@ -2951,7 +2948,7 @@ impl Waku {
                 session_rename: None,
                 session_rename_input,
                 sidebar_expanded_groups: HashSet::new(),
-                pinned_project_ids,
+                pinned_session_ids,
                 sidebar_project_reveal_counts: HashMap::new(),
                 sidebar_group_header_focuses: RefCell::new(HashMap::new()),
                 sidebar_group_compose_focuses: RefCell::new(HashMap::new()),

@@ -1,6 +1,6 @@
 # Streaming render performance
 
-How Waku keeps CPU flat while a provider streams, what each piece of the
+How Insulator keeps CPU flat while a provider streams, what each piece of the
 pipeline is allowed to cost, and how to measure before changing any of it.
 This encodes the results of the 2026-08-16 streaming investigation, which took
 sustained streaming CPU from 40–60% to under ~10% average (debug build) across
@@ -25,8 +25,8 @@ price:
 | `window.refresh()` | Re-renders everything and **bypasses every cached pane** | Genuine whole-window invalidation only: hover transitions, drags, theme |
 | `request_animation_frame` | Display-rate (120 Hz) re-render of the current view for as long as it re-arms | Nothing during streaming. One mounted repeating `with_animation` pinned the window at 120 Hz for a whole turn (~36% CPU by itself). The one sanctioned transient: the 200 ms panel show/hide slide ([src/app/render.rs](../src/app/render.rs)), which re-arms only while an edge is moving and gates the pane fan-out (below) |
 
-The root `Waku` view re-renders on every frame regardless of what is dirty, so
-it must stay thin: the sidebar, transcript, and right panel are `WakuPane`
+The root `Insulator` view re-renders on every frame regardless of what is dirty, so
+it must stay thin: the sidebar, transcript, and right panel are `InsulatorPane`
 islands ([src/app.rs](../src/app.rs)) embedded with the fork's
 `Entity::cached`. Each pane observes the root — any root notify still
 re-renders every island, so caching can never show stale state — while a
@@ -147,7 +147,7 @@ math uses one measured element with cached glyph runs and line positions,
 including baseline alignment and Unicode wrapping. It does not create an
 element per word or start an animation clock. Selection and search use the
 original LaTeX byte ranges. The manual measurement is
-`cargo test --locked -p waku --lib md::math::tests::benchmark_native_math_cache -- --ignored --nocapture`.
+`cargo test --locked -p insulator --lib md::math::tests::benchmark_native_math_cache -- --ignored --nocapture`.
 
 ## Measuring
 

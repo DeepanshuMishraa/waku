@@ -96,8 +96,8 @@ replace the daemon without relaunching Insulator Debug.
 Development is supported on macOS, Linux, and Windows and requires
 [Rust 1.96 or newer](https://www.rust-lang.org/tools/install) and
 [Bun](https://bun.sh/). Linux supports both Wayland and X11, and Windows needs
-the MSVC toolchain; install the native build prerequisites listed in
-[CONTRIBUTING.md](CONTRIBUTING.md) first.
+the MSVC toolchain; install the native build prerequisites for your platform
+before starting development.
 
 ```sh
 bun install
@@ -108,8 +108,7 @@ The embedded browser and experimental computer-use integration currently
 remain macOS-only. Agent sessions, projects, transcripts, skills, usage,
 diffs, file editing, and the terminal run natively on Linux and Windows.
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for the development workflow and checks.
-Release maintainers should also read [RELEASING.md](RELEASING.md).
+Release maintainers should read [RELEASING.md](RELEASING.md).
 
 ## Sponsorship
 

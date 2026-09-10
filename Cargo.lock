@@ -3774,7 +3774,7 @@ dependencies = [
 
 [[package]]
 name = "insulator"
-version = "0.1.18"
+version = "0.1.1"
 dependencies = [
  "alacritty_terminal",
  "anyhow",

@@ -369,7 +369,7 @@ struct AppState {
     #[serde(default)]
     sidebar_ordering: SidebarOrdering,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pinned_projects: Vec<Uuid>,
+    pinned_sessions: Vec<Uuid>,
     #[serde(default = "default_right_panel_width")]
     right_panel_width: f32,
     /// Whether markdown files in the right panel open as a rendered preview
@@ -443,7 +443,7 @@ pub struct PersistedState {
     #[serde(default)]
     pub sidebar_ordering: SidebarOrdering,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub pinned_projects: Vec<Uuid>,
+    pub pinned_sessions: Vec<Uuid>,
     #[serde(default = "default_right_panel_width")]
     pub right_panel_width: f32,
     /// Whether markdown files in the right panel open as a rendered preview
@@ -517,7 +517,7 @@ impl PersistedState {
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
             sidebar_grouping: SidebarGrouping::Project,
             sidebar_ordering: SidebarOrdering::Updated,
-            pinned_projects: Vec::new(),
+            pinned_sessions: Vec::new(),
             right_panel_width: DEFAULT_RIGHT_PANEL_WIDTH,
             markdown_preview: false,
             window_state: None,
@@ -664,7 +664,7 @@ impl PersistedState {
             sidebar_width: self.sidebar_width,
             sidebar_grouping: self.sidebar_grouping,
             sidebar_ordering: self.sidebar_ordering,
-            pinned_projects: self.pinned_projects.clone(),
+            pinned_sessions: self.pinned_sessions.clone(),
             right_panel_width: self.right_panel_width,
             markdown_preview: self.markdown_preview,
             window_state: self.window_state,
@@ -705,7 +705,7 @@ impl PersistedState {
         self.sidebar_width = app_state.sidebar_width;
         self.sidebar_grouping = app_state.sidebar_grouping;
         self.sidebar_ordering = app_state.sidebar_ordering;
-        self.pinned_projects = app_state.pinned_projects;
+        self.pinned_sessions = app_state.pinned_sessions;
         self.right_panel_width = app_state.right_panel_width;
         self.markdown_preview = app_state.markdown_preview;
         self.window_state = app_state.window_state;

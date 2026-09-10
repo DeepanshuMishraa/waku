@@ -1814,8 +1814,8 @@ impl Waku {
     }
 
     pub(super) fn save(&mut self) {
-        self.state.pinned_projects = self.pinned_project_ids.iter().copied().collect();
-        self.state.pinned_projects.sort_unstable();
+        self.state.pinned_sessions = self.pinned_session_ids.iter().copied().collect();
+        self.state.pinned_sessions.sort_unstable();
         self.last_stream_save = Instant::now();
         let daemon_error = self
             .daemon

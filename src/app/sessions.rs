@@ -475,9 +475,6 @@ impl Waku {
 
         self.sidebar_expanded_groups
             .remove(&sidebar::SidebarGroup::Project(project_id));
-        self.sidebar_expanded_groups
-            .remove(&sidebar::SidebarGroup::PinnedProject(project_id));
-        self.pinned_project_ids.remove(&project_id);
         self.save();
         cx.notify();
     }

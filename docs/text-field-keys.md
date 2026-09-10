@@ -21,7 +21,7 @@ bound explicitly.
 The reference is AppKit's `StandardKeyBinding.dict`
 (`/System/Library/Frameworks/AppKit.framework/Resources/`), the table every
 native text view consults. The selector column names the AppKit action a chord
-maps to there; a row with no selector is a Waku decision, explained inline.
+maps to there; a row with no selector is a Insulator decision, explained inline.
 
 ### Caret
 
@@ -37,7 +37,7 @@ maps to there; a row with no selector is a Waku decision, explained inline.
 | `ctrl-a` / `ctrl-e` | paragraph start / end; stays put on repeat | `moveToBeginningOfParagraph:` / `moveToEndOfParagraph:` |
 | `alt-up` / `alt-down` | paragraph start / end; on repeat, the previous / next paragraph | `moveParagraphBackward:` / `moveParagraphForward:` |
 | `cmd-up` / `cmd-down` | document start / end | `moveToBeginningOfDocument:` / `moveToEndOfDocument:` |
-| `home` / `end` | document start / end. Native views only scroll here; Waku moves the caret, as most editors do | — |
+| `home` / `end` | document start / end. Native views only scroll here; Insulator moves the caret, as most editors do | — |
 
 ### Selection
 
@@ -64,7 +64,7 @@ Each chord extends from the selection's moving end.
 | Chord | Deletes | AppKit selector |
 | --- | --- | --- |
 | `backspace` / `delete` | one character back / forward, or the selection | `deleteBackward:` / `deleteForward:` |
-| `shift-`, `ctrl-`, `ctrl-shift-` + either | the same one character; the modifiers are ignored | `deleteBackward:` / `deleteForward:` (`ctrl-backspace` is `deleteBackwardByDecomposingPreviousCharacter:`, which Waku approximates) |
+| `shift-`, `ctrl-`, `ctrl-shift-` + either | the same one character; the modifiers are ignored | `deleteBackward:` / `deleteForward:` (`ctrl-backspace` is `deleteBackwardByDecomposingPreviousCharacter:`, which Insulator approximates) |
 | `ctrl-h` / `ctrl-d` | one character back / forward | `deleteBackward:` / `deleteForward:` |
 | `alt-backspace`, `ctrl-alt-backspace` | one word back | `deleteWordBackward:` |
 | `alt-delete` | one word forward | `deleteWordForward:` |

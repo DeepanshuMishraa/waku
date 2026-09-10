@@ -1,21 +1,21 @@
 ---
-name: waku-computer-use
-description: Control local Mac apps through Waku Computer Use for tasks that require reading or operating app UI. Prefer purpose-built connectors, APIs, or CLIs when available.
+name: insulator-computer-use
+description: Control local Mac apps through Insulator Computer Use for tasks that require reading or operating app UI. Prefer purpose-built connectors, APIs, or CLIs when available.
 ---
 
-## waku_js_repl + Waku Computer Use
+## insulator_js_repl + Insulator Computer Use
 
-* Use the `js` tool from `waku_js_repl` for all Computer Use actions.
-* Do not use other technologies besides `waku_js_repl` for computer interactions, unless specifically requested by the user (e.g. AppleScript, `osascript`, JXA, System Events, CGEvent synthesis).
+* Use the `js` tool from `insulator_js_repl` for all Computer Use actions.
+* Do not use other technologies besides `insulator_js_repl` for computer interactions, unless specifically requested by the user (e.g. AppleScript, `osascript`, JXA, System Events, CGEvent synthesis).
 * Prefer a dedicated plugin or skill when it can complete the task; use Computer Use for app interactions that are not exposed through a more specific interface.
 * The QuickJS state is persistent across `js` calls.
 * For text output, use `nodeRepl.write(...)`. `nodeRepl.write(...)` takes a string. If you would like to read a whole object, wrap it with `JSON.stringify(...)`.
 
 ## Bootstrap
 
-Waku exposes the native Computer Use runtime directly to QuickJS, but initializes `sky` lazily. Do not import `@oai/sky` or call the raw Computer Use helper.
+Insulator exposes the native Computer Use runtime directly to QuickJS, but initializes `sky` lazily. Do not import `@oai/sky` or call the raw Computer Use helper.
 
-Run this once per fresh `waku_js_repl` session:
+Run this once per fresh `insulator_js_repl` session:
 
 ```js
 if (!globalThis.sky) {
@@ -116,11 +116,11 @@ Notes:
 * The `app` parameter may be an app's display name, full app path, process name, or unambiguous bundle identifier.
 * Do not call `list_apps` solely to resolve an identifier for a specific app. First, attempt `get_app_state` with the app's name.
 * If an action or `get_app_state(...)` call fails when targeting an app by display name, immediately retry the same operation with that app's bundle identifier from `list_apps()` before pursuing other debugging paths.
-* It is usually not necessary to pause between performing an action and getting the updated app state. Waku automatically waits up to about one second after a recent action before capturing the new state.
+* It is usually not necessary to pause between performing an action and getting the updated app state. Insulator automatically waits up to about one second after a recent action before capturing the new state.
 
 ## Reading screenshots
 
-Screenshot URLs are in `screenshot.url`, and Waku returns them as base64-encoded `data:` URLs. To read a screenshot:
+Screenshot URLs are in `screenshot.url`, and Insulator returns them as base64-encoded `data:` URLs. To read a screenshot:
 
 ```js
 var state = await sky.get_app_state({ app: "com.google.Chrome" });
@@ -129,9 +129,9 @@ if (state.screenshot) {
 }
 ```
 
-## Waku target restrictions
+## Insulator target restrictions
 
-Waku Computer Use cannot control Waku itself, Codex, ChatGPT, Sky, password managers, System Settings, login or security prompts, Keychain Access, or terminal apps. Do not try to bypass these restrictions.
+Insulator Computer Use cannot control Insulator itself, Codex, ChatGPT, Sky, password managers, System Settings, login or security prompts, Keychain Access, or terminal apps. Do not try to bypass these restrictions.
 
 # Computer Use Confirmations Policy
 

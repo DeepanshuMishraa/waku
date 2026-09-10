@@ -1,4 +1,5 @@
 use std::borrow::Cow;
+use std::sync::{Arc, OnceLock};
 
 use anyhow::Result;
 use gpui::{App, AssetSource, SharedString};
@@ -224,17 +225,26 @@ const TEXT_FONTS: &[&[u8]] = &[
     include_bytes!("../assets/fonts/JetBrainsMono-Bold.ttf"),
     include_bytes!("../assets/fonts/JetBrainsMono-Italic.ttf"),
     include_bytes!("../assets/fonts/JetBrainsMono-BoldItalic.ttf"),
-    include_bytes!("../assets/fonts/OpenCode.otf"),
 ];
 
 /// Symbols-only icon face resolved via CoreText cascade (`FontFallbacks`),
 /// never as a primary GPUI family; see `register_fonts_with_coretext`.
 const SYMBOLS_FONT: &[u8] = include_bytes!("../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
-const OPENCODE_FONT: &[u8] = include_bytes!("../assets/fonts/OpenCode.otf");
+static HOME_LOGO: OnceLock<Arc<gpui::Image>> = OnceLock::new();
 
 /// Family name of [`SYMBOLS_FONT`] for `FontFallbacks` lists.
 pub const SYMBOLS_FONT_FAMILY: &str = "Symbols Nerd Font Mono";
-pub const OPENCODE_FONT_FAMILY: &str = "OpenCode";
+
+pub fn home_logo() -> Arc<gpui::Image> {
+    HOME_LOGO
+        .get_or_init(|| {
+            Arc::new(gpui::Image::from_bytes(
+                gpui::ImageFormat::Png,
+                include_bytes!("../assets/insulator-logo.png").to_vec(),
+            ))
+        })
+        .clone()
+}
 
 pub fn register_fonts(cx: &App) -> Result<()> {
     cx.text_system().add_fonts(
@@ -243,7 +253,7 @@ pub fn register_fonts(cx: &App) -> Result<()> {
             .map(|font| Cow::Borrowed(*font))
             .collect::<Vec<_>>(),
     )?;
-    crate::platform::register_fonts_with_coretext(&[SYMBOLS_FONT, OPENCODE_FONT])
+    crate::platform::register_fonts_with_coretext(&[SYMBOLS_FONT])
 }
 
 impl AssetSource for Assets {

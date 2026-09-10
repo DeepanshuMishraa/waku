@@ -1,12 +1,12 @@
 # Session titles
 
-Waku names a chat after its first completed exchange.
+Insulator names a chat after its first completed exchange.
 
 ## Behavior
 
-A new chat displays `New task` in both the sidebar and chat tab. Waku does not derive a temporary title from the first prompt and does not wait for the provider to name its native session.
+A new chat displays `New task` in both the sidebar and chat tab. Insulator does not derive a temporary title from the first prompt and does not wait for the provider to name its native session.
 
-After the first successful turn produces an assistant message, Waku sends these two values to a fresh, isolated request:
+After the first successful turn produces an assistant message, Insulator sends these two values to a fresh, isolated request:
 
 - the first user message
 - the complete first assistant response
@@ -47,4 +47,4 @@ Provider-native `AutoTitleUpdated` events are ignored by the app. This keeps tim
 - `src/app/runtime.rs` extracts the first exchange, starts the isolated provider request, normalizes the response, and applies it.
 - `src/app.rs` tracks in-flight title requests.
 - `src/app/sidebar.rs` renders the shared title in sidebar rows and chat tabs.
-- `crates/waku-protocol/src/model.rs` owns `title`, `auto_title`, and `display_title()`.
+- `crates/insulator-protocol/src/model.rs` owns `title`, `auto_title`, and `display_title()`.
