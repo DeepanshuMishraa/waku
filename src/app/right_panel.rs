@@ -4876,14 +4876,102 @@ impl Waku {
         self.file_editor_selection = None;
     }
 
-    pub(super) fn render_file_editor_selection_badge(&self, cx: &mut Context<Self>) -> Option<Div> {
+    pub(super) fn render_file_editor_selection_pill(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
         let selection = self.file_editor_selection.as_ref().filter(|selection| {
             self.active_main_file_tab.as_deref() == Some(selection.path.as_str())
         })?;
         let theme = Theme::current(cx);
-        Some(div().px(px(8.0)).py(px(4.0)).rounded(px(6.0)).bg(theme.overlay)
-            .text_size(sp(12.0)).text_color(theme.text_secondary)
-            .child(format!("Lines {}–{}", selection.start_line, selection.end_line)))
+        let clear_waku = cx.entity().downgrade();
+
+        let filename = Path::new(&selection.path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or(&selection.path)
+            .to_owned();
+
+        let lines_label = if selection.start_line == selection.end_line {
+            format!("Line {}", selection.start_line)
+        } else {
+            format!("Lines {}–{}", selection.start_line, selection.end_line)
+        };
+
+        let tooltip_label = format!("{} ({})", selection.path, lines_label);
+
+        Some(
+            div()
+                .id("file-editor-selection-pill")
+                .h(px(24.0))
+                .pl(px(7.0))
+                .pr(px(4.0))
+                .rounded(px(6.0))
+                .border_1()
+                .border_color(theme.border)
+                .bg(theme.raised)
+                .hover(|e| e.bg(theme.overlay).border_color(theme.border_strong))
+                .flex()
+                .items_center()
+                .gap(px(6.0))
+                .cursor_default()
+                .tooltip(move |window, cx| {
+                    Tooltip::new(tooltip_label.clone()).build(window, cx)
+                })
+                .child(file_icon(file_icon_for_path(&selection.path), 12.0))
+                .child(
+                    div()
+                        .max_w(px(180.0))
+                        .truncate()
+                        .text_size(sp(12.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme.text)
+                        .child(filename),
+                )
+                .child(
+                    div()
+                        .px(px(4.0))
+                        .py(px(1.0))
+                        .rounded(px(4.0))
+                        .bg(theme.overlay)
+                        .text_size(sp(11.0))
+                        .text_color(theme.text_secondary)
+                        .child(lines_label),
+                )
+                .child(
+                    div()
+                        .id("clear-file-selection-button")
+                        .size(px(16.0))
+                        .rounded(px(3.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|e| e.bg(theme.overlay_strong))
+                        .tooltip(|window, cx| Tooltip::new("Remove selection").build(window, cx))
+                        .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                            cx.stop_propagation();
+                        })
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            let _ = clear_waku.update(cx, |this, cx| {
+                                this.clear_file_editor_selection();
+                                cx.notify();
+                            });
+                        })
+                        .child(icon("icons/x.svg", 9.0, theme.text_tertiary)),
+                ),
+        )
+    }
+
+    pub(super) fn render_file_editor_selection_badge(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let pill = self.render_file_editor_selection_pill(cx)?;
+        Some(
+            div()
+                .px(px(14.0))
+                .pt(px(2.0))
+                .pb(px(6.0))
+                .flex()
+                .items_center()
+                .child(pill),
+        )
     }
 
     pub(super) fn render_file_editor_floating_input(
@@ -4918,6 +5006,7 @@ impl Waku {
                     }))
                     .child(self.render_composer_card(window, cx))
             } else {
+                let selection_pill = self.render_file_editor_selection_pill(cx);
                 div()
                     .id("file-editor-floating-input-collapsed")
                     .w_full()
@@ -4931,7 +5020,7 @@ impl Waku {
                     .shadow_lg()
                     .flex()
                     .items_center()
-                    .gap(px(10.0))
+                    .gap(px(8.0))
                     .cursor_pointer()
                     .hover(|e| e.border_color(theme.border_strong))
                     .on_click(cx.listener(|this, _, window, cx| {
@@ -4954,6 +5043,7 @@ impl Waku {
                                 provider_color(&theme, provider),
                             )),
                     )
+                    .children(selection_pill)
                     .child(
                         div()
                             .flex_1()
