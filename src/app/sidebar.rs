@@ -999,6 +999,7 @@ impl Waku {
         self.state.selected_session = None;
         self.state.selected_project = None;
         self.active_main_file_tab = None;
+        self.main_tabs.clear();
         self.main_tabs_open = false;
         self.save();
         cx.notify();
@@ -2492,6 +2493,17 @@ impl Waku {
                     }
                     let selected = self.active_main_file_tab.is_none()
                         && self.state.selected_session == Some(session_id);
+                    let provider = session.provider;
+                    let working = matches!(
+                        session.status,
+                        SessionStatus::Connecting | SessionStatus::Working
+                    );
+                    let tab_mark = if working {
+                        dot_matrix_loader(theme.text_secondary, 13.0)
+                    } else {
+                        provider_mark(&theme, provider, 13.0, provider_color(&theme, provider))
+                            .into_any_element()
+                    };
                     let tab_waku = waku.clone();
                     let close_waku = waku.clone();
                     tabs.push(
@@ -2518,11 +2530,7 @@ impl Waku {
                                     waku.select_session(session_id, cx);
                                 });
                             })
-                            .child(icon(
-                                "icons/bot.svg",
-                                13.0,
-                                if selected { theme.accent } else { theme.text_tertiary },
-                            ))
+                            .child(tab_mark)
                             .child(
                                 div()
                                     .min_w_0()
@@ -2665,6 +2673,7 @@ impl Waku {
                 h_flex()
                     .id("session-tabs-scroll")
                     .min_w_0()
+                    .w_full()
                     .flex_1()
                     .h_full()
                     .overflow_x_scrollbar()
