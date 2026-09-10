@@ -2095,7 +2095,9 @@ impl Waku {
             .iter()
             .map(|attachment| attachment.mention.clone())
             .collect::<Vec<_>>();
-        let submission = merged_submission(prompt, &mentions)?;
+        let prompt_with_file_context = self.file_editor_selection_prompt(prompt);
+        let submission = merged_submission(&prompt_with_file_context, &mentions)?;
+        self.clear_file_editor_selection();
         let display_content = (!attachments.is_empty()).then(|| prompt.trim().to_owned());
         self.discard_current_composer_draft(cx);
         Some(ComposerSubmission {
@@ -2721,6 +2723,7 @@ impl Waku {
                         }))
                 })
                 .children(autocomplete)
+                .children(self.render_file_editor_selection_badge(cx))
                 .when(!self.composer_attachments.is_empty(), |card| {
                     card.child(self.render_composer_attachments(cx))
                 })

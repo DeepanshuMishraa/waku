@@ -2993,7 +2993,10 @@ impl Waku {
                     )
                     .children(preview_toggle),
             )
-            .child(body);
+            .child(body)
+            .when(self.active_main_file_tab.is_some(), |element| {
+                element.child(self.render_file_editor_floating_input(window, cx))
+            });
 
         div()
             .relative()
@@ -3002,9 +3005,6 @@ impl Waku {
             .min_w_0()
             .flex()
             .child(editor)
-            .when(self.active_main_file_tab.is_some(), |element| {
-                element.child(self.render_file_editor_floating_input(window, cx))
-            })
     }
 
     fn ensure_right_panel_file_editor(
@@ -3067,6 +3067,31 @@ impl Waku {
             },
         )
         .detach();
+
+        let selection_path = relative_path.to_owned();
+        cx.observe(&state, move |this, state, cx| {
+            let range = state.read(cx).selected_range();
+            let next = if range.is_empty() {
+                this.file_editor_selection.clone()
+            } else {
+                let content = state.read(cx).content();
+                let start_line = content[..range.start].bytes().filter(|byte| *byte == b'\n').count() + 1;
+                let selected_prefix = &content[..range.end];
+                let end_line = selected_prefix.bytes().filter(|byte| *byte == b'\n').count()
+                    + usize::from(!selected_prefix.ends_with('\n'));
+                Some(FileEditorSelection {
+                    path: selection_path.clone(), start_line, end_line,
+                    text: content[range].to_owned(),
+                })
+            };
+            if this.file_editor_selection != next {
+                if next.is_some() {
+                    this.file_editor_input_expanded = true;
+                }
+                this.file_editor_selection = next;
+                cx.notify();
+            }
+        }).detach();
 
         let focused_path = relative_path.to_owned();
         cx.subscribe(&state, move |this: &mut Self, _, event: &InputEvent, cx| {
@@ -4830,6 +4855,34 @@ impl Waku {
         cx.stop_propagation();
     }
 
+    pub(super) fn file_editor_selection_prompt(&self, prompt: &str) -> String {
+        let Some(path) = self.active_main_file_tab.as_deref() else {
+            return prompt.to_owned();
+        };
+        if !self.right_panel_file_editors.contains_key(path) {
+            return prompt.to_owned();
+        }
+        let selection = self.file_editor_selection.as_ref().filter(|selection| selection.path == path);
+        match selection {
+            Some(selection) => format!("{prompt}\n\n@{path}\n[Selected lines {}-{}]\n```\n{}\n```", selection.start_line, selection.end_line, selection.text.trim_end()),
+            None => format!("{prompt}\n\n@{path}"),
+        }
+    }
+
+    pub(super) fn clear_file_editor_selection(&mut self) {
+        self.file_editor_selection = None;
+    }
+
+    pub(super) fn render_file_editor_selection_badge(&self, cx: &mut Context<Self>) -> Option<Div> {
+        let selection = self.file_editor_selection.as_ref().filter(|selection| {
+            self.active_main_file_tab.as_deref() == Some(selection.path.as_str())
+        })?;
+        let theme = Theme::current(cx);
+        Some(div().px(px(8.0)).py(px(4.0)).rounded(px(6.0)).bg(theme.overlay)
+            .text_size(sp(12.0)).text_color(theme.text_secondary)
+            .child(format!("Lines {}–{}", selection.start_line, selection.end_line)))
+    }
+
     pub(super) fn render_file_editor_floating_input(
         &self,
         window: &Window,
@@ -4842,13 +4895,12 @@ impl Waku {
 
         div()
             .id("file-editor-floating-input-container")
-            .absolute()
-            .left_0()
-            .right_0()
-            .bottom(px(16.0))
+            .w_full()
+            .flex_none()
             .flex()
             .justify_center()
             .px(px(20.0))
+            .py(px(12.0))
             .child(if expanded {
                 div()
                     .id("file-editor-floating-composer-card")

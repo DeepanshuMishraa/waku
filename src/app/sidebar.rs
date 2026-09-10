@@ -2,8 +2,8 @@ use chrono::{DateTime, Datelike, Days, Local, NaiveDate, Utc};
 use gpui::{KeyBinding, actions};
 use std::time::Duration;
 
-use super::*;
 use super::right_panel::file_icon_for_path;
+use super::*;
 
 actions!(waku_sidebar, [CancelSessionRename]);
 
