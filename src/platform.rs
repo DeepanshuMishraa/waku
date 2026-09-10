@@ -789,11 +789,21 @@ pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hs
             return;
         };
 
+        if CURRENT_WINDOW_STYLE.get() != waku_protocol::theme::WindowStyle::Solid {
+            SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+                if let Some(tint_view) = slot.as_ref() {
+                    tint_view.setHidden(true);
+                }
+            });
+            return;
+        }
+
         let mut configured_effect = false;
         for subview in content_view.subviews().iter() {
             let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() else {
                 continue;
             };
+            effect_view.setHidden(false);
             effect_view.setMaterial(NSVisualEffectMaterial::Sidebar);
             effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
             effect_view.setState(NSVisualEffectState::Active);
@@ -832,8 +842,11 @@ pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hs
                 *slot = Some(tint_view);
             }
 
-            if let Some(layer) = slot.as_ref().and_then(|tint_view| tint_view.layer()) {
-                layer.setBackgroundColor(Some(&tint.CGColor()));
+            if let Some(tint_view) = slot.as_ref() {
+                tint_view.setHidden(false);
+                if let Some(layer) = tint_view.layer() {
+                    layer.setBackgroundColor(Some(&tint.CGColor()));
+                }
             }
         });
     }
@@ -841,6 +854,277 @@ pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hs
 
 #[cfg(not(target_os = "macos"))]
 pub fn configure_sidebar_material(_: &Window, _: bool, _: Hsla) {}
+
+thread_local! {
+    static LIQUID_GLASS_VIEW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSView>>> =
+        const { std::cell::RefCell::new(None) };
+    static CURRENT_WINDOW_STYLE: std::cell::Cell<waku_protocol::theme::WindowStyle> =
+        const { std::cell::Cell::new(waku_protocol::theme::WindowStyle::Solid) };
+    static MAIN_WINDOW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSWindow>>> =
+        const { std::cell::RefCell::new(None) };
+    static MAIN_VIEW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSView>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_os = "macos")]
+pub fn supports_liquid_glass() -> bool {
+    use objc2::runtime::AnyClass;
+    use objc2_foundation::NSProcessInfo;
+    NSProcessInfo::processInfo().operatingSystemVersion().majorVersion >= 26
+        || AnyClass::get(c"NSGlassView").is_some()
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn supports_liquid_glass() -> bool {
+    false
+}
+
+/// Relaunch the current executable with the same arguments, preserving the
+/// persisted settings before the current process exits.
+#[allow(dead_code)]
+pub fn restart_application() -> bool {
+    let Ok(executable) = std::env::current_exe() else { return false };
+    std::process::Command::new(executable)
+        .args(std::env::args_os().skip(1))
+        .spawn()
+        .is_ok()
+}
+
+#[cfg(target_os = "macos")]
+unsafe fn apply_native_window_style(
+    native_window: &objc2_app_kit::NSWindow,
+    view: &objc2_app_kit::NSView,
+    style: waku_protocol::theme::WindowStyle,
+    color_theme: waku_protocol::theme::ColorTheme,
+    main_thread: objc2::MainThreadMarker,
+) {
+    use objc2::msg_send;
+    use objc2::rc::Retained;
+    use objc2::runtime::{AnyClass, AnyObject};
+    use objc2::MainThreadOnly;
+    use objc2_app_kit::{
+        NSAutoresizingMaskOptions, NSColor, NSView, NSVisualEffectBlendingMode,
+        NSVisualEffectMaterial, NSVisualEffectState, NSVisualEffectView, NSWindowOrderingMode,
+    };
+
+    let Some(content_view) = native_window.contentView() else { return };
+    let active_theme = crate::theme::Theme::from_color_theme(color_theme);
+    let rgb = active_theme.surface.to_rgb();
+
+    match style {
+        waku_protocol::theme::WindowStyle::LiquidGlass => {
+            native_window.setOpaque(false);
+            native_window.setHasShadow(true);
+            native_window.setBackgroundColor(Some(&NSColor::clearColor()));
+
+            // In Liquid Glass mode, hide the sidebar tint view so glass extends across the entire window
+            SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+                if let Some(tint_view) = slot.as_ref() {
+                    tint_view.setHidden(true);
+                }
+            });
+
+            // Hide default GPUI visual effect view so it doesn't block the glass
+            for subview in content_view.subviews().iter() {
+                if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
+                    effect_view.setHidden(true);
+                }
+            }
+
+            let alpha = if active_theme.is_dark { 0.45 } else { 0.35 };
+            let tint_color = NSColor::colorWithSRGBRed_green_blue_alpha(
+                f64::from(rgb.r),
+                f64::from(rgb.g),
+                f64::from(rgb.b),
+                alpha,
+            );
+
+            let glass_class = AnyClass::get(c"NSGlassView");
+            if let Some(glass_class) = glass_class {
+                LIQUID_GLASS_VIEW.with_borrow_mut(|slot| {
+                    let needs_new_view = slot.as_ref().is_none_or(|glass_view| {
+                        glass_view
+                            .window()
+                            .as_deref()
+                            .is_none_or(|win| !std::ptr::eq(win, native_window))
+                    });
+                    if needs_new_view {
+                        let view_alloc: *mut AnyObject = msg_send![glass_class, alloc];
+                        let frame = content_view.bounds();
+                        let initialized: *mut NSView =
+                            msg_send![view_alloc, initWithFrame: frame];
+                        if let Some(glass_view) = unsafe { Retained::from_raw(initialized) } {
+                            glass_view.setAutoresizingMask(
+                                NSAutoresizingMaskOptions::ViewWidthSizable
+                                    | NSAutoresizingMaskOptions::ViewHeightSizable,
+                            );
+                            content_view.addSubview_positioned_relativeTo(
+                                &glass_view,
+                                NSWindowOrderingMode::Below,
+                                Some(view),
+                            );
+                            *slot = Some(glass_view);
+                        }
+                    }
+                    if let Some(glass_view) = slot.as_ref() {
+                        glass_view.setHidden(false);
+                        let _: () = msg_send![&**glass_view, setTintColor: &*tint_color];
+                    }
+                });
+            } else {
+                // Fallback for older macOS versions
+                LIQUID_GLASS_VIEW.with_borrow_mut(|slot| {
+                    let needs_new_view = slot.as_ref().is_none_or(|eff| {
+                        eff.window()
+                            .as_deref()
+                            .is_none_or(|win| !std::ptr::eq(win, native_window))
+                    });
+                    if needs_new_view {
+                        let effect = NSVisualEffectView::initWithFrame(
+                            NSVisualEffectView::alloc(main_thread),
+                            content_view.bounds(),
+                        );
+                        effect.setMaterial(NSVisualEffectMaterial::UnderWindowBackground);
+                        effect.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+                        effect.setState(NSVisualEffectState::Active);
+                        effect.setWantsLayer(true);
+                        effect.setAutoresizingMask(
+                            NSAutoresizingMaskOptions::ViewWidthSizable
+                                | NSAutoresizingMaskOptions::ViewHeightSizable,
+                        );
+                        content_view.addSubview_positioned_relativeTo(
+                            &effect,
+                            NSWindowOrderingMode::Below,
+                            Some(view),
+                        );
+                        *slot = Some(Retained::into_super(effect));
+                    }
+                    if let Some(effect_view) = slot.as_ref() {
+                        effect_view.setHidden(false);
+                        if let Some(layer) = effect_view.layer() {
+                            layer.setBackgroundColor(Some(&tint_color.CGColor()));
+                        }
+                    }
+                });
+            }
+        }
+        waku_protocol::theme::WindowStyle::Image => {
+            native_window.setOpaque(true);
+            native_window.setHasShadow(true);
+            let tint_color = NSColor::colorWithSRGBRed_green_blue_alpha(
+                f64::from(rgb.r),
+                f64::from(rgb.g),
+                f64::from(rgb.b),
+                1.0,
+            );
+            native_window.setBackgroundColor(Some(&tint_color));
+
+            LIQUID_GLASS_VIEW.with_borrow(|slot| {
+                if let Some(glass_view) = slot.as_ref() {
+                    glass_view.setHidden(true);
+                }
+            });
+            SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+                if let Some(tint_view) = slot.as_ref() {
+                    tint_view.setHidden(true);
+                }
+            });
+            for subview in content_view.subviews().iter() {
+                if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
+                    effect_view.setHidden(true);
+                }
+            }
+        }
+        waku_protocol::theme::WindowStyle::Solid => {
+            native_window.setOpaque(true);
+            native_window.setHasShadow(true);
+            let tint_color = NSColor::colorWithSRGBRed_green_blue_alpha(
+                f64::from(rgb.r),
+                f64::from(rgb.g),
+                f64::from(rgb.b),
+                1.0,
+            );
+            native_window.setBackgroundColor(Some(&tint_color));
+
+            LIQUID_GLASS_VIEW.with_borrow(|slot| {
+                if let Some(glass_view) = slot.as_ref() {
+                    glass_view.setHidden(true);
+                }
+            });
+            SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+                if let Some(tint_view) = slot.as_ref() {
+                    tint_view.setHidden(false);
+                }
+            });
+            for subview in content_view.subviews().iter() {
+                if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
+                    effect_view.setHidden(false);
+                }
+            }
+        }
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn configure_window_style(
+    window: &Window,
+    style: waku_protocol::theme::WindowStyle,
+    color_theme: waku_protocol::theme::ColorTheme,
+    _image_path: Option<&str>,
+) {
+    use objc2_app_kit::NSView;
+    use raw_window_handle::{HasWindowHandle, RawWindowHandle};
+
+    let Ok(handle) = HasWindowHandle::window_handle(window) else { return };
+    let RawWindowHandle::AppKit(handle) = handle.as_raw() else { return };
+    let Some(main_thread) = objc2::MainThreadMarker::new() else { return };
+
+    CURRENT_WINDOW_STYLE.set(style);
+
+    unsafe {
+        let view = handle.ns_view.cast::<NSView>().as_ref();
+        let Some(native_window) = view.window() else { return };
+        MAIN_WINDOW.with_borrow_mut(|slot| *slot = Some(native_window.clone()));
+        if let Some(view_retained) = objc2::rc::Retained::retain(handle.ns_view.as_ptr().cast::<NSView>()) {
+            MAIN_VIEW.with_borrow_mut(|slot| *slot = Some(view_retained));
+        }
+        apply_native_window_style(&native_window, view, style, color_theme, main_thread);
+    }
+}
+
+#[cfg(target_os = "macos")]
+pub fn reapply_window_style(
+    style: waku_protocol::theme::WindowStyle,
+    color_theme: waku_protocol::theme::ColorTheme,
+    _image_path: Option<&str>,
+) {
+    let Some(main_thread) = objc2::MainThreadMarker::new() else { return };
+    CURRENT_WINDOW_STYLE.set(style);
+    MAIN_WINDOW.with_borrow(|win_slot| {
+        MAIN_VIEW.with_borrow(|view_slot| {
+            if let (Some(win), Some(view)) = (win_slot.as_ref(), view_slot.as_ref()) {
+                unsafe {
+                    apply_native_window_style(win, view, style, color_theme, main_thread);
+                }
+            }
+        });
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn configure_window_style(
+    _: &Window,
+    _: waku_protocol::theme::WindowStyle,
+    _: waku_protocol::theme::ColorTheme,
+    _: Option<&str>,
+) {}
+
+#[cfg(not(target_os = "macos"))]
+pub fn reapply_window_style(
+    _: waku_protocol::theme::WindowStyle,
+    _: waku_protocol::theme::ColorTheme,
+    _: Option<&str>,
+) {}
 
 #[cfg(target_os = "macos")]
 pub fn set_sidebar_material_width(window: &Window, width: f32) {

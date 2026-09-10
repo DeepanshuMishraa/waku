@@ -16,6 +16,28 @@ pub enum ThemePreference {
 #[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, TS)]
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
+pub enum WindowStyle {
+    #[default]
+    Solid,
+    LiquidGlass,
+    Image,
+}
+
+impl WindowStyle {
+    pub const ALL: [Self; 3] = [Self::Solid, Self::LiquidGlass, Self::Image];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Solid => "Solid",
+            Self::LiquidGlass => "Liquid Glass",
+            Self::Image => "Image",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Eq, PartialEq, Serialize, TS)]
+#[ts(export)]
+#[serde(rename_all = "snake_case")]
 pub enum ColorTheme {
     WakuLight,
     WakuDark,

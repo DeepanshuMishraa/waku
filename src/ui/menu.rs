@@ -87,6 +87,7 @@ pub enum MenuItem {
     Entry {
         label: SharedString,
         icon: Option<&'static str>,
+        icon_color: Option<gpui::Hsla>,
         /// A full-color raster icon — a real app icon — where `icon` would
         /// draw a tinted glyph.
         image: Option<std::sync::Arc<gpui::Image>>,
@@ -103,6 +104,8 @@ pub enum MenuItem {
     /// menus whose submenu is a preference rather than an action.
     Submenu {
         label: SharedString,
+        icon: Option<&'static str>,
+        icon_color: Option<gpui::Hsla>,
         value: Option<SharedString>,
         #[allow(clippy::type_complexity)]
         items: Rc<dyn Fn(&mut App) -> Vec<MenuItem>>,
@@ -128,6 +131,7 @@ impl MenuItem {
         Self::Entry {
             label: label.into(),
             icon: None,
+            icon_color: None,
             image: None,
             selected: false,
             disabled: false,
@@ -143,6 +147,19 @@ impl MenuItem {
         }
     }
 
+    pub fn submenu(
+        label: impl Into<SharedString>,
+        items: impl Fn(&mut App) -> Vec<MenuItem> + 'static,
+    ) -> Self {
+        Self::Submenu {
+            label: label.into(),
+            icon: None,
+            icon_color: None,
+            value: None,
+            items: Rc::new(items),
+        }
+    }
+
     pub fn submenu_with_value(
         label: impl Into<SharedString>,
         value: impl Into<SharedString>,
@@ -150,6 +167,8 @@ impl MenuItem {
     ) -> Self {
         Self::Submenu {
             label: label.into(),
+            icon: None,
+            icon_color: None,
             value: Some(value.into()),
             items: Rc::new(items),
         }
@@ -177,8 +196,19 @@ impl MenuItem {
     }
 
     pub fn icon(mut self, path: &'static str) -> Self {
-        if let Self::Entry { icon, .. } = &mut self {
-            *icon = Some(path);
+        match &mut self {
+            Self::Entry { icon, .. } => *icon = Some(path),
+            Self::Submenu { icon, .. } => *icon = Some(path),
+            _ => {}
+        }
+        self
+    }
+
+    pub fn icon_color(mut self, color: gpui::Hsla) -> Self {
+        match &mut self {
+            Self::Entry { icon_color, .. } => *icon_color = Some(color),
+            Self::Submenu { icon_color, .. } => *icon_color = Some(color),
+            _ => {}
         }
         self
     }
@@ -1129,6 +1159,7 @@ fn render_menu_item(
         MenuItem::Entry {
             label,
             icon: item_icon,
+            icon_color,
             image,
             selected,
             disabled,
@@ -1149,7 +1180,7 @@ fn render_menu_item(
             .text_color(color)
             .when(selected, |element| element.font_weight(FontWeight::MEDIUM))
             .when_some(item_icon, |element, path| {
-                element.child(icon(path, 12.0, color))
+                element.child(icon(path, 12.0, icon_color.unwrap_or(color)))
             })
             .when_some(image, |element, image| {
                 element.child(img(image).size(px(16.0)).flex_none())
@@ -1162,6 +1193,8 @@ fn render_menu_item(
         }
         MenuItem::Submenu {
             label,
+            icon: item_icon,
+            icon_color,
             value,
             items: _,
         } => {
@@ -1171,6 +1204,9 @@ fn render_menu_item(
             if in_submenu {
                 return row(index, highlighted, theme, handle, None)
                     .text_color(theme.text_ghost)
+                    .when_some(item_icon, |element, path| {
+                        element.child(icon(path, 12.0, theme.text_ghost))
+                    })
                     .child(div().flex_1().min_w_0().truncate().child(label))
                     .child(icon("icons/chevron-right.svg", 10.0, theme.text_ghost))
                     .into_any_element();
@@ -1192,6 +1228,9 @@ fn render_menu_item(
                     open_submenu(&click_handle, index, false);
                     window.refresh();
                     cx.stop_propagation();
+                })
+                .when_some(item_icon, |element, path| {
+                    element.child(icon(path, 12.0, icon_color.unwrap_or(theme.text_secondary)))
                 })
                 .child(div().flex_1().min_w_0().truncate().child(label))
                 .when_some(value, |element, value| {

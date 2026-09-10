@@ -3,6 +3,7 @@ use std::sync::{OnceLock, RwLock};
 use gpui::{App, Global, Hsla, Rems, Window, WindowAppearance, hsla, rems, rgb, transparent_black};
 
 pub use waku_client::theme::{ColorTheme, ThemePreference};
+pub use waku_protocol::theme::WindowStyle;
 
 static ACTIVE_UI_FONT_FAMILY: OnceLock<RwLock<&'static str>> = OnceLock::new();
 
@@ -253,6 +254,34 @@ impl Theme {
     }
 }
 
+impl Theme {
+    pub fn for_window_style(mut self, style: WindowStyle) -> Self {
+        match style {
+            WindowStyle::LiquidGlass => {
+                let alpha_raised = if self.is_dark { 0.22 } else { 0.32 };
+                let alpha_composer = if self.is_dark { 0.26 } else { 0.38 };
+                let alpha_inset = if self.is_dark { 0.20 } else { 0.28 };
+                let alpha_surface = if self.is_dark { 0.16 } else { 0.25 };
+                let alpha_canvas = if self.is_dark { 0.10 } else { 0.18 };
+                self.raised = Hsla { a: alpha_raised, ..self.raised };
+                self.composer = Hsla { a: alpha_composer, ..self.composer };
+                self.inset = Hsla { a: alpha_inset, ..self.inset };
+                self.surface = Hsla { a: alpha_surface, ..self.surface };
+                self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
+            }
+            WindowStyle::Image => {
+                self.raised = Hsla { a: 0.88, ..self.raised };
+                self.composer = Hsla { a: 0.88, ..self.composer };
+                self.inset = Hsla { a: 0.82, ..self.inset };
+                self.surface = Hsla { a: 0.85, ..self.surface };
+                self.canvas = Hsla { a: 0.85, ..self.canvas };
+            }
+            WindowStyle::Solid => {}
+        }
+        self
+    }
+}
+
 #[derive(Clone, Copy)]
 struct ActiveWakuTheme(Theme);
 
@@ -274,19 +303,49 @@ pub fn init(cx: &mut App) {
 pub fn apply_theme_preference(
     preference: ThemePreference,
     color_theme: ColorTheme,
+    window_style: WindowStyle,
     window: &mut Window,
     cx: &mut App,
 ) {
-    crate::platform::set_window_appearance(window, native_override(preference));
-    let is_dark = resolves_to_dark(preference, cx.window_appearance());
+    let override_pref = if window_style == WindowStyle::LiquidGlass {
+        ThemePreference::Dark
+    } else {
+        preference
+    };
+    crate::platform::set_window_appearance(window, native_override(override_pref));
+    let is_dark = if window_style == WindowStyle::LiquidGlass {
+        true
+    } else {
+        resolves_to_dark(preference, cx.window_appearance())
+    };
     let color_theme = if color_theme.for_dark(is_dark) {
         color_theme
     } else {
         ColorTheme::default_for_dark(is_dark)
     };
-    let theme = Theme::from_color_theme(color_theme);
+    let theme = Theme::from_color_theme(color_theme).for_window_style(window_style);
     let sidebar_color = theme.sidebar_drag_background;
     set_active_theme(theme, cx);
     crate::platform::configure_sidebar_material(window, is_dark, sidebar_color);
     window.refresh();
+}
+
+pub fn update_active_theme(
+    preference: ThemePreference,
+    color_theme: ColorTheme,
+    window_style: WindowStyle,
+    cx: &mut App,
+) {
+    let is_dark = if window_style == WindowStyle::LiquidGlass {
+        true
+    } else {
+        resolves_to_dark(preference, cx.window_appearance())
+    };
+    let color_theme = if color_theme.for_dark(is_dark) {
+        color_theme
+    } else {
+        ColorTheme::default_for_dark(is_dark)
+    };
+    let theme = Theme::from_color_theme(color_theme).for_window_style(window_style);
+    set_active_theme(theme, cx);
 }

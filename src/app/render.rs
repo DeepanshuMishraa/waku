@@ -244,6 +244,8 @@ impl Render for Waku {
         let image_preview = self.render_image_preview(cx);
         let task_switcher = self.render_task_switcher(window, cx);
         if self.settings_page.is_some() {
+            let window_style = self.state.window_style;
+            let background_image = self.state.background_image_path.clone();
             let command_palette = self.render_command_palette(window, cx);
             let commit_dialog = self.render_commit_dialog(cx);
             let project_dialog = self.render_project_dialog(cx);
@@ -253,6 +255,20 @@ impl Render for Waku {
             let content = div()
                 .relative()
                 .size_full()
+                .when_some(
+                    (window_style == WindowStyle::Image)
+                        .then(|| background_image.clone())
+                        .flatten(),
+                    |root, path| {
+                        root.child(
+                            img(std::path::PathBuf::from(path))
+                                .absolute()
+                                .inset_0()
+                                .size_full()
+                                .object_fit(ObjectFit::Cover),
+                        )
+                    },
+                )
                 .on_action(cx.listener(Self::toggle_command_palette_action))
                 .on_action(cx.listener(Self::open_resume_picker_action))
                 .on_action(cx.listener(Self::switch_task_forward_action))
@@ -279,6 +295,8 @@ impl Render for Waku {
         self.schedule_time_label_wake(cx);
 
         let theme = Theme::current(cx);
+        let window_style = self.state.window_style;
+        let background_image = self.state.background_image_path.clone();
         let empty = should_render_empty_state(self.selected_session());
         let active_file = self.active_main_file_tab.clone();
         let file_editor_width =
@@ -332,6 +350,20 @@ impl Render for Waku {
             .size_full()
             .relative()
             .flex()
+            .when_some(
+                (window_style == WindowStyle::Image)
+                    .then(|| background_image.clone())
+                    .flatten(),
+                |root, path| {
+                    root.child(
+                        img(std::path::PathBuf::from(path))
+                            .absolute()
+                            .inset_0()
+                            .size_full()
+                            .object_fit(ObjectFit::Cover),
+                    )
+                },
+            )
             .text_color(theme.text)
             .font_family(crate::theme::active_ui_font_family())
             // Both panels slide through a container that narrows while their
@@ -363,7 +395,11 @@ impl Render for Waku {
                     .overflow_hidden()
                     .flex()
                     .flex_col()
-                    .bg(theme.surface)
+                    .bg(match window_style {
+                        WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
+                        WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
+                        WindowStyle::Solid => theme.surface,
+                    })
                     .when(panels.sidebar > 0.0, |element| {
                         element.border_l_1().border_color(theme.sidebar_border)
                     })

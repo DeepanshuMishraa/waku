@@ -1515,8 +1515,10 @@ impl Waku {
     }
 
     pub(super) fn selected_workspace_path(&self) -> Option<&std::path::Path> {
-        let session = self.selected_session()?;
-        self.workspace_path_for_session(session)
+        if let Some(session) = self.selected_session() {
+            return self.workspace_path_for_session(session);
+        }
+        self.selected_project().map(|project| project.path.as_path())
     }
 
     /// Marks the session for the next save; see `PersistedState::session_mut`.
@@ -3202,6 +3204,18 @@ impl Waku {
         cx: &mut Context<Self>,
     ) {
         self.file_editor_input_expanded = false;
+        if self.selected_session().is_none() {
+            let current_project = self
+                .selected_project()
+                .map(|project| (project.id, project.is_projectless()));
+            match current_project {
+                Some((_, true)) => self.create_projectless_session(cx),
+                Some((project_id, false)) => {
+                    self.create_session_for(project_id, self.state.last_provider, cx);
+                }
+                None => self.create_projectless_session(cx),
+            }
+        }
         let Some(session) = self.selected_session() else {
             return;
         };
@@ -3232,6 +3246,10 @@ impl Waku {
         submission: ComposerSubmission,
         cx: &mut Context<Self>,
     ) {
+        if self.selected_session().is_none() {
+            self.submit_composer_submission(submission, cx);
+            return;
+        }
         let Some(session) = self.selected_session().cloned() else {
             return;
         };

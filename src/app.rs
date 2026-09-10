@@ -53,18 +53,20 @@ use crate::ui::tooltip::Tooltip;
 
 use crate::browser::BrowserView;
 use crate::persistence::{
-    ComposerDraftStore, ComposerDrafts, DEFAULT_RIGHT_PANEL_WIDTH, DEFAULT_SIDEBAR_WIDTH,
-    PersistedState, PersistedWindowState, SidebarGrouping, SidebarOrdering, StateStore,
+    ChatStatus, ComposerDraftStore, ComposerDrafts, DEFAULT_RIGHT_PANEL_WIDTH,
+    DEFAULT_SIDEBAR_WIDTH, PersistedState, PersistedWindowState, SidebarGrouping, SidebarOrdering,
+    StateStore,
 };
 use crate::query::{Query, QueryCache};
 use crate::review_diff::{Snapshot as ReviewDiffSnapshot, Source as ReviewDiffSource};
 use crate::terminal::TerminalView;
 use crate::theme::{ColorTheme, Theme, ThemePreference, set_active_ui_font_family, sp};
+use waku_protocol::theme::WindowStyle;
 use crate::ui::text_field::TextField;
 use crate::ui::{
     MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_horizontal_scroll,
     contain_scroll, file_icon, h_flex, icon, icon_button, motion, provider_color, provider_mark,
-    status_color, toggle_switch,
+    status_color, chat_status_color, toggle_switch,
 };
 use crate::{
     CancelTaskSwitch, CancelTurn, CloseFind, CloseWindow, ConfirmTaskSwitch, CopySelection,
@@ -1095,6 +1097,7 @@ pub struct Waku {
     daemon_reconfigure_pending: bool,
     daemon_token_revealed: bool,
     settings_focus: FocusHandle,
+    window_style_restart_dialog: Option<WindowStyle>,
     onboarding_add_project_focus: FocusHandle,
     onboarding_projectless_focus: FocusHandle,
     /// Mirror of Sparkle's persisted automatic-check setting. Refreshed when
@@ -2130,7 +2133,8 @@ impl Waku {
                 window.display(cx).and_then(|display| display.uuid().ok()),
             ));
         }
-        crate::theme::apply_theme_preference(state.theme, state.color_theme, window, cx);
+        crate::theme::apply_theme_preference(state.theme, state.color_theme, state.window_style, window, cx);
+        crate::platform::configure_window_style(window, state.window_style, state.color_theme, state.background_image_path.as_deref());
         crate::platform::set_sidebar_material_width(window, sidebar_width);
         let project_paths = state
             .projects
@@ -2215,7 +2219,13 @@ impl Waku {
         let initial_composer_draft = state
             .selected_session
             .and_then(|selected| state.sessions.iter().find(|session| session.id == selected))
-            .and_then(|session| composer_drafts.get_for(session))
+            .map(crate::persistence::ComposerDraftKey::for_session)
+            .or_else(|| {
+                state
+                    .selected_project
+                    .map(crate::persistence::ComposerDraftKey::NewSession)
+            })
+            .and_then(|key| composer_drafts.get(key))
             .cloned()
             .unwrap_or_default();
         let crate::persistence::ComposerDraft {
@@ -2390,11 +2400,12 @@ impl Waku {
             cx.observe_window_appearance(window, |this: &mut Self, window, cx| {
                 if this.state.theme == ThemePreference::System {
                     crate::theme::apply_theme_preference(
-                this.state.theme,
-                this.state.color_theme,
-                window,
-                cx,
-            );
+                        this.state.theme,
+                        this.state.color_theme,
+                        this.state.window_style,
+                        window,
+                        cx,
+                    );
                     cx.notify();
                 }
             })
@@ -2813,6 +2824,7 @@ impl Waku {
                 daemon_reconfigure_pending: false,
                 daemon_token_revealed: false,
                 settings_focus,
+                window_style_restart_dialog: None,
                 onboarding_add_project_focus,
                 onboarding_projectless_focus,
                 automatic_updates_enabled: cx

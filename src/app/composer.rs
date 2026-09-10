@@ -791,13 +791,20 @@ impl Waku {
     pub(super) fn render_provider_model_control(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::current(cx);
         let session = self.selected_session();
-        let provider = session.map(|session| session.provider).unwrap_or_default();
-        let selected_model = session.and_then(|session| self.model_for_session(session));
+        let provider = session.map(|session| session.provider).unwrap_or(self.state.last_provider);
+        let selected_model = session
+            .and_then(|session| self.model_for_session(session))
+            .or(self.state.last_model.as_deref())
+            .or_else(|| {
+                self.provider_probe(provider)
+                    .and_then(ProviderProbe::preferred_model)
+                    .map(|m| m.id.as_str())
+            });
         let selected_model_name = self.model_display_name(provider, selected_model);
         let locked_provider = session
             .filter(|session| !session.messages.is_empty())
             .map(|session| session.provider);
-        let picker_enabled = session.is_some_and(|session| session.can_choose_model(provider));
+        let picker_enabled = session.map(|session| session.can_choose_model(provider)).unwrap_or(true);
 
         if !picker_enabled {
             return div()
@@ -852,7 +859,7 @@ impl Waku {
                         let provider = this
                             .selected_session()
                             .map(|session| session.provider)
-                            .unwrap_or_default();
+                            .unwrap_or(this.state.last_provider);
                         // A draft can sit on a provider that was since switched
                         // off; open onto the first usable provider instead of a
                         // tab whose rows the filter would leave empty.
@@ -1375,8 +1382,15 @@ impl Waku {
     /// scroll offset from an earlier open never leaks into a fresh list.
     pub(super) fn reveal_selected_picker_model(&self) {
         let session = self.selected_session();
-        let provider = session.map(|session| session.provider).unwrap_or_default();
-        let selected_model = session.and_then(|session| self.model_for_session(session));
+        let provider = session.map(|session| session.provider).unwrap_or(self.state.last_provider);
+        let selected_model = session
+            .and_then(|session| self.model_for_session(session))
+            .or(self.state.last_model.as_deref())
+            .or_else(|| {
+                self.provider_probe(provider)
+                    .and_then(ProviderProbe::preferred_model)
+                    .map(|m| m.id.as_str())
+            });
         let locked_provider = session
             .filter(|session| !session.messages.is_empty())
             .map(|session| session.provider);
@@ -1410,8 +1424,21 @@ impl Waku {
 
     pub(super) fn render_model_traits_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = Theme::current(cx);
-        let session = self.selected_session()?;
-        let model = self.model_metadata_for_session(session)?;
+        let session = self.selected_session();
+        let provider = session.map(|session| session.provider).unwrap_or(self.state.last_provider);
+        let model_name = session
+            .and_then(|session| self.model_for_session(session))
+            .or(self.state.last_model.as_deref())
+            .or_else(|| {
+                self.provider_probe(provider)
+                    .and_then(ProviderProbe::preferred_model)
+                    .map(|m| m.id.as_str())
+            })?;
+        let model = self
+            .provider_probe(provider)?
+            .models
+            .iter()
+            .find(|candidate| candidate.id == model_name)?;
         if model.reasoning_efforts.is_empty()
             && model.service_tiers.is_empty()
             && model.context_windows.is_empty()
@@ -1420,8 +1447,8 @@ impl Waku {
         }
 
         let selected_effort = session
-            .reasoning_effort
-            .as_deref()
+            .and_then(|s| s.reasoning_effort.as_deref())
+            .or(self.state.last_reasoning_effort.as_deref())
             .filter(|selected| {
                 model
                     .reasoning_efforts
@@ -1445,8 +1472,8 @@ impl Waku {
         });
 
         let selected_tier = session
-            .service_tier
-            .as_deref()
+            .and_then(|s| s.service_tier.as_deref())
+            .or(self.state.last_service_tier.as_deref())
             .filter(|selected| {
                 *selected == "default"
                     || model
@@ -1468,8 +1495,8 @@ impl Waku {
                 .unwrap_or_else(|| selected_tier.clone())
         };
         let selected_window = session
-            .context_window
-            .as_deref()
+            .and_then(|s| s.context_window.as_deref())
+            .or(self.state.last_context_window.as_deref())
             .filter(|selected| {
                 model
                     .context_windows
@@ -1613,7 +1640,7 @@ impl Waku {
         let selected_mode = self
             .selected_session()
             .map(|session| session.runtime_mode)
-            .unwrap_or_default();
+            .unwrap_or(self.state.last_runtime_mode);
         let weak = cx.entity().downgrade();
         let handle = self.menu_handle("runtime-mode", cx);
         dropdown_menu(
@@ -1686,10 +1713,17 @@ impl Waku {
     }
 
     pub(super) fn render_agent_preset_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
-        let session = self
+        let provider = self
             .selected_session()
-            .filter(|session| session.provider == ProviderKind::DeepSeek)?;
-        if session.has_started() || session.is_busy() {
+            .map(|s| s.provider)
+            .unwrap_or(self.state.last_provider);
+        if provider != ProviderKind::DeepSeek {
+            return None;
+        }
+        if self
+            .selected_session()
+            .is_some_and(|session| session.has_started() || session.is_busy())
+        {
             return None;
         }
         let presets = self
@@ -1699,8 +1733,19 @@ impl Waku {
         if presets.is_empty() {
             return None;
         }
-        let selected_id = self.agent_preset_for_session(session)?;
-        let selected_label = self.agent_preset_label_for_session(session)?;
+        let selected_id = self
+            .selected_session()
+            .and_then(|session| self.agent_preset_for_session(session))
+            .or_else(|| {
+                self.provider_probe(ProviderKind::DeepSeek)
+                    .and_then(ProviderProbe::preferred_agent_preset)
+                    .map(|preset| preset.id.clone())
+            })?;
+        let selected_label = self
+            .provider_probe(ProviderKind::DeepSeek)
+            .and_then(|probe| probe.agent_presets.iter().find(|preset| preset.id == selected_id))
+            .map(|preset| preset.display_name())
+            .unwrap_or_else(|| selected_id.clone());
         let theme = Theme::current(cx);
         let weak = cx.entity().downgrade();
         let refresh_weak = weak.clone();
@@ -2201,20 +2246,42 @@ impl Waku {
     }
 
     fn execute_fast_mode_toggle(&mut self, prompt: &str, cx: &mut Context<Self>) -> bool {
-        let Some(next_tier) = self.selected_session().and_then(|session| {
-            if !crate::composer_complete::is_fast_mode_toggle_submission(
-                session.provider,
-                prompt,
-                &self.slash_command_index,
-            ) {
-                return None;
-            }
-            let model = self.model_metadata_for_session(session)?;
-            crate::composer_complete::toggled_fast_service_tier(
-                session.service_tier.as_deref(),
-                &model.service_tiers,
-            )
+        let provider = self
+            .selected_session()
+            .map(|s| s.provider)
+            .unwrap_or(self.state.last_provider);
+        if !crate::composer_complete::is_fast_mode_toggle_submission(
+            provider,
+            prompt,
+            &self.slash_command_index,
+        ) {
+            return false;
+        }
+        let model_name = self
+            .selected_session()
+            .and_then(|s| self.model_for_session(s))
+            .or(self.state.last_model.as_deref())
+            .or_else(|| {
+                self.provider_probe(provider)
+                    .and_then(ProviderProbe::preferred_model)
+                    .map(|m| m.id.as_str())
+            });
+        let Some(model) = model_name.and_then(|name| {
+            self.provider_probe(provider)?
+                .models
+                .iter()
+                .find(|candidate| candidate.id == name)
         }) else {
+            return false;
+        };
+        let current_tier = self
+            .selected_session()
+            .and_then(|s| s.service_tier.as_deref())
+            .or(self.state.last_service_tier.as_deref());
+        let Some(next_tier) = crate::composer_complete::toggled_fast_service_tier(
+            current_tier,
+            &model.service_tiers,
+        ) else {
             return false;
         };
         let enabled = next_tier != "default";
@@ -2871,12 +2938,16 @@ impl Waku {
 
     fn render_branch_selector(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = Theme::current(cx);
-        let session = self.selected_session()?;
-        let workspace = session.workspace.clone();
-        let workspace_path = self.workspace_path_for_session(session)?.to_path_buf();
+        let session = self.selected_session();
+        let workspace = session.map(|s| s.workspace.clone()).unwrap_or_default();
+        let workspace_path = if let Some(session) = session {
+            self.workspace_path_for_session(session)?.to_path_buf()
+        } else {
+            self.selected_project()?.path.clone()
+        };
         self.selected_project()
             .filter(|project| !project.is_projectless())?;
-        let branch_enabled = !session.is_busy() && !self.branch_operation_pending;
+        let branch_enabled = session.map(|s| !s.is_busy()).unwrap_or(true) && !self.branch_operation_pending;
         let planned_worktree = matches!(workspace, SessionWorkspace::NewWorktree { .. });
         let snapshot = self.branch_snapshot_for_workspace(&workspace_path, cx)?;
         let selected_branch = match &workspace {
@@ -3303,7 +3374,8 @@ impl Waku {
             .unwrap_or_else(|| tr!("project.choose_project"));
         let can_configure_workspace = self
             .selected_session()
-            .is_some_and(|session| !session.has_started() && !session.is_busy());
+            .map(|session| !session.has_started() && !session.is_busy())
+            .unwrap_or(true);
 
         let project_handle = self.menu_handle("workspace-project", cx);
         let project_trigger = MenuChip::new("workspace-project")

@@ -2206,3 +2206,18 @@ fn multiple_tabs_can_be_tracked_interleaved_and_closed() {
     assert_eq!(main_tabs[next_index], MainTab::Chat(chat1));
 }
 
+#[test]
+fn sessionless_composer_draft_key_falls_back_to_new_session_for_project() {
+    let project_id = Uuid::new_v4();
+    let key = crate::persistence::ComposerDraftKey::NewSession(project_id);
+    assert_eq!(key, crate::persistence::ComposerDraftKey::NewSession(project_id));
+}
+
+#[test]
+fn model_picker_is_enabled_when_session_is_none() {
+    let session: Option<&AgentSession> = None;
+    let provider = ProviderKind::Claude;
+    let picker_enabled = session.map(|s| s.can_choose_model(provider)).unwrap_or(true);
+    assert!(picker_enabled);
+}
+

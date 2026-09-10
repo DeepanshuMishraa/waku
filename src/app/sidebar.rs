@@ -72,6 +72,7 @@ pub(super) enum SidebarGroup {
     Project(Uuid),
     PinnedProject(Uuid),
     Projectless,
+    Status(ChatStatus),
 }
 
 impl SidebarGroup {
@@ -81,6 +82,7 @@ impl SidebarGroup {
             Self::Project(project_id) => format!("project-{project_id}").into(),
             Self::PinnedProject(project_id) => format!("pinned-project-{project_id}").into(),
             Self::Projectless => "projectless".into(),
+            Self::Status(status) => format!("status-{}", status.as_str()).into(),
         }
     }
 
@@ -90,6 +92,7 @@ impl SidebarGroup {
             Self::Project(project_id) => mix_uuid(mix(fingerprint, 0x100), project_id),
             Self::PinnedProject(project_id) => mix_uuid(mix(fingerprint, 0x180), project_id),
             Self::Projectless => mix(fingerprint, 0x200),
+            Self::Status(status) => mix(fingerprint, 0x300 + status.index() as u64),
         }
     }
 }
@@ -98,6 +101,7 @@ fn sidebar_grouping_label(grouping: SidebarGrouping) -> String {
     match grouping {
         SidebarGrouping::Project => "Project".to_owned(),
         SidebarGrouping::Chats => "Chats".to_owned(),
+        SidebarGrouping::Status => "Status".to_owned(),
     }
 }
 
@@ -759,6 +763,7 @@ impl Waku {
                         .child(match grouping {
                             SidebarGrouping::Project => "Project",
                             SidebarGrouping::Chats => "Chats",
+                            SidebarGrouping::Status => "Status",
                         }),
                 )
                 .child(icon(
@@ -772,8 +777,10 @@ impl Waku {
             move |_| {
                 let project_weak = grouping_weak.clone();
                 let chats_weak = grouping_weak.clone();
+                let status_weak = grouping_weak.clone();
                 let project_menu = grouping_menu_for_items.clone();
                 let chats_menu = grouping_menu_for_items.clone();
+                let status_menu = grouping_menu_for_items.clone();
                 vec![
                     MenuItem::new("Project", move |window, cx| {
                         project_menu.close(window, cx);
@@ -789,6 +796,13 @@ impl Waku {
                         });
                     })
                     .selected(grouping == SidebarGrouping::Chats),
+                    MenuItem::new("Status", move |window, cx| {
+                        status_menu.close(window, cx);
+                        let _ = status_weak.update(cx, |this, cx| {
+                            this.set_sidebar_grouping(SidebarGrouping::Status, cx);
+                        });
+                    })
+                    .selected(grouping == SidebarGrouping::Status),
                 ]
             },
         );
@@ -1345,6 +1359,10 @@ impl Waku {
             .flex_col()
             .bg(if is_resizing {
                 theme.sidebar_drag_background
+            } else if self.state.window_style == WindowStyle::Image {
+                Hsla { a: 0.82, ..theme.canvas }
+            } else if self.state.window_style == WindowStyle::LiquidGlass {
+                Hsla { a: 0.08, ..theme.surface }
             } else {
                 theme.sidebar
             })
@@ -1440,6 +1458,7 @@ impl Waku {
             match self.state.sidebar_grouping {
                 SidebarGrouping::Project => 1,
                 SidebarGrouping::Chats => 2,
+                SidebarGrouping::Status => 3,
             },
         );
         fingerprint = mix(
@@ -1453,6 +1472,7 @@ impl Waku {
             fingerprint = mix_uuid(fingerprint, session.id);
             fingerprint = mix_uuid(fingerprint, session.project_id);
             fingerprint = mix(fingerprint, sidebar_session_timestamp(session));
+            fingerprint = mix(fingerprint, session.chat_status.index() as u64);
         }
         for project in &self.state.projects {
             fingerprint = mix_uuid(fingerprint, project.id);
@@ -1503,7 +1523,7 @@ impl Waku {
             .iter()
             .filter(|project| self.pinned_project_ids.contains(&project.id))
             .collect::<Vec<_>>();
-        if !pinned_projects.is_empty() {
+        if self.state.sidebar_grouping != SidebarGrouping::Status && !pinned_projects.is_empty() {
             rows.push(SidebarRow::PinnedHeader);
             for project in pinned_projects {
                 let group = SidebarGroup::PinnedProject(project.id);
@@ -1527,6 +1547,24 @@ impl Waku {
             SidebarGrouping::Chats => {
                 for session in sessions {
                     rows.push(SidebarRow::Session(session.id));
+                }
+            }
+            SidebarGrouping::Status => {
+                for &status in &ChatStatus::GROUP_ORDER {
+                    let group = SidebarGroup::Status(status);
+                    let is_collapsed = !self.sidebar_expanded_groups.contains(&group);
+                    let session_ids = sessions
+                        .iter()
+                        .filter(|session| session.chat_status == status)
+                        .map(|session| session.id)
+                        .collect::<Vec<_>>();
+                    append_sidebar_group_rows(
+                        &mut rows,
+                        group,
+                        &session_ids,
+                        is_collapsed,
+                        false,
+                    );
                 }
             }
             SidebarGrouping::Project => {
@@ -1719,6 +1757,7 @@ impl Waku {
                 .map(Project::display_name)
                 .unwrap_or_else(|| tr!("project.no_project_name")),
             SidebarGroup::Projectless => tr!("project.no_project_name"),
+            SidebarGroup::Status(status) => status.label().into(),
         };
         let compose = show_folder_icon.then(|| {
             let compose_focus = self
@@ -1804,10 +1843,69 @@ impl Waku {
             SidebarGroup::Project(project_id) | SidebarGroup::PinnedProject(project_id) => {
                 Some(project_id)
             }
-            SidebarGroup::Updated(_) | SidebarGroup::Projectless => None,
+            SidebarGroup::Updated(_) | SidebarGroup::Projectless | SidebarGroup::Status(_) => None,
         };
         let is_pinned =
             project_id.is_some_and(|project_id| self.pinned_project_ids.contains(&project_id));
+
+        let chat_count = if let Some(project_id) = project_id {
+            self.state
+                .sessions
+                .iter()
+                .filter(|session| {
+                    session.conversation_root_id.is_none()
+                        && session.project_id == project_id
+                        && (session.has_started()
+                            || self.state.selected_session == Some(session.id))
+                })
+                .count()
+        } else if matches!(group, SidebarGroup::Projectless) {
+            let projectless_root = crate::projectless::workspace_root();
+            self.state
+                .sessions
+                .iter()
+                .filter(|session| {
+                    session.conversation_root_id.is_none()
+                        && (session.has_started()
+                            || self.state.selected_session == Some(session.id))
+                        && self.state.projects.iter().any(|project| {
+                            project.id == session.project_id
+                                && sidebar_project_is_projectless(
+                                    project,
+                                    projectless_root.as_deref(),
+                                )
+                        })
+                })
+                .count()
+        } else {
+            0
+        };
+
+        let status_icon_el = if let SidebarGroup::Status(status) = group {
+            Some(icon(status.icon(), 14.0, chat_status_color(&theme, status)).into_any_element())
+        } else {
+            None
+        };
+        let status_chevron = if let SidebarGroup::Status(_) = group {
+            Some(
+                div()
+                    .flex_none()
+                    .opacity(0.0)
+                    .group_hover(group_name.clone(), |style| style.opacity(1.0))
+                    .child(icon(
+                        if collapsed {
+                            "icons/chevron-right.svg"
+                        } else {
+                            "icons/chevron-down.svg"
+                        },
+                        12.0,
+                        theme.text_secondary,
+                    )),
+            )
+        } else {
+            None
+        };
+
         let header = session_group_header(&theme)
             .h(px(38.0))
             .font_weight(FontWeight::SEMIBOLD)
@@ -1836,6 +1934,9 @@ impl Waku {
                     .items_center()
                     .gap(px(8.0))
                     .when(show_folder_icon, |element| element.child(project_icon_el))
+                    .when_some(status_icon_el, |element, status_icon| {
+                        element.child(status_icon)
+                    })
                     .child(
                         div()
                             .min_w_0()
@@ -1845,7 +1946,18 @@ impl Waku {
                             .text_color(theme.text)
                             .child(label),
                     )
-                    .child(div().flex_1()),
+                    .when(show_folder_icon && chat_count > 0, |element| {
+                        element.child(
+                            div()
+                                .flex_none()
+                                .text_size(sp(14.0))
+                                .font_weight(FontWeight::NORMAL)
+                                .text_color(theme.text_tertiary)
+                                .child(format!("{chat_count}")),
+                        )
+                    })
+                    .child(div().flex_1())
+                    .when_some(status_chevron, |element, chevron| element.child(chevron)),
             )
             .when_some(compose, |element, compose| element.child(compose))
             .on_click(cx.listener(move |this, _, _, cx| {
@@ -1924,7 +2036,7 @@ impl Waku {
                 self.sidebar_expanded_groups.insert(group);
                 self.create_projectless_session(cx);
             }
-            SidebarGroup::Updated(_) => return,
+            SidebarGroup::Updated(_) | SidebarGroup::Status(_) => return,
         }
         let focus_handle = self.composer_focus(cx);
         window.focus(&focus_handle, cx);
@@ -2053,6 +2165,10 @@ impl Waku {
             return;
         }
         self.state.sidebar_grouping = grouping;
+        if grouping == SidebarGrouping::Status {
+            self.sidebar_expanded_groups
+                .insert(SidebarGroup::Status(ChatStatus::InProgress));
+        }
         self.sidebar_rows_fingerprint.set(None);
         self.sidebar_branch_scan_fingerprint.set(None);
         self.sidebar_branch_scan_generation
@@ -2175,9 +2291,42 @@ impl Waku {
         let is_flat = self.state.sidebar_grouping == SidebarGrouping::Chats;
         let left_margin = if is_flat { 4.0 } else { 12.0 };
         let right_margin = 4.0;
+        let is_status_grouping = self.state.sidebar_grouping == SidebarGrouping::Status;
         let providers = sidebar_session_providers(session);
         let icon_element = if working {
             dot_matrix_loader(theme.text_secondary, 18.0)
+        } else if is_status_grouping {
+            let project = self.state.projects.iter().find(|p| p.id == session.project_id);
+            let avatar_path = crate::platform::local_user_github_avatar_path();
+            if let Some(path) = avatar_path.as_ref() {
+                img(path.clone())
+                    .size(px(18.0))
+                    .rounded(px(4.0))
+                    .flex_none()
+                    .into_any_element()
+            } else {
+                let display_char = project
+                    .map(Project::display_name)
+                    .unwrap_or_else(|| "W".to_string())
+                    .chars()
+                    .next()
+                    .unwrap_or('W')
+                    .to_uppercase()
+                    .to_string();
+                div()
+                    .size(px(18.0))
+                    .rounded(px(4.0))
+                    .bg(theme.accent)
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .text_size(sp(10.0))
+                    .font_weight(FontWeight::BOLD)
+                    .text_color(theme.on_inverse)
+                    .child(display_char)
+                    .flex_none()
+                    .into_any_element()
+            }
         } else {
             sidebar_provider_mark(&theme, &providers).into_any_element()
         };
@@ -2227,6 +2376,7 @@ impl Waku {
                 .into_any_element()
         };
         let waku = cx.entity().downgrade();
+        let current_status = session.chat_status;
         let menu = self.menu_handle(format!("session-{session_id}"), cx);
         let row_focus = menu.trigger_focus_handle().clone();
         let keyboard_menu = menu.clone();
@@ -2256,6 +2406,9 @@ impl Waku {
                     .gap(px(8.0))
                     .overflow_hidden()
                     .child(icon_element)
+                    .when(is_status_grouping && branch_label.is_some(), |element| {
+                        element.child(icon("icons/fork.svg", 12.0, theme.text_secondary))
+                    })
                     .child(title)
                     .when(session.status == SessionStatus::Background, |element| {
                         element.child(icon(
@@ -2317,20 +2470,46 @@ impl Waku {
                     format!("session-menu-{session_id}")
                 }),
                 &menu,
-                move |_| {
+                move |cx| {
+                    let theme = Theme::current(cx);
+                    let status_waku = waku.clone();
                     let rename_waku = waku.clone();
                     let remove_waku = waku.clone();
+
+                    let set_status_submenu = MenuItem::submenu("Set status", move |cx| {
+                        let theme = Theme::current(cx);
+                        ChatStatus::MENU_ORDER
+                            .iter()
+                            .map(|&status| {
+                                let status_waku = status_waku.clone();
+                                MenuItem::new(status.label(), move |_window, cx| {
+                                    let _ = status_waku.update(cx, |waku, cx| {
+                                        waku.set_session_chat_status(session_id, status, cx);
+                                    });
+                                })
+                                .icon(status.icon())
+                                .icon_color(chat_status_color(&theme, status))
+                                .selected(current_status == status)
+                            })
+                            .collect()
+                    })
+                    .icon(current_status.icon())
+                    .icon_color(chat_status_color(&theme, current_status));
+
                     vec![
+                        set_status_submenu,
                         MenuItem::new(tr!("common.rename"), move |window, cx| {
                             let _ = rename_waku.update(cx, |waku, cx| {
                                 waku.open_rename_session_dialog(session_id, window, cx);
                             });
-                        }),
+                        })
+                        .icon("icons/pencil.svg"),
                         MenuItem::Separator,
                         MenuItem::new(tr!("common.remove"), move |_, cx| {
                             let _ = remove_waku
                                 .update(cx, |waku, cx| waku.remove_session(session_id, cx));
-                        }),
+                        })
+                        .icon("icons/trash.svg"),
                     ]
                 },
             )
@@ -3289,5 +3468,70 @@ mod tests {
             - offset.offset_in_item;
         assert_eq!(visible_height, px(400.0));
         assert_eq!(sidebar_session_row_index(&rows, Uuid::from_u128(41)), None);
+    }
+
+    #[test]
+    fn chat_status_order_and_properties() {
+        assert_eq!(
+            ChatStatus::MENU_ORDER,
+            [
+                ChatStatus::Backlog,
+                ChatStatus::InProgress,
+                ChatStatus::InReview,
+                ChatStatus::Done,
+                ChatStatus::Canceled,
+            ]
+        );
+        assert_eq!(
+            ChatStatus::GROUP_ORDER,
+            [
+                ChatStatus::Done,
+                ChatStatus::InReview,
+                ChatStatus::InProgress,
+                ChatStatus::Backlog,
+                ChatStatus::Canceled,
+            ]
+        );
+        assert_eq!(ChatStatus::InProgress.label(), "In progress");
+        assert_eq!(ChatStatus::InProgress.icon(), "icons/status-in-progress.svg");
+        assert_eq!(ChatStatus::Done.label(), "Done");
+        assert_eq!(ChatStatus::Done.icon(), "icons/status-done.svg");
+    }
+
+    #[test]
+    fn sidebar_status_grouping_rows() {
+        let mut rows = Vec::new();
+        let session_1 = Uuid::from_u128(1);
+        let session_2 = Uuid::from_u128(2);
+
+        rows.push(SidebarRow::WorkspacesHeader);
+        for &status in &ChatStatus::GROUP_ORDER {
+            let group = SidebarGroup::Status(status);
+            let sessions = match status {
+                ChatStatus::InProgress => vec![session_1],
+                ChatStatus::Done => vec![session_2],
+                _ => vec![],
+            };
+            append_sidebar_group_rows(&mut rows, group, &sessions, false, false);
+        }
+
+        assert_eq!(
+            rows,
+            vec![
+                SidebarRow::WorkspacesHeader,
+                SidebarRow::Header(SidebarGroup::Status(ChatStatus::Done)),
+                SidebarRow::Session(session_2),
+                SidebarRow::GroupSpacer,
+                SidebarRow::Header(SidebarGroup::Status(ChatStatus::InReview)),
+                SidebarRow::GroupSpacer,
+                SidebarRow::Header(SidebarGroup::Status(ChatStatus::InProgress)),
+                SidebarRow::Session(session_1),
+                SidebarRow::GroupSpacer,
+                SidebarRow::Header(SidebarGroup::Status(ChatStatus::Backlog)),
+                SidebarRow::GroupSpacer,
+                SidebarRow::Header(SidebarGroup::Status(ChatStatus::Canceled)),
+                SidebarRow::GroupSpacer,
+            ]
+        );
     }
 }

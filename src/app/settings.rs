@@ -124,7 +124,11 @@ impl Waku {
             .capture_any_mouse_down(cx.listener(Self::navigation_mouse_down))
             .size_full()
             .flex()
-            .bg(theme.canvas)
+            .bg(match self.state.window_style {
+                WindowStyle::LiquidGlass => gpui::transparent_black(),
+                WindowStyle::Image => gpui::transparent_black(),
+                WindowStyle::Solid => theme.canvas,
+            })
             .text_color(theme.text)
             .font_family(crate::theme::active_ui_font_family())
             .child(self.render_settings_sidebar(window, cx))
@@ -193,7 +197,11 @@ impl Waku {
             .flex_none()
             .flex()
             .flex_col()
-            .bg(theme.sidebar)
+            .bg(match self.state.window_style {
+                WindowStyle::LiquidGlass => Hsla { a: 0.08, ..theme.surface },
+                WindowStyle::Image => Hsla { a: 0.82, ..theme.canvas },
+                WindowStyle::Solid => theme.sidebar,
+            })
             .child(self.render_settings_sidebar_titlebar(window, cx))
             .child(
                 div().px(px(12.0)).child(
@@ -323,7 +331,11 @@ impl Waku {
                 .flex_col()
                 .border_l_1()
                 .border_color(theme.sidebar_border)
-                .bg(theme.surface)
+                .bg(match self.state.window_style {
+                    WindowStyle::LiquidGlass => gpui::transparent_black(),
+                    WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
+                    WindowStyle::Solid => theme.surface,
+                })
                 .children(right_window_controls.map(|controls| {
                     self.render_settings_drag_region("settings-skills-titlebar", cx)
                         .flex()
@@ -396,7 +408,11 @@ impl Waku {
             .flex_col()
             .border_l_1()
             .border_color(theme.sidebar_border)
-            .bg(theme.surface)
+            .bg(match self.state.window_style {
+                WindowStyle::LiquidGlass => gpui::transparent_black(),
+                WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
+                WindowStyle::Solid => theme.surface,
+            })
             .child(
                 self.render_settings_drag_region("settings-content-titlebar", cx)
                     .flex()
@@ -1303,6 +1319,7 @@ impl Waku {
         let theme = Theme::current(cx);
         let selected_theme = self.state.theme;
         let selected_color_theme = self.state.color_theme;
+        let selected_window_style = self.state.window_style;
         let selected_language = self.state.language;
         let weak = cx.entity().downgrade();
         let theme_handle = self.menu_handle("theme-selector", cx);
@@ -1345,7 +1362,11 @@ impl Waku {
             &color_theme_handle,
             MenuAlign::BelowRight,
             move |_| {
-                let dark = theme.is_dark;
+                let dark = if selected_window_style == WindowStyle::LiquidGlass {
+                    true
+                } else {
+                    theme.is_dark
+                };
                 ColorTheme::ALL
                     .into_iter()
                     .filter(|candidate| candidate.for_dark(dark))
@@ -1357,6 +1378,35 @@ impl Waku {
                             });
                         })
                         .selected(color_theme == selected_color_theme)
+                    })
+                    .collect()
+            },
+        );
+
+        let style_weak = cx.entity().downgrade();
+        let style_handle = self.menu_handle("window-style-selector", cx);
+        let window_style_selector = dropdown_menu(
+            MenuChip::new("window-style-selector")
+                .label(selected_window_style.label())
+                .outlined()
+                .selected(style_handle.is_open())
+                .w(px(150.0))
+                .justify_between(),
+            "window-style-selector-menu",
+            &style_handle,
+            MenuAlign::BelowRight,
+            move |_| {
+                WindowStyle::ALL
+                    .into_iter()
+                    .filter(|style| *style != WindowStyle::LiquidGlass || crate::platform::supports_liquid_glass())
+                    .map(|style| {
+                        let weak = style_weak.clone();
+                        MenuItem::new(style.label(), move |window, cx| {
+                            let _ = weak.update(cx, |this, cx| {
+                                this.set_window_style(style, window, cx);
+                            });
+                        })
+                        .selected(style == selected_window_style)
                     })
                     .collect()
             },
@@ -1582,45 +1632,62 @@ impl Waku {
             },
         );
 
-        div()
-            .mt(px(15.0))
+        let section_header = |title: &'static str, first: bool| {
+            div()
+                .mt(if first { px(16.0) } else { px(24.0) })
+                .mb(px(8.0))
+                .px(px(4.0))
+                .text_size(sp(12.0))
+                .font_weight(FontWeight::MEDIUM)
+                .text_color(theme.text_secondary)
+                .child(title)
+        };
+
+        let mut window_card = div()
             .w_full()
             .flex()
             .flex_col()
             .rounded(px(13.0))
             .overflow_hidden()
-            .bg(theme.raised)
-            .child(
-                div()
-                    .w_full()
-                    .min_h(px(60.0))
-                    .px(px(20.0))
-                    .py(px(12.0))
-                    .flex()
-                    .items_center()
-                    .gap(px(24.0))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .child(
-                                div()
-                                    .text_size(sp(13.5))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(theme.text)
-                                    .child(tr!("settings.theme")),
-                            )
-                            .child(
-                                div()
-                                    .mt(px(5.0))
-                                    .text_size(sp(12.5))
-                                    .line_height(sp(18.0))
-                                    .text_color(theme.text_secondary)
-                                    .child(tr!("settings.theme_description")),
-                            ),
-                    )
-                    .child(theme_selector),
-            )
+            .bg(theme.raised);
+
+        if selected_window_style != WindowStyle::LiquidGlass {
+            window_card = window_card
+                .child(
+                    div()
+                        .w_full()
+                        .min_h(px(60.0))
+                        .px(px(20.0))
+                        .py(px(12.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(24.0))
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .child(
+                                    div()
+                                        .text_size(sp(13.5))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(theme.text)
+                                        .child(tr!("settings.theme")),
+                                )
+                                .child(
+                                    div()
+                                        .mt(px(5.0))
+                                        .text_size(sp(12.5))
+                                        .line_height(sp(18.0))
+                                        .text_color(theme.text_secondary)
+                                        .child(tr!("settings.theme_description")),
+                                ),
+                        )
+                        .child(theme_selector),
+                )
+                .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border));
+        }
+
+        let window_card = window_card
             .child(
                 div()
                     .w_full()
@@ -1671,7 +1738,7 @@ impl Waku {
                                     .text_size(sp(13.5))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(theme.text)
-                                    .child(tr!("language.title")),
+                                    .child("Window style"),
                             )
                             .child(
                                 div()
@@ -1679,12 +1746,107 @@ impl Waku {
                                     .text_size(sp(12.5))
                                     .line_height(sp(18.0))
                                     .text_color(theme.text_secondary)
-                                    .child(tr!("language.description")),
+                                    .child("Choose a solid, glass, or image background."),
                             ),
                     )
-                    .child(language_selector),
+                    .child(window_style_selector),
             )
-            .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
+            .when(selected_window_style == WindowStyle::Image, |element| {
+                let weak = cx.entity().downgrade();
+                let image_path = self.state.background_image_path.clone();
+                element
+                    .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
+                    .child(
+                        div()
+                            .w_full()
+                            .min_h(px(60.0))
+                            .px(px(20.0))
+                            .py(px(12.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(24.0))
+                            .child(
+                                div()
+                                    .flex_1()
+                                    .min_w_0()
+                                    .child(
+                                        div()
+                                            .text_size(sp(13.5))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme.text)
+                                            .child("Background image"),
+                                    )
+                                    .child(
+                                        if let Some(path) = &image_path {
+                                            let filename = std::path::Path::new(path)
+                                                .file_name()
+                                                .and_then(|n| n.to_str())
+                                                .unwrap_or(path.as_str())
+                                                .to_string();
+                                            div()
+                                                .mt(px(5.0))
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(6.0))
+                                                .child(icon("icons/file.svg", 13.0, theme.text_secondary))
+                                                .child(
+                                                    div()
+                                                        .text_size(sp(12.5))
+                                                        .text_color(theme.text_secondary)
+                                                        .overflow_hidden()
+                                                        .child(filename),
+                                                )
+                                        } else {
+                                            div()
+                                                .mt(px(5.0))
+                                                .text_size(sp(12.5))
+                                                .line_height(sp(18.0))
+                                                .text_color(theme.text_secondary)
+                                                .child("No image selected")
+                                        },
+                                    ),
+                            )
+                            .child(
+                                div()
+                                    .id("choose-background-image")
+                                    .px(px(12.0))
+                                    .py(px(6.0))
+                                    .rounded(px(6.0))
+                                    .bg(theme.overlay)
+                                    .hover(|el| el.bg(theme.overlay_strong))
+                                    .cursor_pointer()
+                                    .text_size(sp(12.5))
+                                    .text_color(theme.text)
+                                    .child(if image_path.is_some() { "Change image" } else { "Choose image" })
+                                    .on_click(move |_, _, cx| {
+                                        let receiver = cx.prompt_for_paths(PathPromptOptions {
+                                            files: true,
+                                            directories: false,
+                                            multiple: false,
+                                            prompt: Some("Choose background image".into()),
+                                        });
+                                        let weak = weak.clone();
+                                        cx.spawn(async move |cx| {
+                                            if let Ok(Ok(Some(paths))) = receiver.await
+                                                && let Some(path) = paths.into_iter().next()
+                                            {
+                                                let _ = weak.update(cx, |this, cx| {
+                                                    this.set_background_image(path, cx);
+                                                });
+                                            }
+                                        }).detach();
+                                    }),
+                            ),
+                    )
+            });
+
+        let typography_card = div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .rounded(px(13.0))
+            .overflow_hidden()
+            .bg(theme.raised)
             .child(Self::font_setting_row(
                 theme,
                 tr!("settings.ui_font_family"),
@@ -1793,7 +1955,57 @@ impl Waku {
                             ),
                     )
                     .child(font_smoothing_toggle),
-            )
+            );
+
+        let interface_card = div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .rounded(px(13.0))
+            .overflow_hidden()
+            .bg(theme.raised)
+            .child(
+                div()
+                    .w_full()
+                    .min_h(px(60.0))
+                    .px(px(20.0))
+                    .py(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(24.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(sp(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text)
+                                    .child(tr!("language.title")),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(5.0))
+                                    .text_size(sp(12.5))
+                                    .line_height(sp(18.0))
+                                    .text_color(theme.text_secondary)
+                                    .child(tr!("language.description")),
+                            ),
+                    )
+                    .child(language_selector),
+            );
+
+        div()
+            .flex()
+            .flex_col()
+            .pb(px(32.0))
+            .child(section_header("Window", true))
+            .child(window_card)
+            .child(section_header("Typography", false))
+            .child(typography_card)
+            .child(section_header("Interface", false))
+            .child(interface_card)
             .into_any_element()
     }
 
@@ -2744,7 +2956,8 @@ impl Waku {
         if !self.state.color_theme.for_dark(dark) {
             self.state.color_theme = ColorTheme::default_for_dark(dark);
         }
-        crate::theme::apply_theme_preference(preference, self.state.color_theme, window, cx);
+        crate::theme::apply_theme_preference(preference, self.state.color_theme, self.state.window_style, window, cx);
+        crate::platform::configure_window_style(window, self.state.window_style, self.state.color_theme, self.state.background_image_path.as_deref());
         self.save();
         cx.notify();
     }
@@ -2759,7 +2972,93 @@ impl Waku {
             return;
         }
         self.state.color_theme = color_theme;
-        crate::theme::apply_theme_preference(self.state.theme, color_theme, window, cx);
+        crate::theme::apply_theme_preference(self.state.theme, color_theme, self.state.window_style, window, cx);
+        crate::platform::configure_window_style(window, self.state.window_style, color_theme, self.state.background_image_path.as_deref());
+        self.save();
+        cx.notify();
+    }
+
+    #[allow(dead_code)]
+    fn render_window_style_restart_dialog(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let style = self.window_style_restart_dialog?;
+        let theme = Theme::current(cx);
+        let weak = cx.entity().downgrade();
+        Some(
+            div()
+                .id("window-style-restart-dialog")
+                .absolute()
+                .inset_0()
+                .flex()
+                .items_center()
+                .justify_center()
+                .bg(Hsla { h: 0.0, s: 0.0, l: 0.0, a: 0.35 })
+                .child(
+                    div()
+                        .w(px(380.0))
+                        .p(px(22.0))
+                        .rounded(px(12.0))
+                        .bg(theme.raised)
+                        .text_color(theme.text)
+                        .child(div().text_size(sp(16.0)).font_weight(FontWeight::SEMIBOLD).child("Restart required"))
+                        .child(div().mt(px(8.0)).text_size(sp(13.0)).line_height(sp(19.0)).text_color(theme.text_secondary).child(format!("Restart Waku to apply the {} window style.", style.label())))
+                        .child(
+                            div().mt(px(20.0)).flex().justify_end().gap(px(8.0))
+                                .child(div().id("window-style-restart-later").px(px(12.0)).py(px(7.0)).rounded(px(6.0)).text_color(theme.text_secondary).child("Do it later").on_click({ let weak = weak.clone(); move |_, _, cx| { let _ = weak.update(cx, |this, cx| { this.window_style_restart_dialog = None; cx.notify(); }); }}))
+                                .child(div().id("window-style-restart-now").px(px(12.0)).py(px(7.0)).rounded(px(6.0)).bg(rgb(0xc0392b)).text_color(rgb(0xffffff)).child("Restart").on_click(move |_, _, cx| { if crate::platform::restart_application() { cx.quit(); } }))
+                        ),
+                )
+                .into_any_element(),
+        )
+    }
+
+    pub(crate) fn window_style_config(&self) -> (WindowStyle, ColorTheme, Option<&str>) {
+        (self.state.window_style, self.state.color_theme, self.state.background_image_path.as_deref())
+    }
+
+    fn set_window_style(&mut self, style: WindowStyle, window: &mut Window, cx: &mut Context<Self>) {
+        if self.state.window_style == style {
+            return;
+        }
+        if style == WindowStyle::LiquidGlass && !crate::platform::supports_liquid_glass() {
+            return;
+        }
+        self.state.window_style = style;
+        self.window_style_restart_dialog = None;
+        if style == WindowStyle::LiquidGlass && !self.state.color_theme.for_dark(true) {
+            self.state.color_theme = ColorTheme::default_for_dark(true);
+        }
+        crate::theme::apply_theme_preference(self.state.theme, self.state.color_theme, style, window, cx);
+        crate::platform::configure_window_style(window, style, self.state.color_theme, self.state.background_image_path.as_deref());
+        self.save();
+        if style == WindowStyle::Image && self.state.background_image_path.is_none() {
+            let receiver = cx.prompt_for_paths(PathPromptOptions {
+                files: true,
+                directories: false,
+                multiple: false,
+                prompt: Some("Choose background image".into()),
+            });
+            cx.spawn(async move |this, cx| {
+                if let Ok(Ok(Some(paths))) = receiver.await
+                    && let Some(path) = paths.into_iter().next()
+                {
+                    let _ = this.update(cx, |this, cx| {
+                        this.set_background_image(path, cx);
+                    });
+                }
+            }).detach();
+        }
+        cx.notify();
+    }
+
+    fn set_background_image(&mut self, path: PathBuf, cx: &mut Context<Self>) {
+        if !path.is_file() {
+            return;
+        }
+        self.state.background_image_path = Some(path.to_string_lossy().into_owned());
+        self.state.window_style = WindowStyle::Image;
+        self.window_style_restart_dialog = None;
+        crate::theme::update_active_theme(self.state.theme, self.state.color_theme, WindowStyle::Image, cx);
+        crate::platform::reapply_window_style(WindowStyle::Image, self.state.color_theme, self.state.background_image_path.as_deref());
         self.save();
         cx.notify();
     }

@@ -18,12 +18,11 @@ use crate::{Command, DaemonExposureSettings, DaemonSettings, DaemonSupervisor, R
 use waku_protocol::computer_use::ComputerAppGrant;
 use waku_protocol::i18n::AppLanguage;
 use waku_protocol::identity::DATA_DIRECTORY_NAME;
-use waku_protocol::model::{
-    AgentSession, FavoriteModel, Project, ProviderKind, ProviderResumeCursor,
+pub use waku_protocol::model::{
+    AgentSession, ChatStatus, FavoriteModel, Project, ProviderKind, ProviderResumeCursor,
     ProviderSessionHistory, ProviderSessionSummary, RuntimeMode,
 };
-use waku_protocol::theme::{ColorTheme, ThemePreference};
-
+use waku_protocol::theme::{ColorTheme, ThemePreference, WindowStyle};
 pub use waku_protocol::persistence::{
     ComposerDraft, ComposerDraftAttachment, ComposerDraftChange, ComposerDraftKey,
     ComposerDraftTarget, ComposerDrafts, SessionMessageMatch,
@@ -43,6 +42,7 @@ pub enum SidebarGrouping {
     Project,
     #[serde(alias = "updated")]
     Chats,
+    Status,
 }
 
 /// Direction of task history inside the sidebar's current grouping.
@@ -259,6 +259,10 @@ pub struct AppSettings {
     pub favorite_models: Vec<FavoriteModel>,
     pub theme: ThemePreference,
     pub color_theme: ColorTheme,
+    #[serde(default)]
+    pub window_style: WindowStyle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_image_path: Option<String>,
     pub language: AppLanguage,
     /// Base text size for the interface, in pixels: chrome and prose are
     /// authored against the 14px default and scale from it. Hand-edited
@@ -290,6 +294,8 @@ impl Default for AppSettings {
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
+            window_style: WindowStyle::default(),
+            background_image_path: None,
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
             ui_font_family: DEFAULT_UI_FONT_FAMILY.to_owned(),
@@ -405,6 +411,10 @@ pub struct PersistedState {
     #[serde(default)]
     pub color_theme: ColorTheme,
     #[serde(default)]
+    pub window_style: WindowStyle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub background_image_path: Option<String>,
+    #[serde(default)]
     pub language: AppLanguage,
     #[serde(default = "default_ui_font_size")]
     pub ui_font_size: f32,
@@ -491,6 +501,8 @@ impl PersistedState {
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
+            window_style: WindowStyle::default(),
+            background_image_path: None,
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
             ui_font_family: DEFAULT_UI_FONT_FAMILY.to_owned(),
@@ -620,6 +632,8 @@ impl PersistedState {
             favorite_models: self.favorite_models.clone(),
             theme: self.theme,
             color_theme: self.color_theme,
+            window_style: self.window_style,
+            background_image_path: self.background_image_path.clone(),
             language: self.language,
             ui_font_size: self.ui_font_size,
             ui_font_family: self.ui_font_family.clone(),
@@ -661,6 +675,9 @@ impl PersistedState {
         self.analytics_enabled = settings.analytics_enabled;
         self.favorite_models = settings.favorite_models;
         self.theme = settings.theme;
+        self.color_theme = settings.color_theme;
+        self.window_style = settings.window_style;
+        self.background_image_path = settings.background_image_path;
         self.language = settings.language;
         self.ui_font_size = sanitized_ui_font_size(settings.ui_font_size);
         self.ui_font_family = settings.ui_font_family;

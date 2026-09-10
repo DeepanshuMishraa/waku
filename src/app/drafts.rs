@@ -69,6 +69,10 @@ impl Waku {
                     .find(|session| session.id == selected)
             })
             .map(crate::persistence::ComposerDraftKey::for_session)
+            .or_else(|| {
+                self.selected_project()
+                    .map(|project| crate::persistence::ComposerDraftKey::NewSession(project.id))
+            })
     }
 
     fn current_composer_draft(&self, cx: &App) -> crate::persistence::ComposerDraft {

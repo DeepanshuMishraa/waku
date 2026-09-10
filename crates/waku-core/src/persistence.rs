@@ -30,8 +30,8 @@ use crate::computer_use::ComputerAppGrant;
 use crate::i18n::AppLanguage;
 use crate::identity::DATA_DIRECTORY_NAME;
 use crate::model::{
-    AgentSession, FavoriteModel, Message, MessageAttachment, MessageRole, Project, ProviderKind,
-    RuntimeMode, SessionWorkspace,
+    AgentSession, ChatStatus, FavoriteModel, Message, MessageAttachment, MessageRole, Project,
+    ProviderKind, RuntimeMode, SessionWorkspace,
 };
 use crate::theme::{ColorTheme, ThemePreference};
 pub use waku_protocol::persistence::{
@@ -1556,6 +1556,7 @@ fn session_skeleton(row: SessionColumns) -> Option<AgentSession> {
         context_window: None,
         agent_preset: None,
         status: serde_json::from_value(serde_json::Value::String(status)).ok()?,
+        chat_status: ChatStatus::default(),
         created_at: created_at as u64,
         updated_at: updated_at as u64,
         last_reply_at: last_reply_at.map(|at| at as u64),

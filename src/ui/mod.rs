@@ -11,7 +11,7 @@ pub mod scrollbar;
 pub mod text_field;
 pub mod tooltip;
 
-use crate::model::{ActivityKind, ProviderKind, SessionStatus};
+use crate::model::{ActivityKind, ChatStatus, ProviderKind, SessionStatus};
 use crate::theme::{Theme, sp};
 
 /// A monochrome icon from the embedded set, tinted via text color. Sized in
@@ -267,6 +267,16 @@ pub fn status_color(theme: &Theme, status: SessionStatus) -> Hsla {
         SessionStatus::Background => theme.text_secondary,
         SessionStatus::Waiting => theme.warning,
         SessionStatus::Failed => theme.danger,
+    }
+}
+
+pub fn chat_status_color(theme: &Theme, status: ChatStatus) -> Hsla {
+    match status {
+        ChatStatus::Backlog => theme.text_secondary,
+        ChatStatus::InProgress => gpui::hsla(45.0 / 360.0, 0.96, 0.53, 1.0),
+        ChatStatus::InReview => gpui::hsla(145.0 / 360.0, 0.72, 0.50, 1.0),
+        ChatStatus::Done => gpui::hsla(23.0 / 360.0, 0.65, 0.68, 1.0),
+        ChatStatus::Canceled => gpui::hsla(220.0 / 360.0, 0.12, 0.55, 1.0),
     }
 }
 

@@ -392,12 +392,19 @@ pub fn run() {
             });
 
             window
-                .update(cx, |_, window, cx| {
+                .update(cx, |waku, window, cx| {
                     let theme = crate::theme::Theme::current(cx);
+                    let (window_style, color_theme, background_image_path) = waku.window_style_config();
                     crate::platform::configure_sidebar_material(
                         window,
                         theme.is_dark,
                         theme.sidebar_drag_background,
+                    );
+                    crate::platform::configure_window_style(
+                        window,
+                        window_style,
+                        color_theme,
+                        background_image_path,
                     );
                     cx.activate(true);
                 })

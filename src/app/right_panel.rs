@@ -2286,7 +2286,11 @@ impl Waku {
             .min_w_0()
             .border_l_1()
             .border_color(theme.border_strong)
-            .bg(theme.surface)
+            .bg(match self.state.window_style {
+                WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
+                WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
+                WindowStyle::Solid => theme.surface,
+            })
             .relative()
             .child(self.render_right_panel_header(window, cx))
             .child(body)

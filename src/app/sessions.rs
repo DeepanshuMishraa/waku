@@ -274,6 +274,16 @@ impl Waku {
             .find(|session| session.project_id == project_id && !session.has_started())
             .map(|session| session.id)
         {
+            if self.selected_session().is_none() {
+                if let Some(draft) = self.state.sessions.iter_mut().find(|s| s.id == draft_id) {
+                    draft.provider = provider;
+                    draft.model.clone_from(&self.state.last_model);
+                    draft.runtime_mode = self.state.last_runtime_mode;
+                    draft.reasoning_effort.clone_from(&self.state.last_reasoning_effort);
+                    draft.service_tier.clone_from(&self.state.last_service_tier);
+                    draft.context_window.clone_from(&self.state.last_context_window);
+                }
+            }
             self.select_session(draft_id, cx);
             return;
         }
@@ -290,7 +300,18 @@ impl Waku {
     }
 
     pub(super) fn select_workspace(&mut self, workspace: SessionWorkspace, cx: &mut Context<Self>) {
-        let Some(session) = self.selected_session_mut() else {
+        let selected_id = self.state.selected_session;
+        let project_id = self.state.selected_project;
+        let Some(session) = (if let Some(id) = selected_id {
+            self.state.session_mut(id)
+        } else if let Some(project_id) = project_id {
+            self.state
+                .sessions
+                .iter_mut()
+                .find(|s| s.project_id == project_id && !s.has_started())
+        } else {
+            None
+        }) else {
             return;
         };
         if session.has_started() || session.is_busy() || session.workspace == workspace {
@@ -299,6 +320,22 @@ impl Waku {
         session.workspace = workspace;
         self.save();
         cx.notify();
+    }
+
+    pub(super) fn set_session_chat_status(
+        &mut self,
+        session_id: Uuid,
+        status: ChatStatus,
+        cx: &mut Context<Self>,
+    ) {
+        if let Some(session) = self.state.sessions.iter_mut().find(|s| s.id == session_id) {
+            if session.chat_status != status {
+                session.chat_status = status;
+                self.sidebar_rows_fingerprint.set(None);
+                self.save();
+                cx.notify();
+            }
+        }
     }
 
     pub(super) fn remove_session(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
@@ -961,15 +998,35 @@ impl Waku {
 
     fn remember_selected_model_traits(&mut self) {
         let Some((provider, model, reasoning_effort, service_tier, context_window)) =
-            self.selected_session().and_then(|session| {
-                Some((
-                    session.provider,
-                    self.model_for_session(session)?.to_owned(),
-                    session.reasoning_effort.clone(),
-                    session.service_tier.clone(),
-                    session.context_window.clone(),
-                ))
-            })
+            self.selected_session()
+                .and_then(|session| {
+                    Some((
+                        session.provider,
+                        self.model_for_session(session)?.to_owned(),
+                        session.reasoning_effort.clone(),
+                        session.service_tier.clone(),
+                        session.context_window.clone(),
+                    ))
+                })
+                .or_else(|| {
+                    let provider = self.state.last_provider;
+                    let model = self
+                        .state
+                        .last_model
+                        .clone()
+                        .or_else(|| {
+                            self.provider_probe(provider)
+                                .and_then(ProviderProbe::preferred_model)
+                                .map(|m| m.id.clone())
+                        })?;
+                    Some((
+                        provider,
+                        model,
+                        self.state.last_reasoning_effort.clone(),
+                        self.state.last_service_tier.clone(),
+                        self.state.last_context_window.clone(),
+                    ))
+                })
         else {
             return;
         };
@@ -988,6 +1045,39 @@ impl Waku {
         model: String,
         cx: &mut Context<Self>,
     ) {
+        if self.selected_session().is_none() {
+            self.remember_selected_model_traits();
+            let (reasoning_effort, service_tier, context_window) =
+                self.state.model_traits_for(provider, &model);
+            let provider_changed = self.state.last_provider != provider;
+            if let Some(project_id) = self.state.selected_project {
+                if let Some(draft) = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.project_id == project_id && !s.has_started())
+                {
+                    draft.provider = provider;
+                    draft.model = Some(model.clone());
+                    draft.reasoning_effort.clone_from(&reasoning_effort);
+                    draft.service_tier.clone_from(&service_tier);
+                    draft.context_window.clone_from(&context_window);
+                }
+            }
+            self.state.last_provider = provider;
+            self.state.last_model = Some(model);
+            self.state.last_reasoning_effort = reasoning_effort;
+            self.state.last_service_tier = service_tier;
+            self.state.last_context_window = context_window;
+            self.model_picker_tab = ModelPickerTab::Provider(provider);
+            if provider_changed {
+                self.refresh_composer_sources(cx);
+            }
+            self.save();
+            cx.notify();
+            return;
+        }
+
         let Some((session_id, provider_changed)) = self
             .selected_session()
             .filter(|session| {
@@ -1042,10 +1132,11 @@ impl Waku {
         if self.settings_page.is_some() {
             return;
         }
-        if !self
+        let can_choose = self
             .selected_session()
-            .is_some_and(|session| session.can_choose_model(session.provider))
-        {
+            .map(|session| session.can_choose_model(session.provider))
+            .unwrap_or(true);
+        if !can_choose {
             return;
         }
         let menus = self.menus.borrow();
@@ -1116,6 +1207,21 @@ impl Waku {
             .selected_session()
             .map(|session| (session.id, session.runtime_mode != mode))
         else {
+            if let Some(project_id) = self.state.selected_project {
+                if let Some(draft) = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.project_id == project_id && !s.has_started())
+                {
+                    draft.runtime_mode = mode;
+                }
+            }
+            if self.state.last_runtime_mode != mode {
+                self.state.last_runtime_mode = mode;
+                self.save();
+                cx.notify();
+            }
             return;
         };
         let remembered_changed = self.state.last_runtime_mode != mode;
@@ -1143,6 +1249,21 @@ impl Waku {
             self.apply_session_options(session_id, cx);
             self.save();
             cx.notify();
+        } else if self.selected_session().is_none() {
+            if let Some(project_id) = self.state.selected_project {
+                if let Some(draft) = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.project_id == project_id && !s.has_started())
+                {
+                    draft.reasoning_effort = Some(effort.clone());
+                }
+            }
+            self.state.last_reasoning_effort = Some(effort);
+            self.remember_selected_model_traits();
+            self.save();
+            cx.notify();
         }
     }
 
@@ -1157,6 +1278,21 @@ impl Waku {
             self.apply_session_options(session_id, cx);
             self.save();
             cx.notify();
+        } else if self.selected_session().is_none() {
+            if let Some(project_id) = self.state.selected_project {
+                if let Some(draft) = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.project_id == project_id && !s.has_started())
+                {
+                    draft.service_tier = Some(tier.clone());
+                }
+            }
+            self.state.last_service_tier = Some(tier);
+            self.remember_selected_model_traits();
+            self.save();
+            cx.notify();
         }
     }
 
@@ -1169,6 +1305,21 @@ impl Waku {
             self.state.last_context_window = Some(window);
             self.remember_selected_model_traits();
             self.apply_session_options(session_id, cx);
+            self.save();
+            cx.notify();
+        } else if self.selected_session().is_none() {
+            if let Some(project_id) = self.state.selected_project {
+                if let Some(draft) = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.project_id == project_id && !s.has_started())
+                {
+                    draft.context_window = Some(window.clone());
+                }
+            }
+            self.state.last_context_window = Some(window);
+            self.remember_selected_model_traits();
             self.save();
             cx.notify();
         }
@@ -1198,6 +1349,19 @@ impl Waku {
             // no-op. It also closes the narrow race where a blank runtime was
             // prepared but had not reported its native session yet.
             self.reset_session_runtime(session_id);
+            self.save();
+            cx.notify();
+        } else if self.selected_session().is_none() {
+            if let Some(project_id) = self.state.selected_project {
+                if let Some(draft) = self
+                    .state
+                    .sessions
+                    .iter_mut()
+                    .find(|s| s.project_id == project_id && !s.has_started())
+                {
+                    draft.agent_preset = Some(agent_preset);
+                }
+            }
             self.save();
             cx.notify();
         }

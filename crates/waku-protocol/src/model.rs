@@ -704,6 +704,78 @@ impl SessionStatus {
     }
 }
 
+/// User-assigned task status for organizing chats in the sidebar and project workflows.
+#[derive(
+    Clone, Copy, Debug, Default, Deserialize, Eq, Hash, Ord, PartialEq, PartialOrd, Serialize, TS,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum ChatStatus {
+    #[default]
+    InProgress,
+    Backlog,
+    InReview,
+    Done,
+    Canceled,
+}
+
+impl ChatStatus {
+    pub const MENU_ORDER: [ChatStatus; 5] = [
+        ChatStatus::Backlog,
+        ChatStatus::InProgress,
+        ChatStatus::InReview,
+        ChatStatus::Done,
+        ChatStatus::Canceled,
+    ];
+
+    pub const GROUP_ORDER: [ChatStatus; 5] = [
+        ChatStatus::Done,
+        ChatStatus::InReview,
+        ChatStatus::InProgress,
+        ChatStatus::Backlog,
+        ChatStatus::Canceled,
+    ];
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Backlog => "Backlog",
+            Self::InProgress => "In progress",
+            Self::InReview => "In review",
+            Self::Done => "Done",
+            Self::Canceled => "Canceled",
+        }
+    }
+
+    pub fn icon(self) -> &'static str {
+        match self {
+            Self::Backlog => "icons/status-backlog.svg",
+            Self::InProgress => "icons/status-in-progress.svg",
+            Self::InReview => "icons/status-in-review.svg",
+            Self::Done => "icons/status-done.svg",
+            Self::Canceled => "icons/status-canceled.svg",
+        }
+    }
+
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Backlog => "backlog",
+            Self::InProgress => "in-progress",
+            Self::InReview => "in-review",
+            Self::Done => "done",
+            Self::Canceled => "canceled",
+        }
+    }
+
+    pub fn index(self) -> usize {
+        match self {
+            Self::Done => 0,
+            Self::InReview => 1,
+            Self::InProgress => 2,
+            Self::Backlog => 3,
+            Self::Canceled => 4,
+        }
+    }
+}
+
 /// A follow-up message queued while the agent is busy. It becomes its own
 /// turn once the current turn settles successfully.
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]
@@ -969,6 +1041,8 @@ pub struct AgentSession {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_preset: Option<String>,
     pub status: SessionStatus,
+    #[serde(default)]
+    pub chat_status: ChatStatus,
     pub created_at: u64,
     /// Any mutation, including title edits and truncation. Use
     /// [`Self::last_reply_at`] for conversation recency.
@@ -1044,6 +1118,7 @@ impl AgentSession {
             context_window: None,
             agent_preset: None,
             status: SessionStatus::Idle,
+            chat_status: ChatStatus::default(),
             created_at: now,
             updated_at: now,
             last_reply_at: None,
@@ -1082,6 +1157,7 @@ impl AgentSession {
             context_window: None,
             agent_preset: None,
             status: self.status,
+            chat_status: self.chat_status,
             created_at: self.created_at,
             updated_at: self.updated_at,
             last_reply_at: self.last_reply_at,
