@@ -231,11 +231,15 @@ pub fn js_repl_server_path() -> anyhow::Result<PathBuf> {
     let contents = macos
         .parent()
         .ok_or_else(|| anyhow!("Waku app bundle is malformed"))?;
-    let path = contents.join("Resources").join("waku_js_repl");
-    if !path.is_file() {
-        bail!("Waku JavaScript REPL is missing from this Waku build")
+    let path = contents.join("Resources").join("insulator_js_repl");
+    if path.is_file() {
+        return Ok(path);
     }
-    Ok(path)
+    let fallback = contents.join("Resources").join("waku_js_repl");
+    if fallback.is_file() {
+        return Ok(fallback);
+    }
+    bail!("Insulator JavaScript REPL is missing from this app build")
 }
 
 pub fn pi_extension_path() -> anyhow::Result<PathBuf> {
@@ -303,9 +307,15 @@ fn helper_install_matches(source: &Path, destination: &Path) -> anyhow::Result<b
     if !destination.is_dir() {
         return Ok(false);
     }
-    let fingerprint = Path::new("Contents/Resources/.insulator-helper-fingerprint");
-    let source_fingerprint = fs::read(source.join(fingerprint))?;
-    let Ok(installed_fingerprint) = fs::read(destination.join(fingerprint)) else {
+    let read_fingerprint = |path: &Path| -> Option<Vec<u8>> {
+        fs::read(path.join("Contents/Resources/.insulator-helper-fingerprint"))
+            .or_else(|_| fs::read(path.join("Contents/Resources/.waku-helper-fingerprint")))
+            .ok()
+    };
+    let (Some(source_fingerprint), Some(installed_fingerprint)) = (
+        read_fingerprint(source),
+        read_fingerprint(destination),
+    ) else {
         return Ok(false);
     };
     Ok(source_fingerprint == installed_fingerprint)

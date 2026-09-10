@@ -651,28 +651,92 @@ impl Waku {
 
     fn render_sidebar_header_actions(&self, cx: &mut Context<Self>) -> Div {
         let theme = Theme::current(cx);
-        let options_open = self.sidebar_options_open;
-        let options = div()
-            .id("sidebar-options")
-            .tab_index(0)
-            .w(px(22.0))
-            .h(px(22.0))
-            .rounded(px(5.0))
-            .flex()
-            .items_center()
-            .justify_center()
-            .cursor_default()
-            .focus_visible(|style| style.border_1().border_color(theme.accent))
-            .when(options_open, |element| element.bg(theme.overlay_strong))
-            .hover(|element| element.bg(theme.overlay))
-            .active(|element| element.bg(theme.overlay_strong))
-            .tooltip(Tooltip::text("Sort and group"))
-            .child(icon("icons/list-filter.svg", 14.0, theme.text_secondary))
-            .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
-            .on_click(cx.listener(|this, _, _, cx| {
-                this.sidebar_options_open = !this.sidebar_options_open;
-                cx.notify();
-            }));
+        let options_menu = self.menu_handle("sidebar-options", cx);
+        let options_weak = cx.entity().downgrade();
+        let grouping = self.state.sidebar_grouping;
+        let ordering = self.state.sidebar_ordering;
+        let options = dropdown_menu(
+            div()
+                .id("sidebar-options")
+                .tab_index(0)
+                .w(px(22.0))
+                .h(px(22.0))
+                .rounded(px(5.0))
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_default()
+                .focus_visible(|style| style.border_1().border_color(theme.accent))
+                .when(options_menu.is_open(), |element| {
+                    element.bg(theme.overlay_strong)
+                })
+                .hover(|element| element.bg(theme.overlay))
+                .active(|element| element.bg(theme.overlay_strong))
+                .tooltip(Tooltip::text("Sort and group"))
+                .child(icon("icons/list-filter.svg", 14.0, theme.text_secondary))
+                .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation()),
+            "sidebar-options-menu",
+            &options_menu,
+            MenuAlign::BelowLeft,
+            move |_| {
+                let group_weak = options_weak.clone();
+                let sort_weak = options_weak.clone();
+
+                vec![
+                    MenuItem::submenu_with_value(
+                        "Group by",
+                        sidebar_grouping_label(grouping),
+                        move |_| {
+                            let project_weak = group_weak.clone();
+                            let chats_weak = group_weak.clone();
+                            let status_weak = group_weak.clone();
+                            vec![
+                                MenuItem::new("Project", move |_, cx| {
+                                    let _ = project_weak.update(cx, |this, cx| {
+                                        this.set_sidebar_grouping(SidebarGrouping::Project, cx);
+                                    });
+                                })
+                                .selected(grouping == SidebarGrouping::Project),
+                                MenuItem::new("Chats", move |_, cx| {
+                                    let _ = chats_weak.update(cx, |this, cx| {
+                                        this.set_sidebar_grouping(SidebarGrouping::Chats, cx);
+                                    });
+                                })
+                                .selected(grouping == SidebarGrouping::Chats),
+                                MenuItem::new("Status", move |_, cx| {
+                                    let _ = status_weak.update(cx, |this, cx| {
+                                        this.set_sidebar_grouping(SidebarGrouping::Status, cx);
+                                    });
+                                })
+                                .selected(grouping == SidebarGrouping::Status),
+                            ]
+                        },
+                    ),
+                    MenuItem::submenu_with_value(
+                        "Sort by",
+                        sidebar_ordering_label(ordering),
+                        move |_| {
+                            let updated_weak = sort_weak.clone();
+                            let created_weak = sort_weak.clone();
+                            vec![
+                                MenuItem::new("Updated", move |_, cx| {
+                                    let _ = updated_weak.update(cx, |this, cx| {
+                                        this.set_sidebar_ordering(SidebarOrdering::Updated, cx);
+                                    });
+                                })
+                                .selected(ordering == SidebarOrdering::Updated),
+                                MenuItem::new("Created", move |_, cx| {
+                                    let _ = created_weak.update(cx, |this, cx| {
+                                        this.set_sidebar_ordering(SidebarOrdering::Created, cx);
+                                    });
+                                })
+                                .selected(ordering == SidebarOrdering::Created),
+                            ]
+                        },
+                    ),
+                ]
+            },
+        );
 
         let add_project_menu = self.menu_handle("add-project", cx);
         let add_project_weak = cx.entity().downgrade();
@@ -721,130 +785,6 @@ impl Waku {
             .gap(px(4.0))
             .child(options)
             .child(add_project)
-    }
-
-    fn render_sidebar_options_panel(&self, cx: &mut Context<Self>) -> Stateful<Div> {
-        let theme = Theme::current(cx);
-        let grouping = self.state.sidebar_grouping;
-        let ordering = self.state.sidebar_ordering;
-        let weak = cx.entity().downgrade();
-
-        let grouping_menu = self.menu_handle("sidebar-group-by", cx);
-        let grouping_menu_for_items = grouping_menu.clone();
-        let grouping_weak = weak.clone();
-        let group_by_button = dropdown_menu(
-            div()
-                .id("sidebar-group-by-trigger")
-                .h(px(30.0))
-                .px(px(10.0))
-                .min_w(px(100.0))
-                .rounded(px(6.0))
-                .border_1()
-                .border_color(theme.border)
-                .bg(theme.sidebar)
-                .flex()
-                .items_center()
-                .justify_between()
-                .gap(px(8.0))
-                .cursor_default()
-                .hover(|el| el.bg(theme.overlay))
-                .child(
-                    div()
-                        .text_size(sp(13.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(theme.text)
-                        .child(match grouping {
-                            SidebarGrouping::Project => "Project",
-                            SidebarGrouping::Chats => "Chats",
-                            SidebarGrouping::Status => "Status",
-                        }),
-                )
-                .child(icon(
-                    "icons/chevrons-up-down.svg",
-                    12.0,
-                    theme.text_secondary,
-                )),
-            "sidebar-group-by-menu",
-            &grouping_menu,
-            MenuAlign::BelowRight,
-            move |_| {
-                let project_weak = grouping_weak.clone();
-                let chats_weak = grouping_weak.clone();
-                let status_weak = grouping_weak.clone();
-                let sort_weak = grouping_weak.clone();
-                let project_menu = grouping_menu_for_items.clone();
-                let chats_menu = grouping_menu_for_items.clone();
-                let status_menu = grouping_menu_for_items.clone();
-                vec![
-                    MenuItem::new("Project", move |window, cx| {
-                        project_menu.close(window, cx);
-                        let _ = project_weak.update(cx, |this, cx| {
-                            this.set_sidebar_grouping(SidebarGrouping::Project, cx);
-                        });
-                    })
-                    .selected(grouping == SidebarGrouping::Project),
-                    MenuItem::new("Chats", move |window, cx| {
-                        chats_menu.close(window, cx);
-                        let _ = chats_weak.update(cx, |this, cx| {
-                            this.set_sidebar_grouping(SidebarGrouping::Chats, cx);
-                        });
-                    })
-                    .selected(grouping == SidebarGrouping::Chats),
-                    MenuItem::new("Status", move |window, cx| {
-                        status_menu.close(window, cx);
-                        let _ = status_weak.update(cx, |this, cx| {
-                            this.set_sidebar_grouping(SidebarGrouping::Status, cx);
-                        });
-                    })
-                    .selected(grouping == SidebarGrouping::Status),
-                    MenuItem::submenu("Sort by", move |_| {
-                        let updated_weak = sort_weak.clone();
-                        let created_weak = sort_weak.clone();
-                        vec![
-                            MenuItem::new("Updated", move |_, cx| {
-                                let _ = updated_weak.update(cx, |this, cx| {
-                                    this.set_sidebar_ordering(SidebarOrdering::Updated, cx);
-                                });
-                            })
-                            .selected(ordering == SidebarOrdering::Updated),
-                            MenuItem::new("Created", move |_, cx| {
-                                let _ = created_weak.update(cx, |this, cx| {
-                                    this.set_sidebar_ordering(SidebarOrdering::Created, cx);
-                                });
-                            })
-                            .selected(ordering == SidebarOrdering::Created),
-                        ]
-                    }),
-                ]
-            },
-        );
-
-        div()
-            .id("sidebar-options-panel")
-            .mx(px(10.0))
-            .mb(px(8.0))
-            .p(px(10.0))
-            .rounded(px(10.0))
-            .bg(theme.sidebar_item_background)
-            .border_1()
-            .border_color(theme.border)
-            .flex()
-            .flex_col()
-            .gap(px(10.0))
-            .child(
-                div()
-                    .w_full()
-                    .flex()
-                    .items_center()
-                    .justify_between()
-                    .child(
-                        div()
-                            .text_size(sp(13.5))
-                            .text_color(theme.text_secondary)
-                            .child("Group by"),
-                    )
-                    .child(group_by_button),
-            )
     }
 
     fn render_sidebar_action_row(
@@ -1305,9 +1245,6 @@ impl Waku {
                     .h(px(1.0))
                     .bg(theme.border),
             )
-            .when(self.sidebar_options_open, |sidebar| {
-                sidebar.child(self.render_sidebar_options_panel(cx))
-            })
             .child(
                 div()
                     .id("sidebar-scroll")
@@ -2048,7 +1985,6 @@ impl Waku {
     }
 
     fn set_sidebar_grouping(&mut self, grouping: SidebarGrouping, cx: &mut Context<Self>) {
-        self.sidebar_options_open = false;
         if self.state.sidebar_grouping == grouping {
             return;
         }
@@ -2070,7 +2006,6 @@ impl Waku {
     }
 
     fn set_sidebar_ordering(&mut self, ordering: SidebarOrdering, cx: &mut Context<Self>) {
-        self.sidebar_options_open = false;
         if self.state.sidebar_ordering == ordering {
             return;
         }

@@ -104,6 +104,7 @@ if [ ! -d "$cached_helper_bundle" ]; then
   mkdir -p "$cached_helper_contents/MacOS" "$cached_helper_contents/Resources" "$swift_module_cache"
   cp resources/computer-use/Info.plist "$cached_helper_contents/Info.plist"
   cp "$menu_bar_cursor_resource" "$overlay_cursor_resource" "$cached_helper_contents/Resources/"
+  printf '%s\n' "$helper_fingerprint" > "$cached_helper_contents/Resources/.insulator-helper-fingerprint"
   printf '%s\n' "$helper_fingerprint" > "$cached_helper_contents/Resources/.waku-helper-fingerprint"
   plutil -replace CFBundleDisplayName -string "$helper_name" "$cached_helper_contents/Info.plist"
   plutil -replace CFBundleExecutable -string "$helper_name" "$cached_helper_contents/Info.plist"

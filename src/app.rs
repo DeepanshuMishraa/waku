@@ -1363,7 +1363,6 @@ pub struct Waku {
     /// Stable keyboard focus for each virtualized project-history reveal row.
     sidebar_show_more_focuses: RefCell<HashMap<SidebarGroup, FocusHandle>>,
     sidebar_visible: bool,
-    sidebar_options_open: bool,
     main_tabs_open: bool,
     main_tabs: Vec<MainTab>,
     active_main_file_tab: Option<String>,
@@ -2954,7 +2953,6 @@ impl Waku {
                 sidebar_group_compose_focuses: RefCell::new(HashMap::new()),
                 sidebar_show_more_focuses: RefCell::new(HashMap::new()),
                 sidebar_visible,
-                sidebar_options_open: false,
                 main_tabs_open: false,
                 main_tabs: Vec::new(),
                 active_main_file_tab: None,

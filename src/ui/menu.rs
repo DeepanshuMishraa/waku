@@ -1036,7 +1036,8 @@ impl RenderOnce for MenuCard {
             .bg(theme.raised)
             .shadow_lg()
             .flex()
-            .flex_col();
+            .flex_col()
+            .gap(px(2.0));
 
         for (index, item) in items.into_iter().enumerate() {
             root_card = root_card.child(render_menu_item(
@@ -1110,7 +1111,8 @@ impl RenderOnce for MenuCard {
                 .bg(theme.raised)
                 .shadow_lg()
                 .flex()
-                .flex_col();
+                .flex_col()
+                .gap(px(2.0));
             for (index, item) in submenu_items.into_iter().enumerate() {
                 submenu_card = submenu_card.child(render_menu_item(
                     item,
@@ -1165,10 +1167,11 @@ fn render_menu_item(
             disabled,
             on_click,
         } => {
-            let color = match (disabled, selected) {
-                (true, _) => theme.text_ghost,
-                (false, true) => theme.text,
-                (false, false) => theme.text_secondary,
+            let color = match (disabled, selected, highlighted) {
+                (true, _, _) => theme.text_ghost,
+                (false, true, _) => theme.text,
+                (false, false, true) => theme.text,
+                (false, false, false) => theme.text_secondary,
             };
             let entry = row(
                 index,
@@ -1187,7 +1190,15 @@ fn render_menu_item(
             })
             .child(div().flex_1().min_w_0().truncate().child(label))
             .when(selected, |element| {
-                element.child(icon("icons/check.svg", 11.0, theme.text_tertiary))
+                element.child(icon(
+                    "icons/check.svg",
+                    11.0,
+                    if highlighted {
+                        theme.text_secondary
+                    } else {
+                        theme.text_tertiary
+                    },
+                ))
             });
             track_pointer_highlight(entry, index, in_submenu, disabled, handle).into_any_element()
         }
@@ -1214,10 +1225,15 @@ fn render_menu_item(
             let hover = theme.overlay;
             let hover_handle = handle.clone();
             let click_handle = handle.clone();
+            let (label_color, value_color, chevron_color) = if highlighted {
+                (theme.text, theme.text_secondary, theme.text_secondary)
+            } else {
+                (theme.text_secondary, theme.text_tertiary, theme.text_tertiary)
+            };
             row(index, highlighted, theme, handle, None)
                 .cursor_default()
                 .hover(move |element| element.bg(hover))
-                .text_color(theme.text_secondary)
+                .text_color(label_color)
                 .on_hover(move |hovered, window, _| {
                     if *hovered {
                         open_submenu(&hover_handle, index, false);
@@ -1230,18 +1246,18 @@ fn render_menu_item(
                     cx.stop_propagation();
                 })
                 .when_some(item_icon, |element, path| {
-                    element.child(icon(path, 12.0, icon_color.unwrap_or(theme.text_secondary)))
+                    element.child(icon(path, 12.0, icon_color.unwrap_or(label_color)))
                 })
                 .child(div().flex_1().min_w_0().truncate().child(label))
                 .when_some(value, |element, value| {
                     element.child(
                         div()
                             .flex_none()
-                            .text_color(theme.text_tertiary)
+                            .text_color(value_color)
                             .child(value),
                     )
                 })
-                .child(icon("icons/chevron-right.svg", 10.0, theme.text_tertiary))
+                .child(icon("icons/chevron-right.svg", 10.0, chevron_color))
                 .into_any_element()
         }
         MenuItem::Custom { render, on_click } => {

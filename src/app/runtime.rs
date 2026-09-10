@@ -3851,10 +3851,16 @@ impl Waku {
     pub(super) fn drain_computer_permission_events(&mut self) -> bool {
         let mut changed = false;
         while let Ok(result) = self.computer_permission_events.try_recv() {
+            let was_pending = self.computer_permission_request_pending;
             self.computer_permission_request_pending = false;
             match result {
                 Ok(permissions) => self.computer_permissions = permissions,
-                Err(error) => self.show_toast(error),
+                Err(error) => {
+                    eprintln!("failed to probe computer permissions: {error}");
+                    if was_pending {
+                        self.show_toast(error);
+                    }
+                }
             }
             changed = true;
         }

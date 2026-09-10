@@ -512,7 +512,7 @@ mod tests {
 
     #[test]
     fn literal_find_is_case_insensitive_and_unicode_safe() {
-        let regex = literal_find_regex("insulator");
+        let regex = literal_find_regex("waku");
         let (matches, limited) =
             md::render::markdown_search_matches("Waku **waku** WAKU", &regex, 20);
         assert!(!limited);
