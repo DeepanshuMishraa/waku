@@ -819,11 +819,6 @@ impl Waku {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if self.active_main_file_tab.is_some() {
-            self.file_editor_input_expanded = true;
-            cx.notify();
-            return;
-        }
         self.settings_page = None;
         let focus_handle = self.composer_focus(cx);
         window.focus(&focus_handle, cx);

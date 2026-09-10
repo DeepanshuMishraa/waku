@@ -939,8 +939,8 @@ pub struct AgentSession {
     /// A title explicitly chosen by the user. [`Self::DEFAULT_TITLE`] means
     /// no explicit title has been set, so [`Self::auto_title`] may be shown.
     pub title: String,
-    /// Best-effort title supplied by the provider, or derived locally from the
-    /// first prompt until the provider reports a better one.
+    /// Best-effort title Waku generates from the first completed user and
+    /// assistant exchange.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_title: Option<String>,
     pub project_id: Uuid,
@@ -1193,8 +1193,8 @@ impl AgentSession {
         }
     }
 
-    /// Replaces the provider-owned title without disturbing an explicit user
-    /// title. Returns whether the stored fallback changed.
+    /// Replaces the automatically generated title without disturbing an
+    /// explicit user title. Returns whether the stored fallback changed.
     pub fn set_auto_title(&mut self, title: Option<String>) -> bool {
         let title = title.and_then(|title| {
             let title = title.trim();
@@ -1412,7 +1412,6 @@ impl AgentSession {
             self.updated_at = now;
             return true;
         }
-        self.set_title_from_prompt(message);
         self.turns.push(AgentTurn {
             id: turn_id,
             turn_count: self.turns.len() + 1,
@@ -1854,8 +1853,8 @@ pub enum DriverEvent {
     /// fresh Harness session may resolve its deployment default when Waku did
     /// not name one explicitly, so the driver reports the resolved value.
     AgentPresetSelected(Option<String>),
-    /// A provider-owned, automatically generated session title. `None`
-    /// clears that fallback but never overwrites a user-owned title.
+    /// A provider-owned session name retained for wire compatibility. Waku's
+    /// response-aware title generator does not use these native names.
     AutoTitleUpdated(Option<String>),
     /// The slash commands the live process itself reports — Claude's
     /// stream-json init handshake and ACP's `available_commands_update`.

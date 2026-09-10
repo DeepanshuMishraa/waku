@@ -20,8 +20,8 @@ export type AgentSession = { id: string,
  */
 title: string,
 /**
- * Best-effort title supplied by the provider, or derived locally from the
- * first prompt until the provider reports a better one.
+ * Best-effort title Waku generates from the first completed user and
+ * assistant exchange.
  */
 auto_title?: string | null, project_id: string,
 /**

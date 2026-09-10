@@ -37,6 +37,147 @@ fn start_driver(mut request: DriverStartRequest, cwd: PathBuf) -> anyhow::Result
     Ok(PreparedDriver { handle, events })
 }
 
+const SESSION_TITLE_INSTRUCTIONS: &str = "Write a short title for the conversation in the JSON below. Infer the task from both the user's request and the assistant's response. Return only the title as plain text. Use 2-6 words, sentence case, and concrete nouns or verbs. Do not use tools. Do not answer the conversation. Omit quotes, markdown, labels, emojis, and ending punctuation.";
+const SESSION_TITLE_TIMEOUT: Duration = Duration::from_secs(60);
+
+fn session_title_messages(session: &AgentSession) -> Option<(String, String)> {
+    if session.title != AgentSession::DEFAULT_TITLE
+        || session.auto_title.is_some()
+        || session.turns.len() != 1
+        || session.turns[0].status != TurnStatus::Completed
+    {
+        return None;
+    }
+    let turn_id = session.turns[0].id;
+    let user = session
+        .messages
+        .iter()
+        .find(|message| message.turn_id == Some(turn_id) && message.role == MessageRole::User)?
+        .visible_content()
+        .trim();
+    let assistant = session
+        .messages
+        .iter()
+        .filter(|message| {
+            message.turn_id == Some(turn_id) && message.role == MessageRole::Assistant
+        })
+        .map(Message::visible_content)
+        .map(str::trim)
+        .filter(|message| !message.is_empty())
+        .collect::<Vec<_>>()
+        .join("\n\n");
+    (!user.is_empty() && !assistant.is_empty()).then(|| (user.to_owned(), assistant))
+}
+
+fn session_title_prompt(user_message: &str, assistant_message: &str) -> String {
+    let conversation = serde_json::json!({
+        "user": user_message,
+        "assistant": assistant_message,
+    });
+    format!("{SESSION_TITLE_INSTRUCTIONS}\n\nConversation JSON:\n{conversation}")
+}
+
+fn normalize_session_title(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    let unwrapped = raw
+        .strip_prefix("```json")
+        .or_else(|| raw.strip_prefix("```text"))
+        .or_else(|| raw.strip_prefix("```"))
+        .unwrap_or(raw)
+        .strip_suffix("```")
+        .unwrap_or(raw)
+        .trim();
+    let decoded = serde_json::from_str::<serde_json::Value>(unwrapped)
+        .ok()
+        .and_then(|value| match value {
+            serde_json::Value::String(title) => Some(title),
+            serde_json::Value::Object(object) => object
+                .get("title")
+                .and_then(serde_json::Value::as_str)
+                .map(str::to_owned),
+            _ => None,
+        });
+    let candidate = decoded.as_deref().unwrap_or(unwrapped);
+    let line = candidate
+        .lines()
+        .map(str::trim)
+        .find(|line| !line.is_empty() && !line.starts_with("```") && *line != "json")?;
+    let line = line
+        .strip_prefix("Title:")
+        .or_else(|| line.strip_prefix("title:"))
+        .unwrap_or(line)
+        .trim()
+        .trim_end_matches(['.', ',', ':', ';'])
+        .trim()
+        .trim_matches(|character| matches!(character, '"' | '\'' | '`' | '#' | '*' | '_'));
+    let title = line.split_whitespace().collect::<Vec<_>>().join(" ");
+    let title = title.trim_end_matches(['.', ',', ':', ';']).trim();
+    if title.is_empty() {
+        return None;
+    }
+    let title = title.chars().take(80).collect::<String>();
+    let title = title.trim_end().to_owned();
+    (!title.is_empty()).then_some(title)
+}
+
+fn generate_session_title(mut request: SessionTitleRequest) -> anyhow::Result<String> {
+    let (wake, _wake_events) = smol::channel::bounded(1);
+    request.driver_start.session_id = Uuid::new_v4();
+    request.driver_start.event_wake = wake;
+    if request.driver_start.provider != ProviderKind::Amp {
+        request.driver_start.options.mode = RuntimeMode::Ask;
+    }
+    request.driver_start.options.agent_preset = None;
+    request.driver_start.options.computer_use_enabled = false;
+    request.driver_start.options.provider_cursor = None;
+    let cwd = request.driver_start.options.cwd.clone();
+    let prepared = start_driver(request.driver_start, cwd)?;
+    let result = (|| {
+        prepared.handle.prompt(
+            session_title_prompt(&request.user_message, &request.assistant_message),
+            None,
+            None,
+        );
+        let deadline = Instant::now() + SESSION_TITLE_TIMEOUT;
+        let mut response = String::new();
+        let mut last_error = None;
+        loop {
+            let remaining = deadline
+                .checked_duration_since(Instant::now())
+                .ok_or_else(|| anyhow::anyhow!("session title generation timed out"))?;
+            match prepared.events.recv_timeout(remaining)? {
+                DriverEvent::TextDelta(delta) => response.push_str(&delta),
+                DriverEvent::TurnFinished { success: true, .. } => {
+                    return normalize_session_title(&response).ok_or_else(|| {
+                        anyhow::anyhow!("provider returned an empty session title")
+                    });
+                }
+                DriverEvent::TurnFinished {
+                    success: false,
+                    summary,
+                } => {
+                    anyhow::bail!(
+                        "session title generation failed: {}",
+                        summary
+                            .or(last_error)
+                            .unwrap_or_else(|| "the provider did not return a title".into())
+                    );
+                }
+                DriverEvent::Error(error) => last_error = Some(error),
+                DriverEvent::ProcessExited => {
+                    anyhow::bail!(
+                        "session title provider exited before returning a title: {}",
+                        last_error.unwrap_or_else(|| "no provider error was reported".into())
+                    );
+                }
+                _ => {}
+            }
+        }
+    })();
+    prepared.handle.close();
+    result
+}
+
 fn attach_driver(
     daemon: waku_client::DaemonSupervisor,
     session_id: Uuid,
@@ -2750,6 +2891,59 @@ impl Waku {
         .detach();
     }
 
+    pub(super) fn spawn_session_title_generation(
+        &mut self,
+        session_id: Uuid,
+        cx: &mut Context<Self>,
+    ) {
+        if self.session_title_requests.contains(&session_id) {
+            return;
+        }
+        let Some(session) = self
+            .state
+            .sessions
+            .iter()
+            .find(|session| session.id == session_id)
+        else {
+            return;
+        };
+        let Some((user_message, assistant_message)) = session_title_messages(session) else {
+            return;
+        };
+        let cwd = self
+            .workspace_path_for_session(session)
+            .map(Path::to_path_buf)
+            .unwrap_or_default();
+        let Ok(driver_start) = self.driver_start_request_for_session(session, cwd) else {
+            return;
+        };
+        self.session_title_requests.insert(session_id);
+        let request = SessionTitleRequest {
+            driver_start,
+            user_message,
+            assistant_message,
+        };
+        cx.spawn(async move |waku, cx| {
+            let result = cx
+                .background_executor()
+                .spawn(async move { generate_session_title(request) })
+                .await;
+            let _ = waku.update(cx, move |waku, cx| {
+                waku.session_title_requests.remove(&session_id);
+                if let Ok(title) = result
+                    && let Some(session) = waku.state.session_mut(session_id)
+                    && session.title == AgentSession::DEFAULT_TITLE
+                    && session.auto_title.is_none()
+                    && session.set_auto_title(Some(title))
+                {
+                    waku.save();
+                    cx.notify();
+                }
+            });
+        })
+        .detach();
+    }
+
     fn driver_start_request_for_session(
         &self,
         session: &AgentSession,
@@ -3002,6 +3196,7 @@ impl Waku {
         submission: ComposerSubmission,
         cx: &mut Context<Self>,
     ) {
+        self.file_editor_input_expanded = false;
         let Some(session) = self.selected_session() else {
             return;
         };
@@ -3669,6 +3864,7 @@ impl Waku {
                     break;
                 };
                 let background_event = matches!(event, DriverEvent::BackgroundWork(_));
+                let ignored_provider_title = matches!(event, DriverEvent::AutoTitleUpdated(_));
                 let background_output_delta = matches!(
                     event,
                     DriverEvent::BackgroundWork(BackgroundWorkEvent::OutputDelta { .. })
@@ -3677,7 +3873,6 @@ impl Waku {
                     event,
                     DriverEvent::Connected { .. }
                         | DriverEvent::AgentPresetSelected(_)
-                        | DriverEvent::AutoTitleUpdated(_)
                         | DriverEvent::Permission { .. }
                         | DriverEvent::PromptSubmitted { .. }
                         | DriverEvent::SteerAccepted { .. }
@@ -3702,7 +3897,7 @@ impl Waku {
                     // turn a noisy command into UI-thread work.
                 } else if background_event {
                     background_changed = true;
-                } else {
+                } else if !ignored_provider_title {
                     runtime_changed = true;
                 }
                 keep_runtime &= self.handle_driver_event(session_id, &mut runtime, event, true, cx);
@@ -3747,6 +3942,63 @@ impl Waku {
             self.save();
         }
         changed || selected_changed
+    }
+}
+
+#[cfg(test)]
+mod session_title_tests {
+    use super::{normalize_session_title, session_title_messages, session_title_prompt};
+    use crate::model::{AgentSession, Message, MessageRole, ProviderKind, TurnStatus};
+    use uuid::Uuid;
+
+    #[test]
+    fn title_waits_for_the_first_completed_user_assistant_exchange() {
+        let mut session = AgentSession::new(Uuid::new_v4(), ProviderKind::Claude);
+        let turn_id = session.begin_turn("Fix chat titles");
+
+        assert!(session_title_messages(&session).is_none());
+        assert_eq!(session.display_title(), AgentSession::DEFAULT_TITLE);
+
+        session.messages.push(Message::new_for_turn(
+            MessageRole::Assistant,
+            "I fixed title generation after the first response.",
+            turn_id,
+        ));
+        session.finish_active_turn(TurnStatus::Completed);
+
+        assert_eq!(
+            session_title_messages(&session),
+            Some((
+                "Fix chat titles".into(),
+                "I fixed title generation after the first response.".into()
+            ))
+        );
+    }
+
+    #[test]
+    fn title_prompt_contains_both_messages_and_requests_only_a_title() {
+        let prompt = session_title_prompt("Fix the tabs", "The sidebar and tabs now share state.");
+
+        assert!(prompt.contains("Fix the tabs"));
+        assert!(prompt.contains("The sidebar and tabs now share state."));
+        assert!(prompt.contains("Return only the title as plain text"));
+    }
+
+    #[test]
+    fn generated_titles_are_cleaned_and_bounded() {
+        assert_eq!(
+            normalize_session_title("```json\n{\"title\":\"Fix chat titles\"}\n```"),
+            Some("Fix chat titles".into())
+        );
+        assert_eq!(
+            normalize_session_title(" Title: **Clean task names**. "),
+            Some("Clean task names".into())
+        );
+        assert!(normalize_session_title("   ").is_none());
+        assert_eq!(
+            normalize_session_title(&"x".repeat(100)).map(|title| title.chars().count()),
+            Some(80)
+        );
     }
 }
 

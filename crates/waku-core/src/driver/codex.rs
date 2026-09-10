@@ -3,11 +3,11 @@
 use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::io::{BufRead, BufReader, Write};
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::Arc;
 use std::thread;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use anyhow::{Context as _, anyhow};
 use crossbeam_channel::{Sender, bounded, unbounded};
@@ -66,18 +66,7 @@ enum CommandMessage {
         key: BackgroundWorkKey,
         control_id: String,
     },
-    GeneratedTitle(String),
     Shutdown,
-}
-
-struct CodexTitleRequest {
-    prompt: String,
-}
-
-struct CodexTitleGeneration {
-    enabled: bool,
-    launched: bool,
-    pending: Option<CodexTitleRequest>,
 }
 
 #[derive(Default)]
@@ -240,8 +229,6 @@ impl CodexDriver {
         let computer_use_server_path = computer_use
             .as_ref()
             .map(|config| config.server_path.clone());
-        let title_binary = binary.clone();
-        let title_cwd = cwd.clone();
         let mut command = crate::command_env::command(&binary);
         command.args(["app-server", "--stdio"]);
         configure_computer_use_command(&mut command, computer_use.as_ref());
@@ -285,11 +272,6 @@ impl CodexDriver {
         let pending_steers = Arc::new(Mutex::new(HashMap::<u64, String>::new()));
         let background_rpcs = Arc::new(Mutex::new(BackgroundRpcState::default()));
         let goal_rpcs = Arc::new(Mutex::new(GoalRpcState::default()));
-        let title_generation = Arc::new(Mutex::new(CodexTitleGeneration {
-            enabled: provider_session_id.is_none(),
-            launched: false,
-            pending: None,
-        }));
 
         let writer_thread_id = thread_id.clone();
         let writer_turn_id = turn_id.clone();
@@ -298,7 +280,6 @@ impl CodexDriver {
         let writer_pending_steers = pending_steers.clone();
         let writer_background_rpcs = background_rpcs.clone();
         let writer_goal_rpcs = goal_rpcs.clone();
-        let writer_title_generation = title_generation.clone();
         let writer_events = events.clone();
         let cwd_string = cwd.display().to_string();
         thread::Builder::new()
@@ -417,14 +398,6 @@ impl CodexDriver {
                                 )));
                                 continue;
                             };
-                            {
-                                let mut title = writer_title_generation.lock();
-                                if title.enabled && !title.launched && title.pending.is_none() {
-                                    title.pending = Some(CodexTitleRequest {
-                                        prompt: text.clone(),
-                                    });
-                                }
-                            }
                             next_request_id += 1;
                             let mut params = turn_start_params(
                                 &thread_id,
@@ -696,22 +669,6 @@ impl CodexDriver {
                                 }
                             })
                         }
-                        CommandMessage::GeneratedTitle(title) => {
-                            let Some(thread_id) = wait_for_thread_id(&writer_thread_id) else {
-                                continue;
-                            };
-                            // Update Waku even if persisting the name back to
-                            // Codex fails; the app-server notification will
-                            // echo the same value when the write succeeds.
-                            let _ = writer_events
-                                .send(DriverEvent::AutoTitleUpdated(Some(title.clone())));
-                            next_request_id += 1;
-                            json!({
-                                "method": "thread/name/set",
-                                "id": next_request_id,
-                                "params": {"threadId": thread_id, "name": title}
-                            })
-                        }
                         CommandMessage::Shutdown => break,
                     };
                     if let Err(error) = write_json_line(&mut stdin, &message) {
@@ -732,7 +689,6 @@ impl CodexDriver {
         let reader_pending_steers = pending_steers.clone();
         let reader_background_rpcs = background_rpcs.clone();
         let reader_goal_rpcs = goal_rpcs.clone();
-        let reader_title_generation = title_generation;
         let reader_commands = commands.clone();
         let reader_events = events.clone();
         let reader_thread = thread::Builder::new()
@@ -743,55 +699,19 @@ impl CodexDriver {
                     match line {
                         Ok(line) if !line.trim().is_empty() => {
                             match serde_json::from_str::<Value>(&line) {
-                                Ok(value) => {
-                                    let main_turn_started = is_codex_turn_started(
-                                        &value,
-                                        reader_thread_id.lock().as_deref(),
-                                    );
-                                    handle_codex_message(
-                                        value,
-                                        &reader_thread_id,
-                                        &reader_turn_id,
-                                        &reader_turn_ids,
-                                        &reader_pending_rollbacks,
-                                        &reader_pending_steers,
-                                        &reader_background_rpcs,
-                                        &reader_goal_rpcs,
-                                        &reader_commands,
-                                        &reader_events,
-                                        &mut stream_state,
-                                    );
-                                    if main_turn_started {
-                                        let request = {
-                                            let mut title = reader_title_generation.lock();
-                                            if title.enabled && !title.launched {
-                                                let request = title.pending.take();
-                                                title.launched = request.is_some();
-                                                request
-                                            } else {
-                                                None
-                                            }
-                                        };
-                                        if let Some(request) = request {
-                                            let binary = title_binary.clone();
-                                            let cwd = title_cwd.clone();
-                                            let commands = reader_commands.clone();
-                                            let _ = thread::Builder::new()
-                                                .name("waku-codex-title".into())
-                                                .spawn(move || {
-                                                    if let Ok(title) = generate_codex_title(
-                                                        &binary,
-                                                        &cwd,
-                                                        &request.prompt,
-                                                    ) {
-                                                        let _ = commands.send(
-                                                            CommandMessage::GeneratedTitle(title),
-                                                        );
-                                                    }
-                                                });
-                                        }
-                                    }
-                                }
+                                Ok(value) => handle_codex_message(
+                                    value,
+                                    &reader_thread_id,
+                                    &reader_turn_id,
+                                    &reader_turn_ids,
+                                    &reader_pending_rollbacks,
+                                    &reader_pending_steers,
+                                    &reader_background_rpcs,
+                                    &reader_goal_rpcs,
+                                    &reader_commands,
+                                    &reader_events,
+                                    &mut stream_state,
+                                ),
                                 Err(error) => {
                                     let _ = reader_events.send(DriverEvent::Error(tr!(
                                         "errors.provider_invalid_json",
@@ -1104,220 +1024,6 @@ fn write_json_line(writer: &mut impl Write, value: &Value) -> std::io::Result<()
     serde_json::to_writer(&mut *writer, value)?;
     writer.write_all(b"\n")?;
     writer.flush()
-}
-
-const CODEX_TITLE_INSTRUCTIONS: &str = "You generate the title for a coding-agent conversation. Infer the user's primary intent from the first message and write one specific, useful title. Return only the title as plain text. Use 2–6 words, sentence case, and concrete nouns or verbs. Omit filler, greetings, names, pronouns, markdown, quotes, labels, emojis, and ending punctuation. Do not answer the request, mention that you are generating a title, or invent details.";
-const CODEX_TITLE_MODEL: &str = "gpt-5.6-luna";
-const CODEX_TITLE_TIMEOUT: Duration = Duration::from_secs(60);
-
-fn is_codex_turn_started(value: &Value, thread_id: Option<&str>) -> bool {
-    let Some(thread_id) = thread_id else {
-        return false;
-    };
-    value.get("method").and_then(Value::as_str) == Some("turn/started")
-        && value.pointer("/params/threadId").and_then(Value::as_str) == Some(thread_id)
-}
-
-fn codex_title_thread_params(cwd: &Path) -> Value {
-    json!({
-        "cwd": cwd.display().to_string(),
-        "approvalPolicy": "never",
-        "approvalsReviewer": "user",
-        "sandbox": "read-only",
-        "model": CODEX_TITLE_MODEL,
-        "serviceName": "waku-title",
-        "baseInstructions": CODEX_TITLE_INSTRUCTIONS,
-        "developerInstructions": CODEX_TITLE_INSTRUCTIONS,
-        "ephemeral": true
-    })
-}
-
-fn codex_title_turn_params(thread_id: &str, user_message: &str) -> Value {
-    json!({
-        "threadId": thread_id,
-        "input": [{"type": "text", "text": user_message}],
-        "approvalPolicy": "never",
-        "approvalsReviewer": "user",
-        "sandboxPolicy": {"type": "readOnly"},
-        "effort": "low",
-        "summary": "none",
-        "outputSchema": {
-            "type": "object",
-            "properties": {
-                "title": {"type": "string", "minLength": 1, "maxLength": 80}
-            },
-            "required": ["title"],
-            "additionalProperties": false
-        }
-    })
-}
-
-/// Codex app-server can persist a thread name but does not generate one. Match
-/// Codex Desktop's client-owned behavior with an isolated ephemeral turn, then
-/// hand the result back to the main writer for `thread/name/set`.
-fn generate_codex_title(binary: &Path, cwd: &Path, prompt: &str) -> anyhow::Result<String> {
-    let mut command = crate::command_env::command(binary);
-    let command = command
-        .args(["app-server", "--stdio"])
-        .current_dir(cwd)
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::null());
-    let mut child =
-        crate::command_env::spawn(command).context("failed to start Codex title generation")?;
-    let mut stdin = child
-        .stdin
-        .take()
-        .ok_or_else(|| anyhow!("Codex title generation stdin is unavailable"))?;
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("Codex title generation stdout is unavailable"))?;
-    let (messages, message_rx) = unbounded::<Value>();
-    let reader = thread::Builder::new()
-        .name("waku-codex-title-reader".into())
-        .spawn(move || {
-            for line in BufReader::new(stdout).lines().map_while(Result::ok) {
-                if let Ok(value) = serde_json::from_str::<Value>(&line) {
-                    let _ = messages.send(value);
-                }
-            }
-        })?;
-
-    let result = (|| -> anyhow::Result<String> {
-        write_json_line(
-            &mut stdin,
-            &json!({
-                "method": "initialize",
-                "id": 0,
-                "params": {
-                    "clientInfo": {
-                        "name": "waku-title",
-                        "title": "Waku Title",
-                        "version": env!("CARGO_PKG_VERSION")
-                    },
-                    "capabilities": {"experimentalApi": true}
-                }
-            }),
-        )?;
-        write_json_line(&mut stdin, &json!({"method": "initialized", "params": {}}))?;
-
-        write_json_line(
-            &mut stdin,
-            &json!({
-                "method": "thread/start",
-                "id": 1,
-                "params": codex_title_thread_params(cwd)
-            }),
-        )?;
-
-        let deadline = Instant::now() + CODEX_TITLE_TIMEOUT;
-        let mut title_thread_id = None::<String>;
-        let mut generated = None::<String>;
-        loop {
-            let remaining = deadline
-                .checked_duration_since(Instant::now())
-                .ok_or_else(|| anyhow!("Codex title generation timed out"))?;
-            let value = message_rx
-                .recv_timeout(remaining)
-                .context("Codex title generation stopped before completion")?;
-
-            if value.get("id").and_then(Value::as_u64) == Some(1) && value.get("method").is_none() {
-                if let Some(error) = value.pointer("/error/message").and_then(Value::as_str) {
-                    return Err(anyhow!("Codex could not open a title thread: {error}"));
-                }
-                let thread_id = value
-                    .pointer("/result/thread/id")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| anyhow!("Codex returned no title thread ID"))?
-                    .to_owned();
-                title_thread_id = Some(thread_id.clone());
-                write_json_line(
-                    &mut stdin,
-                    &json!({
-                        "method": "turn/start",
-                        "id": 2,
-                        "params": codex_title_turn_params(&thread_id, prompt)
-                    }),
-                )?;
-                continue;
-            }
-
-            if value.get("method").and_then(Value::as_str) == Some("item/completed")
-                && value.pointer("/params/threadId").and_then(Value::as_str)
-                    == title_thread_id.as_deref()
-                && value.pointer("/params/item/type").and_then(Value::as_str)
-                    == Some("agentMessage")
-                && let Some(text) = value.pointer("/params/item/text").and_then(Value::as_str)
-            {
-                generated = Some(text.to_owned());
-                continue;
-            }
-
-            if value.get("method").and_then(Value::as_str) == Some("turn/completed")
-                && value.pointer("/params/threadId").and_then(Value::as_str)
-                    == title_thread_id.as_deref()
-            {
-                let status = value
-                    .pointer("/params/turn/status")
-                    .and_then(Value::as_str)
-                    .unwrap_or("failed");
-                if status != "completed" {
-                    let message = value
-                        .pointer("/params/turn/error/message")
-                        .and_then(Value::as_str)
-                        .unwrap_or("the title turn did not complete");
-                    return Err(anyhow!("Codex title generation failed: {message}"));
-                }
-                return generated
-                    .as_deref()
-                    .and_then(normalize_codex_title)
-                    .ok_or_else(|| anyhow!("Codex returned an empty task title"));
-            }
-        }
-    })();
-
-    drop(stdin);
-    let _ = child.kill();
-    let _ = child.wait();
-    let _ = reader.join();
-    result
-}
-
-fn normalize_codex_title(raw: &str) -> Option<String> {
-    let raw = raw.trim();
-    let decoded = serde_json::from_str::<Value>(raw)
-        .ok()
-        .and_then(|value| match value {
-            Value::String(title) => Some(title),
-            Value::Object(object) => object
-                .get("title")
-                .and_then(Value::as_str)
-                .map(str::to_owned),
-            _ => None,
-        });
-    let candidate = decoded.as_deref().unwrap_or(raw);
-    let line = candidate
-        .lines()
-        .map(str::trim)
-        .find(|line| !line.is_empty() && !line.starts_with("```") && *line != "json")?;
-    let line = line
-        .strip_prefix("Title:")
-        .or_else(|| line.strip_prefix("title:"))
-        .unwrap_or(line)
-        .trim();
-    let title = line
-        .trim_matches(|character| matches!(character, '"' | '\'' | '`' | '#' | '*' | '_'))
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
-    let title = title.trim_end_matches(['.', ',', ':', ';']).trim();
-    if title.is_empty() {
-        return None;
-    }
-    let title = title.chars().take(80).collect::<String>();
-    let title = title.trim_end().to_owned();
-    (!title.is_empty()).then_some(title)
 }
 
 fn wait_for_thread_id(thread_id: &Mutex<Option<String>>) -> Option<String> {
@@ -2477,6 +2183,7 @@ fn is_visible_stderr_notice(line: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::time::Instant;
 
     #[cfg(unix)]
     #[test]
@@ -2580,7 +2287,7 @@ mod tests {
                     binary: binary.clone(),
                     cwd: cwd.clone(),
                     mode: RuntimeMode::Ask,
-                    model: Some(CODEX_TITLE_MODEL.to_owned()),
+                    model: Some("gpt-5.6-luna".to_owned()),
                     reasoning_effort: Some("low".to_owned()),
                     service_tier: None,
                     context_window: None,
@@ -2858,57 +2565,6 @@ mod tests {
         assert_eq!(questions[0].header, "Environment");
         assert_eq!(questions[0].options[0].label, "Preview");
         assert!(!questions[0].multi_select);
-    }
-
-    #[test]
-    fn normalizes_structured_and_plain_codex_titles() {
-        assert_eq!(
-            normalize_codex_title("\"Fix Provider Task Titles\"").as_deref(),
-            Some("Fix Provider Task Titles")
-        );
-        assert_eq!(
-            normalize_codex_title("Title: **Repair title updates.**").as_deref(),
-            Some("Repair title updates")
-        );
-        assert_eq!(normalize_codex_title("```\n\n```"), None);
-    }
-
-    #[test]
-    fn recognizes_only_the_started_main_codex_turn() {
-        let started = json!({
-            "method":"turn/started",
-            "params":{"threadId":"thread-1","turn":{"status":"inProgress"}}
-        });
-        assert!(is_codex_turn_started(&started, Some("thread-1")));
-        assert!(!is_codex_turn_started(&started, Some("thread-2")));
-        assert!(!is_codex_turn_started(&started, None));
-    }
-
-    #[test]
-    fn title_generation_uses_luna_low_and_only_the_user_message() {
-        let thread = codex_title_thread_params(Path::new("/tmp/project"));
-        let turn = codex_title_turn_params("title-thread", "Fix task titles");
-
-        assert_eq!(thread["model"], "gpt-5.6-luna");
-        assert_eq!(turn["effort"], "low");
-        assert_eq!(
-            turn["input"],
-            json!([{"type":"text","text":"Fix task titles"}])
-        );
-    }
-
-    #[test]
-    #[ignore = "requires an installed, authenticated codex"]
-    fn codex_title_generation_against_the_real_cli() {
-        let binary = crate::command_env::find_executable("codex").expect("codex is not installed");
-        let title = generate_codex_title(
-            &binary,
-            &std::env::temp_dir(),
-            "Find why provider-generated task titles never replace the first prompt and fix it.",
-        )
-        .expect("Codex should generate a task title");
-        assert!(!title.is_empty());
-        assert!(title.chars().count() <= 80);
     }
 
     #[test]

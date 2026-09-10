@@ -2631,6 +2631,15 @@ impl Waku {
     }
 
     pub(super) fn render_composer(&self, window: &Window, cx: &mut Context<Self>) -> Div {
+        div()
+            .flex_none()
+            .w_full()
+            .min_w_0()
+            .px(px(20.0))
+            .child(self.render_composer_card(window, cx))
+    }
+
+    pub(super) fn render_composer_card(&self, window: &Window, cx: &mut Context<Self>) -> Div {
         let theme = Theme::current(cx);
         let session = self.selected_session();
         let preparing = session.is_some_and(|session| {
@@ -2662,19 +2671,19 @@ impl Waku {
         // compositing over it.
         let drop_wash = theme.composer.blend(theme.overlay_strong);
         let drop_ring = theme.accent.opacity(0.7);
-        div().flex_none().w_full().min_w_0().px(px(20.0)).child(
-            div()
-                .w_full()
-                .max_w(px(CONTENT_MAX_WIDTH))
-                .mx_auto()
-                .rounded(px(13.0))
-                .border_1()
-                .border_color(theme.border)
-                .bg(theme.composer)
-                // Horizontal insets live on each row (and inside the field's
-                // scroll viewport, via `padding_x`) rather than on the card,
-                // so the field's overlay scrollbar can hug the card's edge.
-                .py(px(10.0))
+        div()
+            .w_full()
+            .max_w(px(CONTENT_MAX_WIDTH))
+            .mx_auto()
+            .rounded(px(13.0))
+            .border_1()
+            .border_color(theme.border)
+            .bg(theme.composer)
+            .shadow_lg()
+            // Horizontal insets live on each row (and inside the field's
+            // scroll viewport, via `padding_x`) rather than on the card,
+            // so the field's overlay scrollbar can hug the card's edge.
+            .py(px(10.0))
                 .drag_over::<ExternalPaths>(move |style, _, _, _| {
                     style.bg(drop_wash).border_color(drop_ring)
                 })
@@ -2854,8 +2863,7 @@ impl Waku {
                                     }
                                 })),
                         }),
-                ),
-        )
+                )
     }
 
     fn render_branch_selector(&mut self, cx: &mut Context<Self>) -> Option<AnyElement> {

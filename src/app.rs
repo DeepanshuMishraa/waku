@@ -563,6 +563,12 @@ struct DriverStartRequest {
     daemon: waku_client::DaemonSupervisor,
 }
 
+struct SessionTitleRequest {
+    driver_start: DriverStartRequest,
+    user_message: String,
+    assistant_message: String,
+}
+
 /// A provider process that has started off-thread but is not installed into
 /// Waku's runtime map yet. Its event receiver safely buffers early events.
 struct PreparedDriver {
@@ -1280,6 +1286,8 @@ pub struct Waku {
     task_state_sync_tx: Sender<Result<RemoteTaskStateSnapshot, String>>,
     task_state_sync_events: Receiver<Result<RemoteTaskStateSnapshot, String>>,
     runtimes: HashMap<Uuid, SessionRuntime>,
+    /// First-response title requests running on isolated provider sessions.
+    session_title_requests: HashSet<Uuid>,
     runtime_attach_pending: HashSet<Uuid>,
     runtime_attach_misses: HashMap<Uuid, u8>,
     /// Provider-neutral session work which may remain live after a turn ends.
@@ -2899,6 +2907,7 @@ impl Waku {
                 task_state_sync_tx,
                 task_state_sync_events,
                 runtimes: HashMap::new(),
+                session_title_requests: HashSet::new(),
                 runtime_attach_pending: HashSet::new(),
                 runtime_attach_misses: HashMap::new(),
                 background_work: HashMap::new(),

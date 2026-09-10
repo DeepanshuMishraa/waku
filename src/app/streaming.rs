@@ -269,11 +269,10 @@ impl Waku {
                     session.agent_preset = agent_preset;
                 }
             }
-            DriverEvent::AutoTitleUpdated(title) => {
-                if let Some(session) = self.state.session_mut(session_id) {
-                    session.set_auto_title(title);
-                }
-            }
+            // Provider-owned names are intentionally ignored. Waku generates
+            // one title from the completed first user/assistant exchange so
+            // every provider follows the same timing and naming behavior.
+            DriverEvent::AutoTitleUpdated(_) => {}
             DriverEvent::AvailableCommands(names) => {
                 if let Some(session) = self
                     .state
@@ -684,6 +683,9 @@ impl Waku {
                         crate::analytics::TurnOutcome::Failed
                     },
                 );
+                if success && !needs_fallback {
+                    self.spawn_session_title_generation(session_id, cx);
+                }
                 runtime.pending_permission = None;
                 runtime.pending_user_input = None;
                 runtime.pending_computer_approval = None;

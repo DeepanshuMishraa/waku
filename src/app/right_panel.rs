@@ -3003,7 +3003,7 @@ impl Waku {
             .flex()
             .child(editor)
             .when(self.active_main_file_tab.is_some(), |element| {
-                element.child(self.render_file_editor_floating_input(cx))
+                element.child(self.render_file_editor_floating_input(window, cx))
             })
     }
 
@@ -4830,20 +4830,15 @@ impl Waku {
         cx.stop_propagation();
     }
 
-    pub(super) fn render_file_editor_floating_input(&self, cx: &mut Context<Self>) -> Stateful<Div> {
+    pub(super) fn render_file_editor_floating_input(
+        &self,
+        window: &Window,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
         let theme = Theme::current(cx);
         let session = self.selected_session();
         let provider = session.map(|session| session.provider).unwrap_or_default();
-        let selected_model = session.and_then(|session| self.model_for_session(session));
-        let selected_model_name = self.model_display_name(provider, selected_model);
-        let model_label = if selected_model_name.is_empty() {
-            "GPT-5.5 High".to_string()
-        } else {
-            selected_model_name
-        };
-
         let expanded = self.file_editor_input_expanded;
-        let waku = cx.entity().downgrade();
 
         div()
             .id("file-editor-floating-input-container")
@@ -4855,108 +4850,23 @@ impl Waku {
             .justify_center()
             .px(px(20.0))
             .child(if expanded {
-                let close_waku = waku.clone();
                 div()
-                    .id("file-editor-floating-input-expanded")
+                    .id("file-editor-floating-composer-card")
                     .w_full()
-                    .max_w(px(680.0))
-                    .h(px(128.0))
-                    .p(px(12.0))
-                    .rounded(px(10.0))
-                    .border_1()
-                    .border_color(theme.border)
-                    .bg(theme.composer)
-                    .shadow_lg()
-                    .flex()
-                    .flex_col()
-                    .justify_between()
-                    .cursor_text()
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(3.0))
-                            .child(
-                                div()
-                                    .w(px(1.5))
-                                    .h(px(15.0))
-                                    .bg(theme.text),
-                            )
-                            .child(
-                                div()
-                                    .text_size(sp(13.0))
-                                    .text_color(theme.text_ghost)
-                                    .child("Ask to make changes, @mention files, run /commands"),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .justify_between()
-                            .mt_auto()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(5.0))
-                                    .px(px(8.0))
-                                    .py(px(4.0))
-                                    .rounded(px(6.0))
-                                    .cursor_pointer()
-                                    .hover(|e| e.bg(theme.overlay))
-                                    .child(
-                                        div()
-                                            .text_size(sp(12.5))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(theme.text)
-                                            .child(SharedString::from(model_label)),
-                                    )
-                                    .child(icon("icons/chevron-down.svg", 11.0, theme.text_tertiary)),
-                            )
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(6.0))
-                                    .child(
-                                        div()
-                                            .size(px(26.0))
-                                            .rounded(px(6.0))
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .cursor_pointer()
-                                            .hover(|e| e.bg(theme.overlay))
-                                            .child(icon("icons/plus.svg", 14.0, theme.text_secondary)),
-                                    )
-                                    .child(
-                                        div()
-                                            .id("file-editor-input-submit")
-                                            .size(px(26.0))
-                                            .rounded(px(6.0))
-                                            .bg(theme.overlay_strong)
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .cursor_pointer()
-                                            .hover(|e| e.bg(theme.overlay))
-                                            .on_click(move |_, _, cx| {
-                                                let _ = close_waku.update(cx, |waku, cx| {
-                                                    waku.file_editor_input_expanded = false;
-                                                    cx.notify();
-                                                });
-                                            })
-                                            .child(icon("icons/arrow-up.svg", 13.0, theme.text_secondary)),
-                                    ),
-                            ),
-                    )
+                    .max_w(px(CONTENT_MAX_WIDTH))
+                    .on_mouse_down_out(cx.listener(|this, _, _, cx| {
+                        let menu_open = this.menus.borrow().values().any(|h| h.is_open());
+                        if !menu_open {
+                            this.file_editor_input_expanded = false;
+                            cx.notify();
+                        }
+                    }))
+                    .child(self.render_composer_card(window, cx))
             } else {
-                let open_waku = waku.clone();
                 div()
                     .id("file-editor-floating-input-collapsed")
                     .w_full()
-                    .max_w(px(680.0))
+                    .max_w(px(CONTENT_MAX_WIDTH))
                     .h(px(42.0))
                     .px(px(12.0))
                     .rounded(px(10.0))
@@ -4969,12 +4879,12 @@ impl Waku {
                     .gap(px(10.0))
                     .cursor_pointer()
                     .hover(|e| e.border_color(theme.border_strong))
-                    .on_click(move |_, _, cx| {
-                        let _ = open_waku.update(cx, |waku, cx| {
-                            waku.file_editor_input_expanded = true;
-                            cx.notify();
-                        });
-                    })
+                    .on_click(cx.listener(|this, _, window, cx| {
+                        this.file_editor_input_expanded = true;
+                        let focus_handle = this.composer_focus(cx);
+                        window.focus(&focus_handle, cx);
+                        cx.notify();
+                    }))
                     .child(
                         div()
                             .size(px(20.0))
@@ -4997,13 +4907,6 @@ impl Waku {
                             .text_size(sp(13.0))
                             .text_color(theme.text_secondary)
                             .child("Ask to make changes, @mention files, run /commands"),
-                    )
-                    .child(
-                        div()
-                            .text_size(sp(12.0))
-                            .text_color(theme.text_tertiary)
-                            .mr(px(4.0))
-                            .child("⌘L to focus"),
                     )
                     .child(
                         div()
