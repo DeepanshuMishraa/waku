@@ -919,6 +919,7 @@ fn merge_stale_session_metadata(existing: &mut AgentSession, incoming: AgentSess
         existing.service_tier = incoming.service_tier;
         existing.context_window = incoming.context_window;
         existing.agent_preset = incoming.agent_preset;
+        existing.chat_status = incoming.chat_status;
         existing.updated_at = incoming.updated_at;
         existing.last_reply_at = incoming.last_reply_at.or(existing.last_reply_at);
     }

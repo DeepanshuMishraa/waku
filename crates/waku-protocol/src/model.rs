@@ -1430,6 +1430,7 @@ impl AgentSession {
                 .with_presentation(display_content, attachments),
         );
         self.last_reply_at = Some(now);
+        self.chat_status = ChatStatus::InProgress;
         id
     }
 
@@ -1454,6 +1455,7 @@ impl AgentSession {
         });
         self.last_reply_at = Some(now);
         self.updated_at = now;
+        self.chat_status = ChatStatus::InProgress;
         id
     }
 
@@ -1486,6 +1488,7 @@ impl AgentSession {
             prompt.id = message_id;
             self.messages.push(prompt);
             self.updated_at = now;
+            self.chat_status = ChatStatus::InProgress;
             return true;
         }
         self.turns.push(AgentTurn {
@@ -1504,6 +1507,7 @@ impl AgentSession {
         self.status = SessionStatus::Connecting;
         self.last_reply_at = Some(now);
         self.updated_at = now;
+        self.chat_status = ChatStatus::InProgress;
         true
     }
 
@@ -1591,6 +1595,9 @@ impl AgentSession {
         turn.completed_at = Some(completed_at);
         let result = (turn.id, turn.turn_count);
         self.last_reply_at = Some(completed_at);
+        if status == TurnStatus::Completed {
+            self.chat_status = ChatStatus::Done;
+        }
         Some(result)
     }
 

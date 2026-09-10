@@ -1270,6 +1270,7 @@ impl StateStore {
         session.context_window = stored.context_window;
         session.context_usage = stored.context_usage;
         session.runtime_event_cursor = stored.runtime_event_cursor;
+        session.chat_status = stored.chat_status;
 
         let mut statement = connection
             .prepare(

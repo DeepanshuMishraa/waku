@@ -3537,6 +3537,7 @@ impl Waku {
                 submission.attachments.clone(),
             );
             session.status = SessionStatus::Connecting;
+            session.chat_status = ChatStatus::InProgress;
             session.updated_at = unix_time();
             selected.then_some(TranscriptAnchor {
                 session_id,

@@ -657,6 +657,9 @@ impl Waku {
                     } else {
                         SessionStatus::Failed
                     };
+                    if success {
+                        session.chat_status = ChatStatus::Done;
+                    }
                     if needs_fallback {
                         session.push_message(
                             MessageRole::Assistant,
