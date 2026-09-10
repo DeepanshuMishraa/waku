@@ -1161,6 +1161,7 @@ impl Waku {
         animate_streaming: bool,
     ) -> MarkdownCtx<'a> {
         MarkdownCtx::new(row, palette, metrics, self.transcript_selection.clone())
+            .with_math_enabled(self.state.render_math)
             .with_link_handler(self.markdown_link_handler.clone())
             .with_streaming_animation(animate_streaming)
     }
@@ -1299,12 +1300,14 @@ impl Waku {
                             MarkdownMetrics::BODY
                         });
                     let animate_streaming = message.streaming && !cx.reduce_motion();
-                    let mut ctx = self.markdown_ctx(
-                        format!("message-{}", message.id),
-                        &palette,
-                        metrics,
-                        animate_streaming,
-                    );
+                    let mut ctx = self
+                        .markdown_ctx(
+                            format!("message-{}", message.id),
+                            &palette,
+                            metrics,
+                            animate_streaming,
+                        )
+                        .with_context_menu(menu.clone());
                     if let Some(highlights) = self.transcript_search_highlights(message_index) {
                         ctx = ctx.with_search_highlights(highlights);
                     }
@@ -2207,12 +2210,14 @@ impl Waku {
                 let mut palette = MarkdownPalette::from_theme(theme);
                 palette.text = theme.text_secondary;
                 palette.secondary = theme.text_tertiary;
-                let ctx = self.markdown_ctx(
-                    format!("reasoning-{id}"),
-                    &palette,
-                    self.scaled_markdown_metrics(MarkdownMetrics::COMPACT),
-                    reasoning_live && !cx.reduce_motion(),
-                );
+                let ctx = self
+                    .markdown_ctx(
+                        format!("reasoning-{id}"),
+                        &palette,
+                        self.scaled_markdown_metrics(MarkdownMetrics::COMPACT),
+                        reasoning_live && !cx.reduce_motion(),
+                    )
+                    .with_math_context_menu(self.menu_handle(format!("reasoning-math-{id}"), cx));
                 let reasoning_viewport = self
                     .activity_scroll_viewports
                     .borrow_mut()

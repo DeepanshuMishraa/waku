@@ -76,6 +76,10 @@ fn default_code_font_size() -> f32 {
     DEFAULT_CODE_FONT_SIZE
 }
 
+fn default_render_math() -> bool {
+    true
+}
+
 fn default_ui_font_family() -> String {
     DEFAULT_UI_FONT_FAMILY.to_owned()
 }
@@ -270,6 +274,8 @@ pub struct AppSettings {
     pub code_font_family: String,
     #[serde(default = "default_font_smoothing")]
     pub font_smoothing: bool,
+    #[serde(default = "default_render_math")]
+    pub render_math: bool,
     pub daemon_exposure: DaemonExposureSettings,
     /// Preferred target of the header's "open project in app" control, by
     /// catalog id. `None` — and an id no longer installed — fall back to the
@@ -290,6 +296,7 @@ impl Default for AppSettings {
             code_font_size: DEFAULT_CODE_FONT_SIZE,
             code_font_family: DEFAULT_CODE_FONT_FAMILY.to_owned(),
             font_smoothing: true,
+            render_math: true,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
         }
@@ -409,6 +416,8 @@ pub struct PersistedState {
     pub code_font_family: String,
     #[serde(default = "default_font_smoothing")]
     pub font_smoothing: bool,
+    #[serde(default = "default_render_math")]
+    pub render_math: bool,
     #[serde(default)]
     pub daemon_exposure: DaemonExposureSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -488,6 +497,7 @@ impl PersistedState {
             code_font_size: DEFAULT_CODE_FONT_SIZE,
             code_font_family: DEFAULT_CODE_FONT_FAMILY.to_owned(),
             font_smoothing: true,
+            render_math: true,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
             sidebar_visible: true,
@@ -616,6 +626,7 @@ impl PersistedState {
             code_font_size: self.code_font_size,
             code_font_family: self.code_font_family.clone(),
             font_smoothing: self.font_smoothing,
+            render_math: self.render_math,
             daemon_exposure: self.daemon_exposure.clone(),
             open_in_app: self.open_in_app.clone(),
         }
@@ -656,6 +667,7 @@ impl PersistedState {
         self.code_font_size = sanitized_code_font_size(settings.code_font_size);
         self.code_font_family = settings.code_font_family;
         self.font_smoothing = settings.font_smoothing;
+        self.render_math = settings.render_math;
         self.daemon_exposure = settings.daemon_exposure;
         self.open_in_app = settings.open_in_app;
     }

@@ -43,11 +43,17 @@ rquickjs = "0.12.2"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 unicode-segmentation = "1.12"
+unicode-linebreak = "0.1.5"
 url = "2"
 uuid = { version = "1.18", features = ["v4", "serde"] }
 waku-client = { path = "crates/waku-client" }
 waku-protocol = { path = "crates/waku-protocol" }
 pulldown-cmark = "0.13"
+# Native, offline math typesetting; all layout and raster work runs on workers.
+ratex-parser = "=0.1.14"
+ratex-layout = "=0.1.14"
+ratex-types = "=0.1.14"
+ratex-svg = { version = "=0.1.14", features = ["embed-fonts"] }
 regex = "1"
 rust-i18n = "4"
 rust-umami = "0.1.1"

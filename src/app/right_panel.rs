@@ -494,6 +494,7 @@ fn review_diff_flat_text(line: &crate::review_diff::Line, theme: &Theme) -> md::
         runs,
         links: Vec::new(),
         code_ranges: Vec::new(),
+        math: None,
     }
 }
 
@@ -3374,6 +3375,8 @@ impl Waku {
             MarkdownMetrics::document(self.state.ui_font_size, self.state.code_font_size),
             self.file_preview_selection.clone(),
         )
+        .with_math_enabled(self.state.render_math)
+        .with_math_context_menu(self.menu_handle("file-preview-math", cx))
         .with_link_handler(self.markdown_link_handler.clone());
         let document = md::render::markdown(view, &ctx);
 

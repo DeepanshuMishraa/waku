@@ -32,6 +32,8 @@ pub struct InlineStyle {
     pub bold: bool,
     pub italic: bool,
     pub code: bool,
+    /// An indivisible LaTeX expression, kept separate from adjacent math runs.
+    pub math: bool,
     pub strikethrough: bool,
     /// Destination URL when inside a link.
     pub link: Option<String>,
@@ -75,6 +77,7 @@ pub struct ListItem {
 enum InlinePiece {
     Run(InlineRun),
     Image { url: String, alt: String },
+    DisplayMath(String),
 }
 
 /// A markdown block. Containers nest.
@@ -96,6 +99,9 @@ pub enum Block {
     CodeBlock {
         language: Option<String>,
         code: String,
+    },
+    DisplayMath {
+        latex: String,
     },
     BlockQuote {
         children: Vec<Block>,
@@ -136,7 +142,10 @@ impl BlockTree {
 // ── Full parse ─────────────────────────────────────────────────────────────
 
 fn options() -> Options {
-    Options::ENABLE_TABLES | Options::ENABLE_STRIKETHROUGH | Options::ENABLE_TASKLISTS
+    Options::ENABLE_TABLES
+        | Options::ENABLE_STRIKETHROUGH
+        | Options::ENABLE_TASKLISTS
+        | Options::ENABLE_MATH
 }
 
 /// Parse a whole source into a [`BlockTree`].
@@ -433,6 +442,13 @@ fn parse_inline_container(cursor: &mut Cursor) -> Vec<InlinePiece> {
     merge_pieces(pieces)
 }
 
+fn looks_like_bare_math(text: &str) -> bool {
+    let text = text.trim();
+    (text.starts_with('\\') && text.contains('='))
+        || text.starts_with("f'(")
+        || text.starts_with("d / d")
+}
+
 /// Split inline pieces into blocks, so images become their own block and the
 /// text around them keeps its order.
 fn pieces_into_blocks(pieces: Vec<InlinePiece>) -> Vec<Block> {
@@ -448,6 +464,14 @@ fn pieces_into_blocks(pieces: Vec<InlinePiece>) -> Vec<Block> {
                     });
                 }
                 blocks.push(Block::Image { url, alt });
+            }
+            InlinePiece::DisplayMath(latex) => {
+                if !runs.is_empty() {
+                    blocks.push(Block::Paragraph {
+                        runs: std::mem::take(&mut runs),
+                    });
+                }
+                blocks.push(Block::DisplayMath { latex });
             }
         }
     }
@@ -465,6 +489,13 @@ fn pieces_into_runs(pieces: Vec<InlinePiece>) -> Vec<InlineRun> {
             .map(|piece| match piece {
                 InlinePiece::Run(run) => run,
                 InlinePiece::Image { alt, .. } => InlineRun::plain(alt),
+                InlinePiece::DisplayMath(text) => InlineRun {
+                    text,
+                    style: InlineStyle {
+                        math: true,
+                        ..Default::default()
+                    },
+                },
             })
             .collect(),
     )
@@ -478,10 +509,14 @@ fn parse_inline_event(cursor: &mut Cursor, pieces: &mut Vec<InlinePiece>, style:
     };
     let mut push_run = |run: InlineRun| pieces.push(InlinePiece::Run(run));
     match event {
-        Event::Text(text) => push_run(InlineRun {
-            text: text.to_string(),
-            style: style.clone(),
-        }),
+        Event::Text(text) => {
+            let text = text.to_string();
+            if style == &InlineStyle::default() && looks_like_bare_math(&text) {
+                pieces.push(InlinePiece::DisplayMath(text.trim().to_owned()));
+            } else {
+                push_run(InlineRun { text, style: style.clone() });
+            }
+        }
         Event::Code(text) => {
             let mut style = style.clone();
             style.code = true;
@@ -490,6 +525,15 @@ fn parse_inline_event(cursor: &mut Cursor, pieces: &mut Vec<InlinePiece>, style:
                 style,
             });
         }
+        Event::InlineMath(text) => {
+            let mut style = style.clone();
+            style.math = true;
+            push_run(InlineRun {
+                text: text.into_string(),
+                style,
+            });
+        }
+        Event::DisplayMath(text) => pieces.push(InlinePiece::DisplayMath(text.into_string())),
         // A hard or soft break inside a paragraph is a line break in the
         // rendered run: shaped text splits on '\n' on its own.
         Event::SoftBreak | Event::HardBreak => push_run(InlineRun {
@@ -552,7 +596,7 @@ fn parse_inline_event(cursor: &mut Cursor, pieces: &mut Vec<InlinePiece>, style:
             text: if checked { "[x] " } else { "[ ] " }.to_owned(),
             style: style.clone(),
         }),
-        Event::End(_) | Event::Rule | Event::InlineMath(_) | Event::DisplayMath(_) => {}
+        Event::End(_) | Event::Rule => {}
     }
 }
 
@@ -605,7 +649,7 @@ fn merge_pieces(pieces: Vec<InlinePiece>) -> Vec<InlinePiece> {
         match piece {
             InlinePiece::Run(run) if run.text.is_empty() => {}
             InlinePiece::Run(run) => match merged.last_mut() {
-                Some(InlinePiece::Run(last)) if last.style == run.style => {
+                Some(InlinePiece::Run(last)) if !run.style.math && last.style == run.style => {
                     last.text.push_str(&run.text)
                 }
                 _ => merged.push(InlinePiece::Run(run)),
@@ -623,7 +667,9 @@ fn linkify_bare_urls(pieces: Vec<InlinePiece>) -> Vec<InlinePiece> {
     let mut linked = Vec::with_capacity(pieces.len());
     for piece in pieces {
         match piece {
-            InlinePiece::Run(run) if !run.style.code && run.style.link.is_none() => {
+            InlinePiece::Run(run)
+                if !run.style.code && !run.style.math && run.style.link.is_none() =>
+            {
                 push_linkified_run(run, &mut linked);
             }
             piece => linked.push(piece),
@@ -673,7 +719,9 @@ fn merge_runs(runs: Vec<InlineRun>) -> Vec<InlineRun> {
             continue;
         }
         match merged.last_mut() {
-            Some(last) if last.style == run.style => last.text.push_str(&run.text),
+            Some(last) if !run.style.math && last.style == run.style => {
+                last.text.push_str(&run.text)
+            }
             _ => merged.push(run),
         }
     }
@@ -791,7 +839,10 @@ impl IncrementalParser {
         let last = self.tree.blocks.last()?;
         // A code block's content is literal: mending would corrupt it, and a
         // half-typed fence must not be reinterpreted.
-        if matches!(last.block, Block::CodeBlock { .. }) {
+        if matches!(
+            last.block,
+            Block::CodeBlock { .. } | Block::DisplayMath { .. }
+        ) {
             return None;
         }
         let mended = super::mend::close_hanging(&self.text[last.range.start..])?;
@@ -817,9 +868,21 @@ impl IncrementalParser {
         let Some(tail) = self.display_tail() else {
             return self.tree.clone();
         };
-        let mut blocks = self.tree.blocks[..self.tree.blocks.len() - 1].to_vec();
+        let mut blocks = self.tree.blocks[..self.display_tail_start()].to_vec();
         blocks.extend(tail);
         BlockTree { blocks }
+    }
+
+    /// Images and display math can split one source paragraph into several
+    /// blocks. Mending replaces that whole source group, not just its last
+    /// rendered piece.
+    pub fn display_tail_start(&self) -> usize {
+        let Some(last) = self.tree.blocks.last() else {
+            return 0;
+        };
+        self.tree
+            .blocks
+            .partition_point(|block| block.range.start < last.range.start)
     }
 
     /// Index of the first block an append could still change.
@@ -865,6 +928,92 @@ fn has_link_definition(text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn common_bare_math_lines_are_promoted_to_display_math() {
+        let tree = parse("\\lim_x\\to a f(x)=L\n\nf'(x)=\\lim_h\\to0 / f(x+h)-f(x) / h");
+        assert!(matches!(&tree.blocks[0].block, Block::DisplayMath { .. }));
+        assert!(matches!(&tree.blocks[1].block, Block::DisplayMath { .. }));
+    }
+
+    #[test]
+    fn math_keeps_inline_order_styles_and_display_blocks() {
+        let tree = parse(r"Before **$a_1$**$b^2$ after $$\frac{1}{2}$$ done");
+        let Block::Paragraph { runs } = &tree.blocks[0].block else {
+            panic!("{tree:?}")
+        };
+        let math = runs.iter().filter(|run| run.style.math).collect::<Vec<_>>();
+        assert_eq!(math.len(), 2);
+        assert_eq!(math[0].text, "a_1");
+        assert!(math[0].style.bold);
+        assert_eq!(math[1].text, "b^2");
+        assert!(
+            matches!(&tree.blocks[1].block, Block::DisplayMath { latex } if latex == r"\frac{1}{2}")
+        );
+        assert_eq!(paragraph_text(&tree.blocks[2].block), " done");
+    }
+
+    #[test]
+    fn math_is_literal_in_code_escapes_and_unclosed_delimiters() {
+        for source in [r"`$a_1$`", r"\$a_1\$", r"unfinished $\frac{a}{b}"] {
+            let tree = parse(source);
+            let Block::Paragraph { runs } = &tree.blocks[0].block else {
+                panic!("{tree:?}")
+            };
+            assert!(runs.iter().all(|run| !run.style.math), "{source}");
+        }
+        let tree = parse("```latex\n$$x^2$$\n```");
+        assert!(
+            matches!(&tree.blocks[0].block, Block::CodeBlock { code, .. } if code == "$$x^2$$")
+        );
+    }
+
+    #[test]
+    fn math_works_in_lists_quotes_headings_and_tables_without_linkifying_tex() {
+        let tree = parse("# $x$\n\n> $y$\n\n- $z$\n\n| Value |\n| --- |\n| $x^2$ |\n");
+        assert!(matches!(&tree.blocks[0].block, Block::Heading { runs, .. } if runs[0].style.math));
+        let Block::Table { rows, .. } = &tree.blocks[3].block else {
+            panic!("{tree:?}")
+        };
+        assert!(rows[0][0][0].style.math);
+        let tree = parse(r"$\text{https://example.com}$");
+        let Block::Paragraph { runs } = &tree.blocks[0].block else {
+            panic!()
+        };
+        assert_eq!(runs.len(), 1);
+        assert!(runs[0].style.math && runs[0].style.link.is_none());
+    }
+
+    #[test]
+    fn streamed_math_matches_full_parse_at_every_character_boundary() {
+        for source in [
+            "Intro\n\nBefore $x_1$ and $y$ after\n\n$$\n\\frac{a}{b}\n$$\n\nDone",
+            "- Before $$x$$ after\n- Next $y$\n",
+            "before $$x$$ after **bold**",
+        ] {
+            let mut parser = IncrementalParser::new();
+            for ch in source.chars() {
+                parser.append(&ch.to_string());
+                assert_eq!(parser.tree(), &parse(parser.text()), "{}", parser.text());
+            }
+        }
+    }
+
+    #[test]
+    fn mended_math_does_not_duplicate_a_split_paragraph_or_edit_tex() {
+        let mut parser = IncrementalParser::new();
+        parser.set_text("before $$x$$ after **bold");
+        assert_eq!(parser.display_tree().blocks.len(), 3);
+        for source in [
+            r"$[x]_1$",
+            r"$$\left[x\right]_1$$",
+            r"$a*b$",
+            r"$\frac{a_1}{b}",
+        ] {
+            parser.set_text(source);
+            assert_eq!(parser.display_tree(), *parser.tree(), "{source}");
+        }
+    }
 
     fn paragraph_text(block: &Block) -> String {
         match block {
