@@ -299,6 +299,41 @@ pub struct SearchHighlights {
     pub active: Option<TextSearchMatch>,
 }
 
+fn normalize_math_text(source: &str) -> String {
+    let trimmed = source.trim();
+    let is_display = trimmed.starts_with("[\n") && trimmed.ends_with(']');
+    let mut text = if is_display {
+        trimmed[2..trimmed.len() - 1].trim().to_owned()
+    } else {
+        source.to_owned()
+    };
+    if !text.contains('\\') {
+        return if is_display { text } else { source.to_owned() };
+    }
+    for (from, to) in [
+        ("\\partial", "∂"),
+        ("\\nabla", "∇"),
+        ("\\mathbf", ""),
+        ("\\mathrm", ""),
+        ("\\cdot", "·"),
+        ("\\times", "×"),
+        ("\\rho", "ρ"),
+        ("\\nu", "ν"),
+        ("\\infty", "∞"),
+        ("\\ell", "ℓ"),
+        ("\\left", ""),
+        ("\\right", ""),
+    ] {
+        text = text.replace(from, to);
+    }
+    text = text.replace("\\frac", "");
+    text = text.replace("}{", " / ");
+    text.retain(|character| character != '{' && character != '}');
+    text = text.replace("^2", "²");
+    text = text.replace("^3", "³");
+    text
+}
+
 /// Flatten inline runs for shaping. Pure given the palette and base weight.
 pub fn flatten(
     runs: &[InlineRun],
@@ -315,8 +350,9 @@ pub fn flatten(
         if run.text.is_empty() {
             continue;
         }
+        let normalized = normalize_math_text(&run.text);
         let start = text.len();
-        text.push_str(&run.text);
+        text.push_str(&normalized);
         let end = text.len();
 
         let mut run_font = font(if run.style.code {
@@ -354,7 +390,7 @@ pub fn flatten(
         }
 
         out.push(TextRun {
-            len: run.text.len(),
+            len: normalized.len(),
             font: run_font,
             color: if run.style.code {
                 palette.code_text
@@ -1909,6 +1945,18 @@ mod tests {
             "runs must tile the text exactly: {:?}",
             flat.text
         );
+    }
+
+    #[test]
+    fn latex_like_display_math_becomes_readable_unicode() {
+        let flat = flatten(
+            &runs_of("[\n\\frac{\\partial \\mathbf{u}}{\\partial t} + \\nu\\nabla^2\\mathbf{u}\n]"),
+            &palette(),
+            FontWeight::NORMAL,
+            palette().text,
+        );
+        assert_eq!(flat.text.as_ref(), "∂ u / ∂ t + ν∇²u");
+        assert_runs_tile(&flat);
     }
 
     #[test]
