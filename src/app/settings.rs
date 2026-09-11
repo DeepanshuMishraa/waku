@@ -614,6 +614,7 @@ impl Waku {
                         },
                     )),
             )
+            .child(self.render_sound_volume_control(theme, cx))
             .when(updater_available, |column| {
                 let enabled = self.automatic_updates_enabled;
                 let toggle = toggle_switch(
@@ -2051,6 +2052,54 @@ impl Waku {
             .child(section_header("Interface", false))
             .child(interface_card)
             .into_any_element()
+    }
+
+    fn render_sound_volume_control(&self, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
+        let volume = self.state.sound_volume.round().clamp(0.0, 100.0) as u32;
+        let mut slider = div().flex().items_center().gap(px(3.0)).flex_1();
+        for step in 0..=20 {
+            let value = step * 5;
+            let selected = value <= volume;
+            slider = slider.child(
+                div()
+                    .id(SharedString::from(format!("sound-volume-step-{step}")))
+                    .h(px(6.0))
+                    .flex_1()
+                    .rounded(px(3.0))
+                    .bg(if selected { theme.accent } else { theme.border })
+                    .cursor_default()
+                    .hover(|element| element.bg(theme.accent.opacity(0.75)))
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.set_sound_volume(value as f32, cx);
+                    })),
+            );
+        }
+
+        div()
+            .mt(px(10.0))
+            .w_full()
+            .px(px(20.0))
+            .py(px(12.0))
+            .rounded(px(13.0))
+            .bg(theme.raised)
+            .flex()
+            .items_center()
+            .gap(px(12.0))
+            .child(div().text_size(sp(12.5)).text_color(theme.text_secondary).child("Volume"))
+            .child(slider)
+            .child(div().w(px(38.0)).text_size(sp(12.5)).text_color(theme.text_secondary).child(format!("{volume}%")))
+            .into_any_element()
+    }
+
+    fn set_sound_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
+        let volume = volume.clamp(0.0, 100.0);
+        if (self.state.sound_volume - volume).abs() < f32::EPSILON {
+            return;
+        }
+        self.state.sound_volume = volume;
+        crate::audio::set_volume(volume);
+        self.save();
+        cx.notify();
     }
 
     fn set_sounds_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {

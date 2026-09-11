@@ -1989,6 +1989,7 @@ impl Waku {
         }
         crate::i18n::set_language(state.language);
         crate::platform::set_font_smoothing_enabled(state.font_smoothing);
+        crate::audio::set_volume(state.sound_volume);
         set_active_ui_font_family(state.ui_font_family.clone());
         crate::md::render::set_active_mono_family(state.code_font_family.clone());
         // Chrome text is authored in `sp` rems against the default UI font

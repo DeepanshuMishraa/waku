@@ -4,6 +4,14 @@
 //! platform audio device layer on macOS, Linux, and Windows.
 
 use std::io::Cursor;
+use std::sync::atomic::{AtomicU32, Ordering};
+
+static VOLUME_PERCENT: AtomicU32 = AtomicU32::new(100);
+
+pub fn set_volume(percent: f32) {
+    let percent = percent.clamp(0.0, 100.0);
+    VOLUME_PERCENT.store(percent as u32, Ordering::Relaxed);
+}
 
 fn play_asset(bytes: &'static [u8], name: &'static str) {
     // Audio device setup and playback may touch platform services, so keep it
@@ -18,6 +26,7 @@ fn play_asset(bytes: &'static [u8], name: &'static str) {
                 return;
             };
             let sink = rodio::Sink::connect_new(stream.mixer());
+            sink.set_volume(VOLUME_PERCENT.load(Ordering::Relaxed) as f32 / 100.0);
             sink.append(source);
             sink.sleep_until_end();
         })
