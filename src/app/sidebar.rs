@@ -464,6 +464,47 @@ fn reveal_sidebar_list_row(list: &ListState, rows: &[SidebarRow], index: usize) 
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct DraggedSession {
+    pub session_id: Uuid,
+    pub status: ChatStatus,
+    pub title: SharedString,
+}
+
+pub(super) struct DraggedSessionPreview {
+    pub title: SharedString,
+    pub status: ChatStatus,
+}
+
+impl Render for DraggedSessionPreview {
+    fn render(&mut self, _window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
+        let theme = Theme::current(cx);
+        let status_color = chat_status_color(&theme, self.status);
+        div()
+            .flex()
+            .items_center()
+            .gap(px(8.0))
+            .px(px(10.0))
+            .h(px(28.0))
+            .max_w(px(240.0))
+            .rounded(px(7.0))
+            .bg(theme.raised)
+            .border_1()
+            .border_color(theme.border)
+            .shadow_lg()
+            .child(icon(self.status.icon(), 14.0, status_color))
+            .child(
+                div()
+                    .min_w_0()
+                    .truncate()
+                    .text_size(sp(13.0))
+                    .font_weight(FontWeight::NORMAL)
+                    .text_color(theme.text)
+                    .child(self.title.clone()),
+            )
+    }
+}
+
 impl Waku {
     pub(super) fn window_drag_region(
         &self,
@@ -1680,6 +1721,7 @@ impl Waku {
             SidebarGroup::Project(project_id) => Some(project_id),
             SidebarGroup::Updated(_) | SidebarGroup::Projectless | SidebarGroup::Status(_) => None,
         };
+        let is_status_group = matches!(group, SidebarGroup::Status(_));
 
         let chat_count = if let Some(project_id) = project_id {
             self.state
@@ -1708,6 +1750,17 @@ impl Waku {
                                     projectless_root.as_deref(),
                                 )
                         })
+                })
+                .count()
+        } else if let SidebarGroup::Status(status) = group {
+            self.state
+                .sessions
+                .iter()
+                .filter(|session| {
+                    session.conversation_root_id.is_none()
+                        && session.chat_status == status
+                        && (session.has_started()
+                            || self.state.selected_session == Some(session.id))
                 })
                 .count()
         } else {
@@ -1754,6 +1807,8 @@ impl Waku {
             .relative()
             .w_full()
             .rounded(px(7.0))
+            .border_1()
+            .border_color(gpui::transparent_black())
             .cursor_default()
             .focus_visible(|style| style.border_1().border_color(theme.accent))
             .hover(|style| style.bg(theme.sidebar_item_background))
@@ -1779,7 +1834,7 @@ impl Waku {
                             .text_color(theme.text)
                             .child(label),
                     )
-                    .when(show_folder_icon && chat_count > 0, |element| {
+                    .when((show_folder_icon || is_status_group) && chat_count > 0, |element| {
                         element.child(
                             div()
                                 .flex_none()
@@ -1793,6 +1848,34 @@ impl Waku {
                     .when_some(status_chevron, |element, chevron| element.child(chevron)),
             )
             .when_some(compose, |element, compose| element.child(compose))
+            .when_some(
+                if let SidebarGroup::Status(target_status) = group {
+                    Some(target_status)
+                } else {
+                    None
+                },
+                |element, target_status| {
+                    let target_status_color = chat_status_color(&theme, target_status);
+                    element
+                        .drag_over::<DraggedSession>(move |style, dragged, _window, _cx| {
+                            if dragged.status != target_status {
+                                style
+                                    .bg(target_status_color.opacity(0.18))
+                                    .border_1()
+                                    .border_color(target_status_color.opacity(0.7))
+                            } else {
+                                style
+                            }
+                        })
+                        .on_drop(cx.listener(move |this, dragged: &DraggedSession, _window, cx| {
+                            if dragged.status != target_status {
+                                this.set_session_chat_status(dragged.session_id, target_status, cx);
+                                crate::audio::play_arrival();
+                                this.set_sidebar_group_expanded(SidebarGroup::Status(target_status), true, cx);
+                            }
+                        }))
+                },
+            )
             .on_click(cx.listener(move |this, _, _, cx| {
                 this.toggle_sidebar_group(group, cx);
             }))
@@ -2195,7 +2278,7 @@ impl Waku {
                 } else {
                     theme.text_secondary
                 })
-                .child(title_str)
+                .child(title_str.clone())
                 .into_any_element()
         };
         let waku = cx.entity().downgrade();
@@ -2203,6 +2286,11 @@ impl Waku {
         let menu = self.menu_handle(format!("session-{session_id}"), cx);
         let row_focus = menu.trigger_focus_handle().clone();
         let keyboard_menu = menu.clone();
+        let dragged = DraggedSession {
+            session_id,
+            status: current_status,
+            title: title_str.clone(),
+        };
         let row = div()
             .id(SharedString::from(if pinned_copy {
                 format!("pinned-session-{}", session.id)
@@ -2216,6 +2304,8 @@ impl Waku {
             .flex()
             .items_center()
             .rounded(px(7.0))
+            .border_1()
+            .border_color(gpui::transparent_black())
             .cursor_default()
             .when(selected, |element| {
                 element.bg(theme.sidebar_item_background)
@@ -2256,10 +2346,17 @@ impl Waku {
                     }),
             )
             .when(!renaming, |element| {
+                let dragged_payload = dragged.clone();
                 element
                     .track_focus(&row_focus)
                     .tab_index(0)
                     .focus_visible(|style| style.border_1().border_color(theme.accent))
+                    .on_drag(dragged_payload, move |dragged, _, _window, cx| {
+                        cx.new(|_| DraggedSessionPreview {
+                            title: dragged.title.clone(),
+                            status: dragged.status,
+                        })
+                    })
                     .on_key_down(cx.listener(move |this, event: &KeyDownEvent, window, cx| {
                         let key = event.keystroke.key.as_str();
                         if matches!(key, "enter" | "space") {
@@ -2272,6 +2369,28 @@ impl Waku {
                     }))
                     .on_click(cx.listener(move |this, _, _, cx| {
                         this.select_session(session_id, cx);
+                    }))
+            })
+            .when(is_status_grouping && !pinned_copy, |element| {
+                let target_status = current_status;
+                let target_status_color = chat_status_color(&theme, target_status);
+                element
+                    .drag_over::<DraggedSession>(move |style, dragged, _window, _cx| {
+                        if dragged.status != target_status && dragged.session_id != session_id {
+                            style
+                                .bg(target_status_color.opacity(0.18))
+                                .border_1()
+                                .border_color(target_status_color.opacity(0.7))
+                        } else {
+                            style
+                        }
+                    })
+                    .on_drop(cx.listener(move |this, dragged: &DraggedSession, _window, cx| {
+                        if dragged.status != target_status {
+                            this.set_session_chat_status(dragged.session_id, target_status, cx);
+                            crate::audio::play_arrival();
+                            this.set_sidebar_group_expanded(SidebarGroup::Status(target_status), true, cx);
+                        }
                     }))
             });
         let is_pinned = self.pinned_session_ids.contains(&session_id);
@@ -3394,5 +3513,22 @@ mod tests {
                 SidebarRow::GroupSpacer,
             ]
         );
+    }
+
+    #[test]
+    fn dragged_session_payload_and_status_update() {
+        let session_id = Uuid::from_u128(42);
+        let dragged = DraggedSession {
+            session_id,
+            status: ChatStatus::Done,
+            title: SharedString::from("Explaining Navier-Stokes"),
+        };
+        assert_eq!(dragged.session_id, session_id);
+        assert_eq!(dragged.status, ChatStatus::Done);
+        assert_eq!(dragged.title.as_ref(), "Explaining Navier-Stokes");
+
+        // When dropped onto another status, target status differs
+        let target_status = ChatStatus::InProgress;
+        assert_ne!(dragged.status, target_status);
     }
 }

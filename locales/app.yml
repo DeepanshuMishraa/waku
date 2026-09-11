@@ -336,6 +336,10 @@ settings.render_math:
   en: Render math expressions
 settings.render_math_description:
   en: Show formatted math in Markdown. Turn off to show LaTeX source.
+settings.sounds:
+  en: Completion sounds
+settings.sounds_description:
+  en: Play a soft confirmation sound when a response finishes successfully.
 settings.theme_system:
   en: System
 settings.theme_light:

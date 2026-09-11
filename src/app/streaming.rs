@@ -627,6 +627,9 @@ impl Waku {
                 {
                     return true;
                 }
+                if success && self.state.sounds_enabled {
+                    crate::audio::play_success();
+                }
                 let task_notification = cx.active_window().is_none().then(|| {
                     self.state
                         .sessions
@@ -657,9 +660,6 @@ impl Waku {
                     } else {
                         SessionStatus::Failed
                     };
-                    if success {
-                        session.chat_status = ChatStatus::Done;
-                    }
                     if needs_fallback {
                         session.push_message(
                             MessageRole::Assistant,

@@ -1595,9 +1595,6 @@ impl AgentSession {
         turn.completed_at = Some(completed_at);
         let result = (turn.id, turn.turn_count);
         self.last_reply_at = Some(completed_at);
-        if status == TurnStatus::Completed {
-            self.chat_status = ChatStatus::Done;
-        }
         Some(result)
     }
 

@@ -280,6 +280,9 @@ pub struct AppSettings {
     pub font_smoothing: bool,
     #[serde(default = "default_render_math")]
     pub render_math: bool,
+    /// Play a short confirmation cue when a response completes successfully.
+    #[serde(default)]
+    pub sounds_enabled: bool,
     pub daemon_exposure: DaemonExposureSettings,
     /// Preferred target of the header's "open project in app" control, by
     /// catalog id. `None` — and an id no longer installed — fall back to the
@@ -303,6 +306,7 @@ impl Default for AppSettings {
             code_font_family: DEFAULT_CODE_FONT_FAMILY.to_owned(),
             font_smoothing: true,
             render_math: true,
+            sounds_enabled: false,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
         }
@@ -429,6 +433,8 @@ pub struct PersistedState {
     #[serde(default = "default_render_math")]
     pub render_math: bool,
     #[serde(default)]
+    pub sounds_enabled: bool,
+    #[serde(default)]
     pub daemon_exposure: DaemonExposureSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_in_app: Option<String>,
@@ -510,6 +516,7 @@ impl PersistedState {
             code_font_family: DEFAULT_CODE_FONT_FAMILY.to_owned(),
             font_smoothing: true,
             render_math: true,
+            sounds_enabled: false,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
             sidebar_visible: true,
@@ -641,6 +648,7 @@ impl PersistedState {
             code_font_family: self.code_font_family.clone(),
             font_smoothing: self.font_smoothing,
             render_math: self.render_math,
+            sounds_enabled: self.sounds_enabled,
             daemon_exposure: self.daemon_exposure.clone(),
             open_in_app: self.open_in_app.clone(),
         }
@@ -685,6 +693,7 @@ impl PersistedState {
         self.code_font_family = settings.code_font_family;
         self.font_smoothing = settings.font_smoothing;
         self.render_math = settings.render_math;
+        self.sounds_enabled = settings.sounds_enabled;
         self.daemon_exposure = settings.daemon_exposure;
         self.open_in_app = settings.open_in_app;
     }
