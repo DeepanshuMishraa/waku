@@ -1078,6 +1078,7 @@ impl RenderOnce for MenuCard {
                         return;
                     };
                     if let Some(on_click) = item.click_handler() {
+                        crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
                         handle.close(window, cx);
                         on_click(window, cx);
                         window.refresh();
@@ -1347,6 +1348,7 @@ fn row(
                 .cursor_default()
                 .hover(move |element| element.bg(hover))
                 .on_mouse_down(MouseButton::Left, move |_, window, cx| {
+                    crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
                     handle.close(window, cx);
                     on_click(window, cx);
                     window.refresh();
@@ -1453,6 +1455,7 @@ fn on_menu_key(
                 .nth(highlighted)
                 .and_then(MenuItem::click_handler);
             if let Some(on_click) = activated {
+                crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
                 handle.close(window, cx);
                 on_click(window, cx);
                 window.refresh();
@@ -1513,6 +1516,7 @@ fn on_menu_key(
             }
             item if matches!(key, "enter" | "space") => {
                 if let Some(on_click) = item.click_handler() {
+                    crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
                     handle.close(window, cx);
                     on_click(window, cx);
                     window.refresh();

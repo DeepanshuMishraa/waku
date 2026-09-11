@@ -340,6 +340,10 @@ settings.interface_sounds:
   en: Interface sounds
 settings.interface_sounds_description:
   en: Play soft sounds for completed responses and other interactions.
+settings.haptic_feedback:
+  en: Haptic feedback
+settings.haptic_feedback_description:
+  en: Tactile feedback on trackpads for sliders, toggles, and controls.
 settings.theme_system:
   en: System
 settings.theme_light:

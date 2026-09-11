@@ -67,6 +67,7 @@ pub struct SliderState {
     value: SliderValue,
     dragging: bool,
     hovered: bool,
+    grab_offset: Pixels,
 }
 
 impl EventEmitter<SliderEvent> for SliderState {}
@@ -86,6 +87,7 @@ impl SliderState {
             value: SliderValue::Single(0.0),
             dragging: false,
             hovered: false,
+            grab_offset: Pixels::ZERO,
         }
     }
 
@@ -156,6 +158,7 @@ impl SliderState {
         };
         if self.value != clamped {
             self.value = clamped;
+            crate::haptics::trigger(crate::haptics::HapticPattern::LevelChange);
             cx.emit(SliderEvent::Change(self.value));
             cx.notify();
         }
@@ -263,6 +266,7 @@ impl RenderOnce for Slider {
                         let new_val = (value_num + delta).clamp(min, max);
                         state_entity.update(cx, |s, cx| {
                             s.set_value(new_val, cx);
+                            cx.emit(SliderEvent::Release(s.value));
                         });
                     }
                 });
@@ -419,10 +423,12 @@ impl RenderOnce for Slider {
                         let is_dragging = state_entity.read(cx).dragging;
 
                         if is_dragging {
+                            let grab_offset = state_entity.read(cx).grab_offset;
+                            let target_x = event.position.x - grab_offset;
                             let p = if travel <= Pixels::ZERO {
                                 0.0
                             } else {
-                                ((event.position.x - bounds.left() - thumb_radius) / travel)
+                                ((target_x - bounds.left() - thumb_radius) / travel)
                                     .clamp(0.0, 1.0)
                             };
                             let raw_val = min + p * (max - min);
@@ -453,15 +459,24 @@ impl RenderOnce for Slider {
                         {
                             return;
                         }
+                        let on_thumb = (event.position.x - thumb_center_x).abs() <= thumb_radius + px(4.0)
+                            && (event.position.y - thumb_center_y).abs() <= thumb_radius + px(4.0);
+                        let grab_offset = if on_thumb {
+                            event.position.x - thumb_center_x
+                        } else {
+                            Pixels::ZERO
+                        };
+                        let target_x = event.position.x - grab_offset;
                         let p = if travel <= Pixels::ZERO {
                             0.0
                         } else {
-                            ((event.position.x - bounds.left() - thumb_radius) / travel)
+                            ((target_x - bounds.left() - thumb_radius) / travel)
                                 .clamp(0.0, 1.0)
                         };
                         let raw_val = min + p * (max - min);
                         state_entity.update(cx, |s, cx| {
                             s.dragging = true;
+                            s.grab_offset = grab_offset;
                             s.set_value(raw_val, cx);
                         });
                         window.refresh();
@@ -481,9 +496,11 @@ impl RenderOnce for Slider {
                         if was_dragging {
                             state_entity.update(cx, |s, cx| {
                                 s.dragging = false;
+                                s.grab_offset = Pixels::ZERO;
                                 cx.emit(SliderEvent::Release(s.value));
                                 cx.notify();
                             });
+                            crate::haptics::trigger(crate::haptics::HapticPattern::Alignment);
                             window.refresh();
                         }
                     }

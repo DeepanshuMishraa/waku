@@ -119,6 +119,7 @@ impl ActivationExt for Stateful<Div> {
         let click_activate = activate.clone();
         let key_activate = activate;
         self.on_click(cx.listener(move |this, _, window, cx| {
+            crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
             click_activate(this, window, cx);
             cx.stop_propagation();
         }))
@@ -130,6 +131,7 @@ impl ActivationExt for Stateful<Div> {
             if !event.keystroke.modifiers.modified()
                 && matches!(event.keystroke.key.as_str(), "enter" | "space")
             {
+                crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
                 key_activate(this, window, cx);
                 cx.stop_propagation();
             }
@@ -182,7 +184,10 @@ where
     if disabled {
         base
     } else {
-        base.on_activation(cx, activate)
+        base.on_activation(cx, move |entity, window, cx| {
+            crate::haptics::trigger(crate::haptics::HapticPattern::Alignment);
+            activate(entity, window, cx);
+        })
     }
 }
 

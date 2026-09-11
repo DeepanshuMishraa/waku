@@ -36,6 +36,7 @@ mod browser;
 mod computer_use;
 pub mod daemon;
 mod driver;
+pub mod haptics;
 mod input;
 mod md;
 mod platform;

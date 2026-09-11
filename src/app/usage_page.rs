@@ -39,6 +39,9 @@ impl Waku {
     /// Switch the settings view to `page`, warming the Usage scan when that
     /// is where the user is heading.
     pub(super) fn open_settings_page(&mut self, page: SettingsPage, cx: &mut Context<Self>) {
+        if self.settings_page != Some(page) {
+            crate::haptics::trigger(crate::haptics::HapticPattern::Generic);
+        }
         // Secrets are revealed only for the current visit to the page. This
         // also masks the token again when the Daemon row is reselected.
         self.daemon_token_revealed = false;

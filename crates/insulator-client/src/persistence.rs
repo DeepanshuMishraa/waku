@@ -80,6 +80,10 @@ fn default_sound_volume() -> f32 {
     100.0
 }
 
+fn default_haptics_enabled() -> bool {
+    false
+}
+
 fn default_render_math() -> bool {
     true
 }
@@ -289,6 +293,9 @@ pub struct AppSettings {
     pub sounds_enabled: bool,
     #[serde(default = "default_sound_volume")]
     pub sound_volume: f32,
+    /// Trigger subtle tactile feedback on trackpads for sliders, toggles, and clicks.
+    #[serde(default = "default_haptics_enabled")]
+    pub haptics_enabled: bool,
     pub daemon_exposure: DaemonExposureSettings,
     /// Preferred target of the header's "open project in app" control, by
     /// catalog id. `None` — and an id no longer installed — fall back to the
@@ -314,6 +321,7 @@ impl Default for AppSettings {
             render_math: true,
             sounds_enabled: false,
             sound_volume: 100.0,
+            haptics_enabled: false,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
         }
@@ -443,6 +451,8 @@ pub struct PersistedState {
     pub sounds_enabled: bool,
     #[serde(default = "default_sound_volume")]
     pub sound_volume: f32,
+    #[serde(default = "default_haptics_enabled")]
+    pub haptics_enabled: bool,
     #[serde(default)]
     pub daemon_exposure: DaemonExposureSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -527,6 +537,7 @@ impl PersistedState {
             render_math: true,
             sounds_enabled: false,
             sound_volume: 100.0,
+            haptics_enabled: false,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
             sidebar_visible: true,
@@ -660,6 +671,7 @@ impl PersistedState {
             render_math: self.render_math,
             sounds_enabled: self.sounds_enabled,
             sound_volume: self.sound_volume,
+            haptics_enabled: self.haptics_enabled,
             daemon_exposure: self.daemon_exposure.clone(),
             open_in_app: self.open_in_app.clone(),
         }
@@ -706,6 +718,7 @@ impl PersistedState {
         self.render_math = settings.render_math;
         self.sounds_enabled = settings.sounds_enabled;
         self.sound_volume = settings.sound_volume.clamp(0.0, 100.0);
+        self.haptics_enabled = settings.haptics_enabled;
         self.daemon_exposure = settings.daemon_exposure;
         self.open_in_app = settings.open_in_app;
     }
@@ -1251,6 +1264,15 @@ mod tests {
                 [configuration_directory().join("settings.json")]
             );
         }
+    }
+
+    #[test]
+    fn haptic_feedback_defaults_to_disabled() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
+        let state = PersistedState::fresh(PathBuf::from("/tmp/project"));
+
+        assert!(!settings.haptics_enabled);
+        assert!(!state.haptics_enabled);
     }
 
     #[test]

@@ -1991,6 +1991,7 @@ impl Waku {
         crate::i18n::set_language(state.language);
         crate::platform::set_font_smoothing_enabled(state.font_smoothing);
         crate::audio::set_volume(state.sound_volume);
+        crate::haptics::set_haptics_enabled(state.haptics_enabled);
         set_active_ui_font_family(state.ui_font_family.clone());
         crate::md::render::set_active_mono_family(state.code_font_family.clone());
         // Chrome text is authored in `sp` rems against the default UI font
@@ -2588,7 +2589,9 @@ impl Waku {
                     SliderEvent::Change(value) => {
                         this.set_sound_volume(value.start(), cx);
                     }
-                    SliderEvent::Release(_) => {}
+                    SliderEvent::Release(_) => {
+                        this.commit_sound_volume(cx);
+                    }
                 },
             )
             .detach();

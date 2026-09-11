@@ -615,6 +615,51 @@ impl Waku {
                     )),
             )
             .child(self.render_sound_volume_control(theme, cx))
+            .child(
+                div()
+                    .mt(px(15.0))
+                    .w_full()
+                    .min_h(px(60.0))
+                    .px(px(20.0))
+                    .py(px(12.0))
+                    .rounded(px(13.0))
+                    .bg(theme.raised)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(24.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(sp(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text)
+                                    .child(tr!("settings.haptic_feedback")),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(5.0))
+                                    .text_size(sp(12.5))
+                                    .line_height(sp(18.0))
+                                    .text_color(theme.text_secondary)
+                                    .child(tr!("settings.haptic_feedback_description")),
+                            ),
+                    )
+                    .child(toggle_switch(
+                        "haptics-toggle",
+                        self.state.haptics_enabled,
+                        false,
+                        theme,
+                        cx,
+                        {
+                            let enabled = self.state.haptics_enabled;
+                            move |this, _, cx| this.set_haptics_enabled(!enabled, cx)
+                        },
+                    )),
+            )
             .when(updater_available, |column| {
                 let enabled = self.automatic_updates_enabled;
                 let toggle = toggle_switch(
@@ -2126,11 +2171,16 @@ impl Waku {
         }
         self.state.sound_volume = volume;
         self.sound_volume_slider.update(cx, |s, cx| {
-            s.set_value(volume, cx);
+            if (s.value().start() - volume).abs() >= f32::EPSILON {
+                s.set_value(volume, cx);
+            }
         });
         crate::audio::set_volume(volume);
-        self.save();
         cx.notify();
+    }
+
+    pub(super) fn commit_sound_volume(&mut self, _cx: &mut Context<Self>) {
+        self.save();
     }
 
     fn set_sounds_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -2138,6 +2188,19 @@ impl Waku {
             return;
         }
         self.state.sounds_enabled = enabled;
+        self.save();
+        cx.notify();
+    }
+
+    fn set_haptics_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.state.haptics_enabled == enabled {
+            return;
+        }
+        self.state.haptics_enabled = enabled;
+        crate::haptics::set_haptics_enabled(enabled);
+        if enabled {
+            crate::haptics::trigger(crate::haptics::HapticPattern::Alignment);
+        }
         self.save();
         cx.notify();
     }
