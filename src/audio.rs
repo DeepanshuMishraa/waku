@@ -1,54 +1,33 @@
 //! Small, synthesized UI cues based on Cuelume's live Web Audio recipes.
+//!
+//! The WAV assets keep playback deterministic while `rodio` supplies the
+//! platform audio device layer on macOS, Linux, and Windows.
 
-#[cfg(target_os = "macos")]
-fn play_asset(bytes: &'static [u8], filename: &'static str) {
-    use std::path::PathBuf;
-    use std::sync::OnceLock;
+use std::io::Cursor;
 
-    static SUCCESS_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
-    static ARRIVAL_PATH: OnceLock<Option<PathBuf>> = OnceLock::new();
-    let slot = match filename {
-        "success.wav" => &SUCCESS_PATH,
-        "arrival.wav" => &ARRIVAL_PATH,
-        _ => return,
-    };
-    let Some(path) = slot
-        .get_or_init(|| {
-            let path = std::env::temp_dir().join(format!("waku-{filename}"));
-            (std::fs::write(&path, bytes).is_ok()).then_some(path)
+fn play_asset(bytes: &'static [u8], name: &'static str) {
+    // Audio device setup and playback may touch platform services, so keep it
+    // off the GPUI thread. The stream must stay alive until the sink finishes.
+    std::thread::Builder::new()
+        .name(format!("waku-audio-{name}"))
+        .spawn(move || {
+            let Ok(stream) = rodio::OutputStreamBuilder::open_default_stream() else {
+                return;
+            };
+            let Ok(source) = rodio::Decoder::try_from(Cursor::new(bytes)) else {
+                return;
+            };
+            let sink = rodio::Sink::connect_new(stream.mixer());
+            sink.append(source);
+            sink.sleep_until_end();
         })
-        .clone()
-    else {
-        return;
-    };
-
-    // Completion and drop handlers must not wait on the audio process or block
-    // the GPUI thread.
-    std::thread::spawn(move || {
-        let _ = std::process::Command::new("/usr/bin/afplay")
-            .arg(path)
-            .spawn();
-    });
+        .ok();
 }
 
-#[cfg(target_os = "macos")]
 pub fn play_success() {
-    play_asset(
-        include_bytes!("../assets/sounds/success.wav"),
-        "success.wav",
-    );
+    play_asset(include_bytes!("../assets/sounds/success.wav"), "success");
 }
 
-#[cfg(target_os = "macos")]
 pub fn play_arrival() {
-    play_asset(
-        include_bytes!("../assets/sounds/arrival.wav"),
-        "arrival.wav",
-    );
+    play_asset(include_bytes!("../assets/sounds/arrival.wav"), "arrival");
 }
-
-#[cfg(not(target_os = "macos"))]
-pub fn play_success() {}
-
-#[cfg(not(target_os = "macos"))]
-pub fn play_arrival() {}
