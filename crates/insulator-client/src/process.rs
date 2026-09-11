@@ -493,6 +493,15 @@ impl DaemonSupervisor {
             .send(settings)
             .map_err(|_| anyhow::anyhow!("Insulator daemon settings writer is closed"))
     }
+
+    /// Return the process ID of the locally supervised daemon process, if running locally.
+    pub fn pid(&self) -> Option<u32> {
+        let target = self.inner.target.lock();
+        match &*target {
+            DaemonTarget::Local(process) => Some(process.child.id()),
+            _ => None,
+        }
+    }
 }
 
 impl Drop for DaemonSupervisor {

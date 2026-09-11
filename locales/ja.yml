@@ -163,6 +163,8 @@ settings.code_font_size: コードのフォントサイズ
 settings.code_font_size_description: ファイルエディタ、差分表示、コードブロック、ツール出力の文字サイズ
 settings.render_math: 数式を描画
 settings.render_math_description: Markdown の数式を整形して表示します。オフにすると LaTeX ソースを表示します。
+settings.show_resource_usage: リソース使用状況モニター
+settings.show_resource_usage_description: サイドバーに Insulator とバックグラウンドプロセスの CPU およびメモリ使用量を表示します。
 settings.theme_system: システム
 settings.theme_light: ライト
 settings.theme_dark: ダーク
@@ -1108,3 +1110,11 @@ usage_error.curl_did_not_finish: curl がリクエストを完了しませんで
 usage_error.curl_failed: "curl に失敗しました：%{error}"
 usage_error.unknown_error: 不明なエラー
 usage_error.curl_no_status: curl から HTTP ステータス行が返されませんでした
+
+resource_monitor.title: リソース
+resource_monitor.cpu: CPU
+resource_monitor.memory: メモリ
+resource_monitor.name: 名前
+resource_monitor.show_less: 折りたたむ
+resource_monitor.show_more: もっと見る
+resource_monitor.copied: クリップボードにコピーしました

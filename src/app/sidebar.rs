@@ -663,6 +663,9 @@ impl Insulator {
                 ),
             )
             .child(self.render_sidebar_toggle(cx))
+            .when(self.state.show_resource_usage, |bar| {
+                bar.child(div().ml(px(4.0)).child(self.render_resource_usage_button(cx)))
+            })
             .child(
                 div()
                     .ml(px(6.0))
@@ -2566,6 +2569,9 @@ impl Insulator {
                             .items_center()
                             .gap(px(6.0))
                             .child(self.render_sidebar_toggle(cx))
+                            .when(self.state.show_resource_usage, |bar| {
+                                bar.child(self.render_resource_usage_button(cx))
+                            })
                             .child(
                                 div()
                                     .flex()

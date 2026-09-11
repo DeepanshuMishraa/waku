@@ -617,6 +617,51 @@ impl Insulator {
                         },
                     )),
             )
+            .child(
+                div()
+                    .mt(px(15.0))
+                    .w_full()
+                    .min_h(px(60.0))
+                    .px(px(20.0))
+                    .py(px(12.0))
+                    .rounded(px(13.0))
+                    .bg(theme.raised)
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(24.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(sp(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text)
+                                    .child(tr!("settings.show_resource_usage")),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(5.0))
+                                    .text_size(sp(12.5))
+                                    .line_height(sp(18.0))
+                                    .text_color(theme.text_secondary)
+                                    .child(tr!("settings.show_resource_usage_description")),
+                            ),
+                    )
+                    .child(toggle_switch(
+                        "resource-usage-toggle",
+                        self.state.show_resource_usage,
+                        false,
+                        theme,
+                        cx,
+                        {
+                            let enabled = self.state.show_resource_usage;
+                            move |this, _, cx| this.set_show_resource_usage(!enabled, cx)
+                        },
+                    )),
+            )
             .when(updater_available, |column| {
                 let enabled = self.automatic_updates_enabled;
                 let toggle = toggle_switch(
@@ -2151,6 +2196,15 @@ impl Insulator {
         if enabled {
             crate::haptics::trigger(crate::haptics::HapticPattern::Alignment);
         }
+        self.save();
+        cx.notify();
+    }
+
+    fn set_show_resource_usage(&mut self, enabled: bool, cx: &mut Context<Self>) {
+        if self.state.show_resource_usage == enabled {
+            return;
+        }
+        self.state.show_resource_usage = enabled;
         self.save();
         cx.notify();
     }

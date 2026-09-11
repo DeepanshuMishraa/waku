@@ -344,6 +344,10 @@ settings.haptic_feedback:
   en: Haptic feedback
 settings.haptic_feedback_description:
   en: Tactile feedback on trackpads for sliders, toggles, and controls.
+settings.show_resource_usage:
+  en: Resource usage monitor
+settings.show_resource_usage_description:
+  en: Show CPU and memory usage for Insulator and background processes in the sidebar.
 settings.theme_system:
   en: System
 settings.theme_light:
@@ -2233,3 +2237,18 @@ usage_error.unknown_error:
   en: unknown error
 usage_error.curl_no_status:
   en: curl returned no HTTP status line
+
+resource_monitor.title:
+  en: RESOURCES
+resource_monitor.cpu:
+  en: CPU
+resource_monitor.memory:
+  en: Memory
+resource_monitor.name:
+  en: Name
+resource_monitor.show_less:
+  en: Show less
+resource_monitor.show_more:
+  en: Show more
+resource_monitor.copied:
+  en: Copied to clipboard

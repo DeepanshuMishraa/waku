@@ -297,6 +297,9 @@ pub struct AppSettings {
     /// catalog id. `None` — and an id no longer installed — fall back to the
     /// platform file manager.
     pub open_in_app: Option<String>,
+    /// Show resource usage (CPU and memory) in the sidebar top bar.
+    #[serde(default)]
+    pub show_resource_usage: bool,
 }
 
 impl Default for AppSettings {
@@ -319,6 +322,7 @@ impl Default for AppSettings {
             haptics_enabled: false,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
+            show_resource_usage: false,
         }
     }
 }
@@ -450,6 +454,8 @@ pub struct PersistedState {
     pub daemon_exposure: DaemonExposureSettings,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub open_in_app: Option<String>,
+    #[serde(default)]
+    pub show_resource_usage: bool,
     #[serde(default = "default_sidebar_visibility")]
     pub sidebar_visible: bool,
     #[serde(default = "default_right_panel_visibility")]
@@ -532,6 +538,7 @@ impl PersistedState {
             haptics_enabled: false,
             daemon_exposure: DaemonExposureSettings::default(),
             open_in_app: None,
+            show_resource_usage: false,
             sidebar_visible: true,
             right_panel_visible: false,
             sidebar_width: DEFAULT_SIDEBAR_WIDTH,
@@ -665,6 +672,7 @@ impl PersistedState {
             haptics_enabled: self.haptics_enabled,
             daemon_exposure: self.daemon_exposure.clone(),
             open_in_app: self.open_in_app.clone(),
+            show_resource_usage: self.show_resource_usage,
         }
     }
 
@@ -711,6 +719,7 @@ impl PersistedState {
         self.haptics_enabled = settings.haptics_enabled;
         self.daemon_exposure = settings.daemon_exposure;
         self.open_in_app = settings.open_in_app;
+        self.show_resource_usage = settings.show_resource_usage;
     }
 
     fn apply_app_state(&mut self, app_state: AppState) {
@@ -1282,6 +1291,15 @@ mod tests {
 
         assert!(!settings.haptics_enabled);
         assert!(!state.haptics_enabled);
+    }
+
+    #[test]
+    fn resource_usage_monitor_defaults_to_disabled() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
+        let state = PersistedState::fresh(PathBuf::from("/tmp/project"));
+
+        assert!(!settings.show_resource_usage);
+        assert!(!state.show_resource_usage);
     }
 
     #[test]

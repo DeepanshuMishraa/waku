@@ -1713,6 +1713,13 @@ pub struct Insulator {
     fps_last_frame: Instant,
     fps_frame_count: u64,
     fps_value: u32,
+    resource_usage_snapshot: Option<resource_monitor::ResourceUsageSnapshot>,
+    resource_usage_generation: u64,
+    resource_usage_loading: bool,
+    resource_usage_copied: bool,
+    resource_view_mode: resource_monitor::ResourceViewMode,
+    resource_show_all: bool,
+    resource_scroll_handle: ScrollHandle,
 }
 
 mod activity_diff;
@@ -1729,6 +1736,7 @@ mod goal_dialog;
 mod image_preview;
 mod project_dialog;
 mod render;
+mod resource_monitor;
 mod right_panel;
 mod runtime;
 mod sessions;
@@ -3220,6 +3228,13 @@ impl Insulator {
                 fps_last_frame: Instant::now(),
                 fps_frame_count: 0,
                 fps_value: 0,
+                resource_usage_snapshot: None,
+                resource_usage_generation: 0,
+                resource_usage_loading: false,
+                resource_usage_copied: false,
+                resource_view_mode: resource_monitor::ResourceViewMode::default(),
+                resource_show_all: false,
+                resource_scroll_handle: ScrollHandle::new(),
             }
         });
         navigation_rail.update(cx, |rail, _| rail.set_insulator(entity.downgrade()));
