@@ -16,6 +16,13 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.2]
+
+- Ensure workspace sessions persist across project switches and home screen
+- Re-use unstarted draft chat when clicking new task in a project
+- Make session tabs, diff file headers, and modal cards translucent in image window style
+- Default light and dark themes to Insulator Light and Insulator Dark
+
 ## [0.1.18]
 
 - Fix Codex session forking

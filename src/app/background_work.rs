@@ -1206,7 +1206,11 @@ impl Insulator {
             .border_1()
             .border_color(theme.border)
             .overflow_hidden()
-            .bg(theme.surface)
+            .bg(if self.state.window_style == WindowStyle::Solid {
+                theme.surface
+            } else {
+                theme.raised
+            })
             .child(
                 div()
                     .min_h(px(54.0))
@@ -1280,7 +1284,13 @@ impl Insulator {
         cx: &mut Context<Self>,
     ) -> Div {
         let theme = Theme::current(cx);
-        let mut detail = div().w_full().flex().flex_col().bg(theme.surface);
+        let mut detail = div()
+            .w_full()
+            .flex()
+            .flex_col()
+            .when(self.state.window_style == WindowStyle::Solid, |el| {
+                el.bg(theme.surface)
+            });
         let mut metadata = Vec::new();
         // A subagent's "command" is the prompt it was launched with.
         let command_label = match item.key.kind {

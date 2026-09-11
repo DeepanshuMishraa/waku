@@ -271,14 +271,16 @@ impl Theme {
                 self.terminal = transparent_black();
             }
             WindowStyle::Image => {
-                let alpha_raised = if self.is_dark { 0.35 } else { 0.45 };
-                let alpha_composer = if self.is_dark { 0.35 } else { 0.45 };
-                let alpha_inset = if self.is_dark { 0.30 } else { 0.40 };
+                let alpha_raised = if self.is_dark { 0.25 } else { 0.35 };
+                let alpha_composer = if self.is_dark { 0.25 } else { 0.35 };
+                let alpha_inset = if self.is_dark { 0.20 } else { 0.30 };
+                let alpha_surface = if self.is_dark { 0.18 } else { 0.28 };
+                let alpha_canvas = if self.is_dark { 0.12 } else { 0.20 };
                 self.raised = Hsla { a: alpha_raised, ..self.raised };
                 self.composer = Hsla { a: alpha_composer, ..self.composer };
                 self.inset = Hsla { a: alpha_inset, ..self.inset };
-                self.surface = Hsla { a: 0.85, ..self.surface };
-                self.canvas = Hsla { a: 0.85, ..self.canvas };
+                self.surface = Hsla { a: alpha_surface, ..self.surface };
+                self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
                 self.terminal = transparent_black();
             }
             WindowStyle::Solid => {}

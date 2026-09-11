@@ -699,6 +699,8 @@ impl Insulator {
             .max_w(px(420.0))
             .overflow_hidden()
             .rounded(px(18.0))
+            .border_1()
+            .border_color(theme.border_strong)
             .bg(theme.composer)
             .shadow_xl()
             .flex()

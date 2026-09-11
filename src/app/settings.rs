@@ -332,8 +332,7 @@ impl Insulator {
                 .border_l_1()
                 .border_color(theme.sidebar_border)
                 .bg(match self.state.window_style {
-                    WindowStyle::LiquidGlass => gpui::transparent_black(),
-                    WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
+                    WindowStyle::LiquidGlass | WindowStyle::Image => gpui::transparent_black(),
                     WindowStyle::Solid => theme.surface,
                 })
                 .children(right_window_controls.map(|controls| {
@@ -409,8 +408,7 @@ impl Insulator {
             .border_l_1()
             .border_color(theme.sidebar_border)
             .bg(match self.state.window_style {
-                WindowStyle::LiquidGlass => gpui::transparent_black(),
-                WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
+                WindowStyle::LiquidGlass | WindowStyle::Image => gpui::transparent_black(),
                 WindowStyle::Solid => theme.surface,
             })
             .child(
@@ -466,6 +464,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(14.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .child(
                         div()
@@ -491,6 +491,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(12.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .flex()
                     .items_center()
@@ -535,6 +537,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(12.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .flex()
                     .items_center()
@@ -580,6 +584,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(12.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .flex()
                     .items_center()
@@ -625,6 +631,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(12.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .flex()
                     .items_center()
@@ -680,6 +688,8 @@ impl Insulator {
                         .px(px(20.0))
                         .py(px(12.0))
                         .rounded(px(13.0))
+                        .border_1()
+                        .border_color(theme.border)
                         .bg(theme.raised)
                         .flex()
                         .items_center()
@@ -730,6 +740,8 @@ impl Insulator {
                 .px(px(20.0))
                 .py(px(16.0))
                 .rounded(px(13.0))
+                .border_1()
+                .border_color(theme.border)
                 .bg(theme.raised)
                 .child(
                     div()
@@ -985,6 +997,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(13.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .flex()
                     .items_center()
@@ -1045,6 +1059,8 @@ impl Insulator {
                         .px(px(20.0))
                         .py(px(15.0))
                         .rounded(px(13.0))
+                        .border_1()
+                        .border_color(theme.border)
                         .bg(theme.raised)
                         .child(
                             div()
@@ -1147,6 +1163,8 @@ impl Insulator {
                         .px(px(20.0))
                         .py(px(15.0))
                         .rounded(px(13.0))
+                        .border_1()
+                        .border_color(theme.border)
                         .bg(theme.raised)
                         .child(
                             div()
@@ -1733,6 +1751,8 @@ impl Insulator {
             .flex()
             .flex_col()
             .rounded(px(13.0))
+            .border_1()
+            .border_color(theme.border)
             .overflow_hidden()
             .bg(theme.raised);
 
@@ -1930,6 +1950,8 @@ impl Insulator {
             .flex()
             .flex_col()
             .rounded(px(13.0))
+            .border_1()
+            .border_color(theme.border)
             .overflow_hidden()
             .bg(theme.raised)
             .child(Self::font_setting_row(
@@ -2047,6 +2069,8 @@ impl Insulator {
             .flex()
             .flex_col()
             .rounded(px(13.0))
+            .border_1()
+            .border_color(theme.border)
             .overflow_hidden()
             .bg(theme.raised)
             .child(
@@ -2105,6 +2129,8 @@ impl Insulator {
             .px(px(20.0))
             .py(px(12.0))
             .rounded(px(13.0))
+            .border_1()
+            .border_color(theme.border)
             .bg(theme.raised)
             .flex()
             .items_center()
@@ -2541,6 +2567,8 @@ impl Insulator {
             .px(px(20.0))
             .py(px(14.0))
             .rounded(px(13.0))
+            .border_1()
+            .border_color(theme.border)
             .bg(theme.raised)
             .child(
                 div()
@@ -2889,6 +2917,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(14.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .flex()
                     .items_center()
@@ -2927,6 +2957,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(14.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .child(
                         div()
@@ -2992,6 +3024,8 @@ impl Insulator {
                     .px(px(20.0))
                     .py(px(14.0))
                     .rounded(px(13.0))
+                    .border_1()
+                    .border_color(theme.border)
                     .bg(theme.raised)
                     .child(
                         div()
@@ -3197,6 +3231,8 @@ impl Insulator {
                         .w(px(380.0))
                         .p(px(22.0))
                         .rounded(px(12.0))
+                        .border_1()
+                        .border_color(theme.border_strong)
                         .bg(theme.raised)
                         .text_color(theme.text)
                         .child(div().text_size(sp(16.0)).font_weight(FontWeight::SEMIBOLD).child("Restart required"))
