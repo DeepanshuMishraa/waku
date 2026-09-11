@@ -46,210 +46,210 @@ jobs:
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
           echo "Building assets for published release $tag"
 
-  linux-x86_64:
-    name: Linux x86_64
-    needs: version
-    runs-on: ubuntu-22.04
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v6
+#   linux-x86_64:
+#     name: Linux x86_64
+#     needs: version
+#     runs-on: ubuntu-22.04
+#     timeout-minutes: 90
+#     steps:
+#       - uses: actions/checkout@v6
 
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
+#       - name: Install Rust
+#         run: |
+#           rustup toolchain install 1.96.0 --profile minimal
+#           rustup default 1.96.0
 
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            clang \
-            cmake \
-            libfontconfig-dev \
-            libvulkan1 \
-            libwayland-dev \
-            libx11-xcb-dev \
-            libxkbcommon-x11-dev \
-            pkg-config \
-            xdg-desktop-portal
+#       - name: Install Linux dependencies
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install --yes \
+#             clang \
+#             cmake \
+#             libfontconfig-dev \
+#             libvulkan1 \
+#             libwayland-dev \
+#             libx11-xcb-dev \
+#             libxkbcommon-x11-dev \
+#             pkg-config \
+#             xdg-desktop-portal
 
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ubuntu-22.04-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ubuntu-22.04-rust-1.96.0-release-
+#       - uses: actions/cache@v6
+#         with:
+#           path: |
+#             ~/.cargo/registry
+#             ~/.cargo/git
+#             target
+#           key: ubuntu-22.04-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
+#           restore-keys: |
+#             ubuntu-22.04-rust-1.96.0-release-
 
-      # `target/` is restored from the release cache, so the previous
-      # release's bundles are still sitting in `target/release` when this one
-      # starts. Cargo does not own them, so nothing else clears them.
-      - name: Clear stale bundles
-        run: rm -f target/release/insulator-*.tar.gz
+#       # `target/` is restored from the release cache, so the previous
+#       # release's bundles are still sitting in `target/release` when this one
+#       # starts. Cargo does not own them, so nothing else clears them.
+#       - name: Clear stale bundles
+#         run: rm -f target/release/insulator-*.tar.gz
 
-      - name: Bundle
-        run: ./scripts/bundle-linux.sh
+#       - name: Bundle
+#         run: ./scripts/bundle-linux.sh
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-x86_64
-          # Named exactly, not globbed: `if-no-files-found: error` is then a
-          # real check that this version built, rather than something an older
-          # bundle can satisfy.
-          path: target/release/insulator-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
-          if-no-files-found: error
+#       - uses: actions/upload-artifact@v7
+#         with:
+#           name: linux-x86_64
+#           # Named exactly, not globbed: `if-no-files-found: error` is then a
+#           # real check that this version built, rather than something an older
+#           # bundle can satisfy.
+#           path: target/release/insulator-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
+#           if-no-files-found: error
 
-  linux-arm64:
-    name: Linux arm64
-    needs: version
-    runs-on: ubuntu-22.04-arm
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v6
+#   linux-arm64:
+#     name: Linux arm64
+#     needs: version
+#     runs-on: ubuntu-22.04-arm
+#     timeout-minutes: 90
+#     steps:
+#       - uses: actions/checkout@v6
 
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
+#       - name: Install Rust
+#         run: |
+#           rustup toolchain install 1.96.0 --profile minimal
+#           rustup default 1.96.0
 
-      - name: Install Linux dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes \
-            clang \
-            cmake \
-            libfontconfig-dev \
-            libvulkan1 \
-            libwayland-dev \
-            libx11-xcb-dev \
-            libxkbcommon-x11-dev \
-            pkg-config \
-            xdg-desktop-portal
+#       - name: Install Linux dependencies
+#         run: |
+#           sudo apt-get update
+#           sudo apt-get install --yes \
+#             clang \
+#             cmake \
+#             libfontconfig-dev \
+#             libvulkan1 \
+#             libwayland-dev \
+#             libx11-xcb-dev \
+#             libxkbcommon-x11-dev \
+#             pkg-config \
+#             xdg-desktop-portal
 
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: ubuntu-22.04-arm-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            ubuntu-22.04-arm-rust-1.96.0-release-
+#       - uses: actions/cache@v6
+#         with:
+#           path: |
+#             ~/.cargo/registry
+#             ~/.cargo/git
+#             target
+#           key: ubuntu-22.04-arm-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
+#           restore-keys: |
+#             ubuntu-22.04-arm-rust-1.96.0-release-
 
-      # `target/` is restored from the release cache, so the previous
-      # release's bundles are still sitting in `target/release` when this one
-      # starts. Cargo does not own them, so nothing else clears them.
-      - name: Clear stale bundles
-        run: rm -f target/release/insulator-*.tar.gz
+#       # `target/` is restored from the release cache, so the previous
+#       # release's bundles are still sitting in `target/release` when this one
+#       # starts. Cargo does not own them, so nothing else clears them.
+#       - name: Clear stale bundles
+#         run: rm -f target/release/insulator-*.tar.gz
 
-      - name: Bundle
-        run: ./scripts/bundle-linux.sh
+#       - name: Bundle
+#         run: ./scripts/bundle-linux.sh
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: linux-arm64
-          path: target/release/insulator-${{ needs.version.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz
-          if-no-files-found: error
+#       - uses: actions/upload-artifact@v7
+#         with:
+#           name: linux-arm64
+#           path: target/release/insulator-${{ needs.version.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz
+#           if-no-files-found: error
 
-  windows-x86_64:
-    name: Windows x86_64
-    needs: version
-    runs-on: windows-latest
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v6
+#   windows-x86_64:
+#     name: Windows x86_64
+#     needs: version
+#     runs-on: windows-latest
+#     timeout-minutes: 90
+#     steps:
+#       - uses: actions/checkout@v6
 
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          rustup target add x86_64-pc-windows-msvc
+#       - name: Install Rust
+#         run: |
+#           rustup toolchain install 1.96.0 --profile minimal
+#           rustup default 1.96.0
+#           rustup target add x86_64-pc-windows-msvc
 
-      - uses: oven-sh/setup-bun@v2
+#       - uses: oven-sh/setup-bun@v2
 
-      - name: Install Inno Setup
-        run: choco install innosetup --yes --no-progress
+#       - name: Install Inno Setup
+#         run: choco install innosetup --yes --no-progress
 
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-latest-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            windows-latest-rust-1.96.0-release-
+#       - uses: actions/cache@v6
+#         with:
+#           path: |
+#             ~/.cargo/registry
+#             ~/.cargo/git
+#             target
+#           key: windows-latest-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
+#           restore-keys: |
+#             windows-latest-rust-1.96.0-release-
 
-      # `target/` is restored from the release cache, so the previous
-      # release's bundles are still sitting in `target/release` when this one
-      # starts. Cargo does not own them, so nothing else clears them.
-      - name: Clear stale bundles
-        run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/insulator-*.zip, target/release/Insulator-*-Setup.exe
+#       # `target/` is restored from the release cache, so the previous
+#       # release's bundles are still sitting in `target/release` when this one
+#       # starts. Cargo does not own them, so nothing else clears them.
+#       - name: Clear stale bundles
+#         run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/insulator-*.zip, target/release/Insulator-*-Setup.exe
 
-      - name: Bundle
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: bun scripts/bundle-windows.ts
+#       - name: Bundle
+#         env:
+#           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+#           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+#         run: bun scripts/bundle-windows.ts
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: windows-x86_64
-          path: |
-            target/release/insulator-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.zip
-            target/release/Insulator-${{ needs.version.outputs.version }}-x86_64-Setup.exe
-          if-no-files-found: error
+#       - uses: actions/upload-artifact@v7
+#         with:
+#           name: windows-x86_64
+#           path: |
+#             target/release/insulator-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.zip
+#             target/release/Insulator-${{ needs.version.outputs.version }}-x86_64-Setup.exe
+#           if-no-files-found: error
 
-  windows-arm64:
-    name: Windows arm64
-    needs: version
-    runs-on: windows-11-arm
-    timeout-minutes: 90
-    steps:
-      - uses: actions/checkout@v6
+#   windows-arm64:
+#     name: Windows arm64
+#     needs: version
+#     runs-on: windows-11-arm
+#     timeout-minutes: 90
+#     steps:
+#       - uses: actions/checkout@v6
 
-      - name: Install Rust
-        run: |
-          rustup toolchain install 1.96.0 --profile minimal
-          rustup default 1.96.0
-          rustup target add aarch64-pc-windows-msvc
+#       - name: Install Rust
+#         run: |
+#           rustup toolchain install 1.96.0 --profile minimal
+#           rustup default 1.96.0
+#           rustup target add aarch64-pc-windows-msvc
 
-      - uses: oven-sh/setup-bun@v2
+#       - uses: oven-sh/setup-bun@v2
 
-      - name: Install Inno Setup
-        run: choco install innosetup --yes --no-progress
+#       - name: Install Inno Setup
+#         run: choco install innosetup --yes --no-progress
 
-      - uses: actions/cache@v6
-        with:
-          path: |
-            ~/.cargo/registry
-            ~/.cargo/git
-            target
-          key: windows-11-arm-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
-          restore-keys: |
-            windows-11-arm-rust-1.96.0-release-
+#       - uses: actions/cache@v6
+#         with:
+#           path: |
+#             ~/.cargo/registry
+#             ~/.cargo/git
+#             target
+#           key: windows-11-arm-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
+#           restore-keys: |
+#             windows-11-arm-rust-1.96.0-release-
 
-      # `target/` is restored from the release cache, so the previous
-      # release's bundles are still sitting in `target/release` when this one
-      # starts. Cargo does not own them, so nothing else clears them.
-      - name: Clear stale bundles
-        run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/insulator-*.zip, target/release/Insulator-*-Setup.exe
+#       # `target/` is restored from the release cache, so the previous
+#       # release's bundles are still sitting in `target/release` when this one
+#       # starts. Cargo does not own them, so nothing else clears them.
+#       - name: Clear stale bundles
+#         run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/insulator-*.zip, target/release/Insulator-*-Setup.exe
 
-      - name: Bundle
-        env:
-          WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
-          WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
-        run: bun scripts/bundle-windows.ts
+#       - name: Bundle
+#         env:
+#           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
+#           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
+#         run: bun scripts/bundle-windows.ts
 
-      - uses: actions/upload-artifact@v7
-        with:
-          name: windows-arm64
-          path: |
-            target/release/insulator-${{ needs.version.outputs.version }}-aarch64-pc-windows-msvc.zip
-            target/release/Insulator-${{ needs.version.outputs.version }}-aarch64-Setup.exe
-          if-no-files-found: error
+#       - uses: actions/upload-artifact@v7
+#         with:
+#           name: windows-arm64
+#           path: |
+#             target/release/insulator-${{ needs.version.outputs.version }}-aarch64-pc-windows-msvc.zip
+#             target/release/Insulator-${{ needs.version.outputs.version }}-aarch64-Setup.exe
+#           if-no-files-found: error
 
   macos:
     name: macOS
@@ -298,91 +298,91 @@ jobs:
             dist/appcast.xml
           if-no-files-found: error
 
-  attach-release-assets:
-    name: Attach assets to GitHub release
-    needs:
-      [
-        version,
-        linux-x86_64,
-        linux-arm64,
-        windows-x86_64,
-        windows-arm64,
-        macos,
-      ]
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/checkout@v6
+#   attach-release-assets:
+#     name: Attach assets to GitHub release
+#     needs:
+#       [
+#         version,
+#         linux-x86_64,
+#         linux-arm64,
+#         windows-x86_64,
+#         windows-arm64,
+#         macos,
+#       ]
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 15
+#     permissions:
+#       contents: write
+#     steps:
+#       - uses: actions/checkout@v6
 
-      - uses: oven-sh/setup-bun@v2
+#       - uses: oven-sh/setup-bun@v2
 
-      - uses: actions/download-artifact@v8
-        with:
-          path: artifacts
-          merge-multiple: true
+#       - uses: actions/download-artifact@v8
+#         with:
+#           path: artifacts
+#           merge-multiple: true
 
-      - name: Write the version pointers
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-        run: |
-          # What `install.sh` and the website's Windows download resolve
-          # "latest" to. In-app updates read the appcasts instead.
-          echo "$VERSION" > artifacts/latest-linux.txt
-          echo "$VERSION" > artifacts/latest-windows.txt
+#       - name: Write the version pointers
+#         env:
+#           VERSION: ${{ needs.version.outputs.version }}
+#         run: |
+#           # What `install.sh` and the website's Windows download resolve
+#           # "latest" to. In-app updates read the appcasts instead.
+#           echo "$VERSION" > artifacts/latest-linux.txt
+#           echo "$VERSION" > artifacts/latest-windows.txt
 
-      # Signed here rather than on platform runners: this is the only job that
-      # holds every native artifact, and the signing key stays in one place.
-      - name: Sign the Linux and Windows update feeds
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: |
-          # Merge into the live feeds so previously published releases keep
-          # their entries; a first run simply starts from nothing.
-          for platform in linux windows; do
-            for arch in x86_64 aarch64; do
-              curl -fsSL --max-time 30 \
-                "https://releases.insulator.sh/appcast-$platform-$arch.xml" \
-                -o "artifacts/appcast-$platform-$arch.xml" || true
-            done
-          done
-          bun scripts/appcast-linux.ts artifacts "$VERSION"
-          bun scripts/appcast-windows.ts artifacts "$VERSION"
+#       # Signed here rather than on platform runners: this is the only job that
+#       # holds every native artifact, and the signing key stays in one place.
+#       - name: Sign the Linux and Windows update feeds
+#         env:
+#           VERSION: ${{ needs.version.outputs.version }}
+#           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+#         run: |
+#           # Merge into the live feeds so previously published releases keep
+#           # their entries; a first run simply starts from nothing.
+#           for platform in linux windows; do
+#             for arch in x86_64 aarch64; do
+#               curl -fsSL --max-time 30 \
+#                 "https://releases.insulator.sh/appcast-$platform-$arch.xml" \
+#                 -o "artifacts/appcast-$platform-$arch.xml" || true
+#             done
+#           done
+#           bun scripts/appcast-linux.ts artifacts "$VERSION"
+#           bun scripts/appcast-windows.ts artifacts "$VERSION"
 
-      - name: Write release notes
-        env:
-          VERSION: ${{ needs.version.outputs.version }}
-        run: |
-          bun -e '
-            import { extractReleaseNotes } from "./scripts/changelog.ts";
-            const version = process.env.VERSION;
-            const file = Bun.file("CHANGELOG.md");
-            const notes = (await file.exists())
-              ? extractReleaseNotes(await file.text(), version)
-              : null;
-            await Bun.write(
-              "release-notes.md",
-              `${notes ?? "See CHANGELOG.md for details."}\n`,
-            );
-          '
+#       - name: Write release notes
+#         env:
+#           VERSION: ${{ needs.version.outputs.version }}
+#         run: |
+#           bun -e '
+#             import { extractReleaseNotes } from "./scripts/changelog.ts";
+#             const version = process.env.VERSION;
+#             const file = Bun.file("CHANGELOG.md");
+#             const notes = (await file.exists())
+#               ? extractReleaseNotes(await file.text(), version)
+#               : null;
+#             await Bun.write(
+#               "release-notes.md",
+#               `${notes ?? "See CHANGELOG.md for details."}\n`,
+#             );
+#           '
 
-      - uses: softprops/action-gh-release@v3
-        with:
-          draft: false
-          tag_name: ${{ needs.version.outputs.tag }}
-          name: ${{ needs.version.outputs.tag }}
-          body_path: release-notes.md
-          fail_on_unmatched_files: true
-          files: |
-            artifacts/*.tar.gz
-            artifacts/*.dmg
-            artifacts/*.md
-            artifacts/*.zip
-            artifacts/*.exe
-            artifacts/appcast.xml
-            artifacts/appcast-linux-*.xml
-            artifacts/appcast-windows-*.xml
-            artifacts/latest-linux.txt
-            artifacts/latest-windows.txt
+#       - uses: softprops/action-gh-release@v3
+#         with:
+#           draft: false
+#           tag_name: ${{ needs.version.outputs.tag }}
+#           name: ${{ needs.version.outputs.tag }}
+#           body_path: release-notes.md
+#           fail_on_unmatched_files: true
+#           files: |
+#             artifacts/*.tar.gz
+#             artifacts/*.dmg
+#             artifacts/*.md
+#             artifacts/*.zip
+#             artifacts/*.exe
+#             artifacts/appcast.xml
+#             artifacts/appcast-linux-*.xml
+#             artifacts/appcast-windows-*.xml
+#             artifacts/latest-linux.txt
+#             artifacts/latest-windows.txt
