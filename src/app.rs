@@ -64,9 +64,9 @@ use crate::theme::{ColorTheme, Theme, ThemePreference, set_active_ui_font_family
 use insulator_protocol::theme::WindowStyle;
 use crate::ui::text_field::TextField;
 use crate::ui::{
-    MenuChip, ProjectNameSelector, activity_icon, activity_noun, contain_horizontal_scroll,
-    contain_scroll, file_icon, h_flex, icon, icon_button, motion, provider_color, provider_mark,
-    status_color, chat_status_color, toggle_switch,
+    MenuChip, ProjectNameSelector, Slider, SliderEvent, SliderState, activity_icon,
+    activity_noun, contain_horizontal_scroll, contain_scroll, file_icon, h_flex, icon, icon_button,
+    motion, provider_color, provider_mark, status_color, chat_status_color, toggle_switch,
 };
 use crate::{
     CancelTaskSwitch, CancelTurn, CloseFind, CloseWindow, ConfirmTaskSwitch, CopySelection,
@@ -1095,6 +1095,7 @@ pub struct Waku {
     daemon_origins_input: Entity<TextInput>,
     daemon_reconfigure_pending: bool,
     daemon_token_revealed: bool,
+    sound_volume_slider: Entity<SliderState>,
     settings_focus: FocusHandle,
     window_style_restart_dialog: Option<WindowStyle>,
     onboarding_add_project_focus: FocusHandle,
@@ -2070,6 +2071,13 @@ impl Waku {
             input.set_content(daemon_origins, cx);
             input
         });
+        let sound_volume_slider = cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(100.0)
+                .default_value(state.sound_volume)
+                .step(1.0)
+        });
         let skills_search = cx.new(|cx| {
             TextInput::new(window, cx)
                 .clear_on_escape()
@@ -2575,6 +2583,16 @@ impl Waku {
             })
             .detach();
             cx.subscribe(
+                &sound_volume_slider,
+                |this: &mut Self, _, event: &SliderEvent, cx| match event {
+                    SliderEvent::Change(value) => {
+                        this.set_sound_volume(value.start(), cx);
+                    }
+                    SliderEvent::Release(_) => {}
+                },
+            )
+            .detach();
+            cx.subscribe(
                 &model_search,
                 |this: &mut Self, search, event: &InputEvent, cx| {
                     if matches!(event, InputEvent::Edited) {
@@ -2822,6 +2840,7 @@ impl Waku {
                 daemon_origins_input,
                 daemon_reconfigure_pending: false,
                 daemon_token_revealed: false,
+                sound_volume_slider,
                 settings_focus,
                 window_style_restart_dialog: None,
                 onboarding_add_project_focus,

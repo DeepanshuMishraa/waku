@@ -2054,49 +2054,80 @@ impl Waku {
             .into_any_element()
     }
 
-    fn render_sound_volume_control(&self, theme: Theme, cx: &mut Context<Self>) -> AnyElement {
+    fn render_sound_volume_control(&self, theme: Theme, _cx: &mut Context<Self>) -> AnyElement {
         let volume = self.state.sound_volume.round().clamp(0.0, 100.0) as u32;
-        let mut slider = div().flex().items_center().gap(px(3.0)).flex_1();
-        for step in 0..=20 {
-            let value = step * 5;
-            let selected = value <= volume;
-            slider = slider.child(
-                div()
-                    .id(SharedString::from(format!("sound-volume-step-{step}")))
-                    .h(px(6.0))
-                    .flex_1()
-                    .rounded(px(3.0))
-                    .bg(if selected { theme.accent } else { theme.border })
-                    .cursor_default()
-                    .hover(|element| element.bg(theme.accent.opacity(0.75)))
-                    .on_click(cx.listener(move |this, _, _, cx| {
-                        this.set_sound_volume(value as f32, cx);
-                    })),
-            );
-        }
+        let enabled = self.state.sounds_enabled;
 
         div()
             .mt(px(10.0))
             .w_full()
+            .min_h(px(56.0))
             .px(px(20.0))
             .py(px(12.0))
             .rounded(px(13.0))
             .bg(theme.raised)
             .flex()
             .items_center()
-            .gap(px(12.0))
-            .child(div().text_size(sp(12.5)).text_color(theme.text_secondary).child("Volume"))
-            .child(slider)
-            .child(div().w(px(38.0)).text_size(sp(12.5)).text_color(theme.text_secondary).child(format!("{volume}%")))
+            .gap(px(16.0))
+            .when(!enabled, |element| element.opacity(0.5))
+            .child(
+                div()
+                    .flex()
+                    .items_center()
+                    .gap(px(8.0))
+                    .child(icon(
+                        "icons/file-types/audio.svg",
+                        14.0,
+                        if enabled {
+                            theme.text_secondary
+                        } else {
+                            theme.text_tertiary
+                        },
+                    ))
+                    .child(
+                        div()
+                            .text_size(sp(13.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(if enabled {
+                                theme.text
+                            } else {
+                                theme.text_secondary
+                            })
+                            .child("Volume"),
+                    ),
+            )
+            .child(
+                div()
+                    .flex_1()
+                    .flex()
+                    .items_center()
+                    .child(Slider::new(&self.sound_volume_slider).disabled(!enabled)),
+            )
+            .child(
+                div()
+                    .w(px(40.0))
+                    .text_size(sp(12.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(if enabled {
+                        theme.text_secondary
+                    } else {
+                        theme.text_tertiary
+                    })
+                    .text_right()
+                    .child(format!("{volume}%")),
+            )
             .into_any_element()
     }
 
-    fn set_sound_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
+    pub(super) fn set_sound_volume(&mut self, volume: f32, cx: &mut Context<Self>) {
         let volume = volume.clamp(0.0, 100.0);
         if (self.state.sound_volume - volume).abs() < f32::EPSILON {
             return;
         }
         self.state.sound_volume = volume;
+        self.sound_volume_slider.update(cx, |s, cx| {
+            s.set_value(volume, cx);
+        });
         crate::audio::set_volume(volume);
         self.save();
         cx.notify();
