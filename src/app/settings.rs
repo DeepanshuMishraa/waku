@@ -591,7 +591,7 @@ impl Waku {
                                     .text_size(sp(13.5))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(theme.text)
-                                    .child(tr!("settings.sounds")),
+                                    .child(tr!("settings.interface_sounds")),
                             )
                             .child(
                                 div()
@@ -599,7 +599,7 @@ impl Waku {
                                     .text_size(sp(12.5))
                                     .line_height(sp(18.0))
                                     .text_color(theme.text_secondary)
-                                    .child(tr!("settings.sounds_description")),
+                                    .child(tr!("settings.interface_sounds_description")),
                             ),
                     )
                     .child(toggle_switch(

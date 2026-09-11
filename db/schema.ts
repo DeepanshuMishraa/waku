@@ -44,6 +44,8 @@ export const sessions = sqliteTable(
     lastReplyAt: integer("last_reply_at"),
     /** Root conversation for header-created child sessions. */
     conversationRootId: text("conversation_root_id"),
+    /** Workflow status shown in status grouping: in-progress, done, backlog, in-review, canceled. */
+    chatStatus: text("chat_status"),
   },
   (table) => [
     index("sessions_by_project").on(table.projectId, table.updatedAt),

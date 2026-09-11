@@ -328,7 +328,7 @@ impl Waku {
         status: ChatStatus,
         cx: &mut Context<Self>,
     ) {
-        if let Some(session) = self.state.sessions.iter_mut().find(|s| s.id == session_id) {
+        if let Some(session) = self.state.session_mut(session_id) {
             if session.chat_status != status {
                 session.chat_status = status;
                 self.sidebar_rows_fingerprint.set(None);

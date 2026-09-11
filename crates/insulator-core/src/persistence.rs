@@ -30,7 +30,7 @@ use crate::computer_use::ComputerAppGrant;
 use crate::i18n::AppLanguage;
 use crate::identity::DATA_DIRECTORY_NAME;
 use crate::model::{
-    AgentSession, ChatStatus, FavoriteModel, Message, MessageAttachment, MessageRole, Project,
+    AgentSession, FavoriteModel, Message, MessageAttachment, MessageRole, Project,
     ProviderKind, RuntimeMode, SessionWorkspace,
 };
 use crate::theme::{ColorTheme, ThemePreference};
@@ -1154,7 +1154,8 @@ impl StateStore {
         let mut sessions = connection
             .prepare(
                 "SELECT id, project_id, title, auto_title, provider, model, status,
-                        created_at, updated_at, last_reply_at, conversation_root_id
+                        created_at, updated_at, last_reply_at, conversation_root_id,
+                        chat_status
                  FROM sessions ORDER BY updated_at",
             )
             .map_err(to_io_error)?;
@@ -1173,6 +1174,7 @@ impl StateStore {
                     row.get::<_, i64>(8)?,
                     row.get::<_, Option<i64>>(9)?,
                     row.get::<_, Option<String>>(10)?,
+                    row.get::<_, Option<String>>(11)?,
                 ))
             })
             .map_err(to_io_error)?
@@ -1270,7 +1272,6 @@ impl StateStore {
         session.context_window = stored.context_window;
         session.context_usage = stored.context_usage;
         session.runtime_event_cursor = stored.runtime_event_cursor;
-        session.chat_status = stored.chat_status;
 
         let mut statement = connection
             .prepare(
@@ -1399,6 +1400,10 @@ impl StateStore {
                             rusqlite::params_from_iter(session_params(session)),
                         )
                         .map_err(to_io_error)?;
+                    let _ = transaction.execute(
+                        "UPDATE session_details SET data = json_set(data, '$.chat_status', ?1) WHERE session_id = ?2",
+                        params![tag_of(session.chat_status), session.id.to_string()],
+                    );
                     storage.persisted_sessions.insert(session.id);
                 }
                 continue;
@@ -1520,6 +1525,7 @@ type SessionColumns = (
     i64,
     Option<i64>,
     Option<String>,
+    Option<String>,
 );
 
 /// Builds a list-only session from its columns. `messages`,
@@ -1540,7 +1546,12 @@ fn session_skeleton(row: SessionColumns) -> Option<AgentSession> {
         updated_at,
         last_reply_at,
         conversation_root_id,
+        chat_status,
     ) = row;
+    let parsed_chat_status = chat_status
+        .as_deref()
+        .and_then(|status| serde_json::from_value(serde_json::Value::String(status.to_owned())).ok())
+        .unwrap_or_default();
     Some(AgentSession {
         id: Uuid::parse_str(&id).ok()?,
         title,
@@ -1557,7 +1568,7 @@ fn session_skeleton(row: SessionColumns) -> Option<AgentSession> {
         context_window: None,
         agent_preset: None,
         status: serde_json::from_value(serde_json::Value::String(status)).ok()?,
-        chat_status: ChatStatus::default(),
+        chat_status: parsed_chat_status,
         created_at: created_at as u64,
         updated_at: updated_at as u64,
         last_reply_at: last_reply_at.map(|at| at as u64),
@@ -1769,19 +1780,21 @@ fn message_fingerprint(message: &Message, position: usize) -> u64 {
 /// listing sessions never has to deserialize a transcript.
 const UPSERT_SESSION: &str = "INSERT INTO sessions(
          id, project_id, title, auto_title, provider, model, status,
-         created_at, updated_at, last_reply_at, conversation_root_id
-     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
+         created_at, updated_at, last_reply_at, conversation_root_id,
+         chat_status
+     ) VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
      ON CONFLICT(id) DO UPDATE SET
-         project_id    = excluded.project_id,
-         title         = excluded.title,
-         auto_title    = excluded.auto_title,
-         provider      = excluded.provider,
-         model         = excluded.model,
-         status        = excluded.status,
-         created_at    = excluded.created_at,
+         project_id           = excluded.project_id,
+         title                = excluded.title,
+         auto_title           = excluded.auto_title,
+         provider             = excluded.provider,
+         model                = excluded.model,
+         status               = excluded.status,
+         created_at           = excluded.created_at,
          updated_at           = excluded.updated_at,
          last_reply_at        = excluded.last_reply_at,
-         conversation_root_id = excluded.conversation_root_id";
+         conversation_root_id = excluded.conversation_root_id,
+         chat_status          = excluded.chat_status";
 
 const INSERT_PROJECT: &str = "INSERT INTO projects(id, name, path, position, created_at)
      VALUES(?1, ?2, ?3, ?4, ?5)
@@ -1823,6 +1836,7 @@ fn session_params(session: &AgentSession) -> Vec<rusqlite::types::Value> {
         session
             .conversation_root_id
             .map_or(Value::Null, |id| Value::Text(id.to_string())),
+        Value::Text(tag_of(session.chat_status)),
     ]
 }
 
@@ -1837,7 +1851,8 @@ fn normalize_computer_app_grants(grants: &mut Vec<ComputerAppGrant>) {
 mod tests {
     use super::*;
     use crate::model::{
-        ActivityItem, ActivityKind, FavoriteModel, MessageRole, ReasoningBlock, TranscriptBlock,
+        ActivityItem, ActivityKind, ChatStatus, FavoriteModel, MessageRole, ReasoningBlock,
+        TranscriptBlock,
     };
     use base64::Engine as _;
 
@@ -2699,6 +2714,40 @@ mod tests {
                 .map(|reasoning| reasoning.content.as_str()),
             Some("Checking the source")
         );
+        fs::remove_dir_all(directory).ok();
+    }
+
+    #[test]
+    fn chat_status_persists_across_store_reload_and_skeleton_hydration() {
+        let directory = temporary_directory();
+        let store = store_in(&directory);
+        let mut state = PersistedState::fresh(PathBuf::from("/tmp/project"));
+        let session_id = state.sessions[0].id;
+        state.sessions[0].begin_turn("Initial prompt");
+        state.sessions[0].finish_active_turn(crate::model::TurnStatus::Completed);
+        state.sessions[0].chat_status = ChatStatus::Done;
+        store.save(&mut state).unwrap();
+
+        // 1. Unhydrated reload: verify skeleton gets Done from sessions table
+        let mut loaded_state = store.load().unwrap();
+        let loaded_session = loaded_state.sessions.iter().find(|s| s.id == session_id).unwrap();
+        assert!(!loaded_session.detail_loaded);
+        assert_eq!(loaded_session.chat_status, ChatStatus::Done);
+
+        // 2. Hydration: verify hydrate does NOT revert chat_status
+        let session_to_hydrate = loaded_state.session_mut(session_id).unwrap();
+        store.hydrate(session_to_hydrate).unwrap();
+        assert!(session_to_hydrate.detail_loaded);
+        assert_eq!(session_to_hydrate.chat_status, ChatStatus::Done);
+
+        // 3. Mutation and re-save while loaded: update to InReview
+        session_to_hydrate.chat_status = ChatStatus::InReview;
+        store.save(&mut loaded_state).unwrap();
+
+        let reloaded = store.load().unwrap();
+        let reloaded_session = reloaded.sessions.iter().find(|s| s.id == session_id).unwrap();
+        assert_eq!(reloaded_session.chat_status, ChatStatus::InReview);
+
         fs::remove_dir_all(directory).ok();
     }
 
