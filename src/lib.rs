@@ -244,9 +244,10 @@ pub fn run() {
                 KeyBinding::new("secondary-k", ToggleCommandPalette, None),
                 KeyBinding::new("secondary-alt-shift-f", ToggleFpsCounter, None),
                 KeyBinding::new("secondary-[", NavigateBack, Some("Insulator")),
-                KeyBinding::new("secondary-]", NavigateForward, Some("Insulator")),
-                KeyBinding::new("ctrl-tab", SwitchTaskForward, Some("Insulator")),
-                KeyBinding::new("ctrl-shift-tab", SwitchTaskBackward, Some("Insulator")),
+                KeyBinding::new("ctrl-tab", SwitchTaskForward, None),
+                KeyBinding::new("ctrl-shift-tab", SwitchTaskBackward, None),
+                KeyBinding::new("secondary-shift-]", SwitchTaskForward, None),
+                KeyBinding::new("secondary-shift-[", SwitchTaskBackward, None),
                 KeyBinding::new("ctrl-escape", CancelTaskSwitch, Some("Insulator")),
                 KeyBinding::new("ctrl-shift-escape", CancelTaskSwitch, Some("Insulator")),
                 KeyBinding::new("down", SwitchTaskForward, Some("TaskSwitcher")),
@@ -374,6 +375,21 @@ pub fn run() {
                     },
                 )
                 .expect("failed to open Waku window");
+
+            let window_handle = window;
+            let async_cx = cx.to_async();
+            let executor = cx.foreground_executor().clone();
+            crate::platform::register_tab_cycle_handler(move |reverse| {
+                let mut cx = async_cx.clone();
+                let window_handle = window_handle;
+                executor
+                    .spawn(async move {
+                        let _ = window_handle.update(&mut cx, |waku, window, cx| {
+                            waku.cycle_tabs_or_tasks(reverse, window, cx);
+                        });
+                    })
+                    .detach();
+            });
 
             cx.on_system_notification_response({
                 let window = window;

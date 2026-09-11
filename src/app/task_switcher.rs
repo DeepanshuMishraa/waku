@@ -201,13 +201,28 @@ fn task_switcher_status_icon(status: SessionStatus) -> Option<&'static str> {
 }
 
 impl Waku {
+    pub(crate) fn cycle_tabs_or_tasks(
+        &mut self,
+        reverse: bool,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) {
+        if self.task_switcher.open {
+            self.cycle_task_switcher(reverse, window, cx);
+        } else if self.main_tabs.len() > 1 {
+            self.cycle_main_tabs(reverse, cx);
+        } else {
+            self.cycle_task_switcher(reverse, window, cx);
+        }
+    }
+
     pub(super) fn switch_task_forward_action(
         &mut self,
         _: &SwitchTaskForward,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cycle_task_switcher(false, window, cx);
+        self.cycle_tabs_or_tasks(false, window, cx);
     }
 
     pub(super) fn switch_task_backward_action(
@@ -216,7 +231,7 @@ impl Waku {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cycle_task_switcher(true, window, cx);
+        self.cycle_tabs_or_tasks(true, window, cx);
     }
 
     pub(super) fn select_first_task_action(

@@ -1032,6 +1032,82 @@ pub fn reapply_window_style(
     });
 }
 
+#[cfg(target_os = "macos")]
+thread_local! {
+    static TAB_CYCLE_CALLBACK: std::cell::RefCell<Option<Box<dyn Fn(bool)>>> =
+        const { std::cell::RefCell::new(None) };
+}
+
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn custom_select_next_tab(
+    _this: &objc2::runtime::AnyObject,
+    _sel: objc2::runtime::Sel,
+    _sender: *mut std::ffi::c_void,
+) {
+    TAB_CYCLE_CALLBACK.with_borrow(|callback| {
+        if let Some(callback) = callback.as_ref() {
+            callback(false);
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+extern "C-unwind" fn custom_select_previous_tab(
+    _this: &objc2::runtime::AnyObject,
+    _sel: objc2::runtime::Sel,
+    _sender: *mut std::ffi::c_void,
+) {
+    TAB_CYCLE_CALLBACK.with_borrow(|callback| {
+        if let Some(callback) = callback.as_ref() {
+            callback(true);
+        }
+    });
+}
+
+#[cfg(target_os = "macos")]
+pub fn register_tab_cycle_handler<F: Fn(bool) + 'static>(handler: F) {
+    TAB_CYCLE_CALLBACK.with_borrow_mut(|slot| {
+        *slot = Some(Box::new(handler));
+    });
+
+    static HOOK_ONCE: std::sync::Once = std::sync::Once::new();
+    HOOK_ONCE.call_once(|| {
+        use objc2::runtime::{AnyClass, AnyObject, Sel};
+
+        for class_name in [c"GPUIWindow", c"GPUIPanel"] {
+            let Some(cls) = AnyClass::get(class_name) else { continue };
+
+            unsafe {
+                let sel_next = objc2::sel!(selectNextTab:);
+                let types = c"v@:@".as_ptr();
+                let _ = objc2::ffi::class_replaceMethod(
+                    cls as *const AnyClass as *mut AnyClass,
+                    sel_next,
+                    std::mem::transmute(
+                        custom_select_next_tab
+                            as extern "C-unwind" fn(&AnyObject, Sel, *mut std::ffi::c_void),
+                    ),
+                    types,
+                );
+
+                let sel_prev = objc2::sel!(selectPreviousTab:);
+                let _ = objc2::ffi::class_replaceMethod(
+                    cls as *const AnyClass as *mut AnyClass,
+                    sel_prev,
+                    std::mem::transmute(
+                        custom_select_previous_tab
+                            as extern "C-unwind" fn(&AnyObject, Sel, *mut std::ffi::c_void),
+                    ),
+                    types,
+                );
+            }
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn register_tab_cycle_handler<F: Fn(bool) + 'static>(_handler: F) {}
+
 #[cfg(not(target_os = "macos"))]
 pub fn configure_window_style(
     _: &Window,

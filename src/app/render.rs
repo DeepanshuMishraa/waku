@@ -299,6 +299,7 @@ impl Render for Waku {
         let background_image = self.state.background_image_path.clone();
         let empty = should_render_empty_state(self.selected_session());
         let active_file = self.active_main_file_tab.clone();
+        let active_review = self.active_main_review_tab;
         let file_editor_width =
             (f32::from(window.viewport_size().width) - panels.sidebar - panels.right_panel).max(300.0);
         let permission = self.render_permission(cx);
@@ -416,6 +417,9 @@ impl Render for Waku {
                     .child(if let Some(path) = active_file.as_ref() {
                         self.render_right_panel_file(path.clone(), file_editor_width, window, cx)
                             .into_any_element()
+                    } else if active_review {
+                        self.render_main_review_diff(window, cx)
+                            .into_any_element()
                     } else if empty {
                         self.render_empty_state(cx).into_any_element()
                     } else {
@@ -426,7 +430,7 @@ impl Render for Waku {
                     })
                     .children(permission)
                     .when(
-                        self.selected_session().is_some() && active_file.is_none(),
+                        self.selected_session().is_some() && active_file.is_none() && !active_review,
                         |element| {
                             element
                                 .children(self.render_queued_messages(cx))

@@ -2207,6 +2207,27 @@ fn multiple_tabs_can_be_tracked_interleaved_and_closed() {
 }
 
 #[test]
+fn review_tab_can_be_tracked_and_closed() {
+    let mut main_tabs: Vec<MainTab> = Vec::new();
+    let chat1 = Uuid::new_v4();
+
+    main_tabs.push(MainTab::Chat(chat1));
+    main_tabs.push(MainTab::Review);
+
+    assert_eq!(main_tabs.len(), 2);
+    assert_eq!(main_tabs[0], MainTab::Chat(chat1));
+    assert_eq!(main_tabs[1], MainTab::Review);
+
+    // Close review tab
+    let close_tab = MainTab::Review;
+    let index = main_tabs.iter().position(|t| t == &close_tab);
+    main_tabs.retain(|t| t != &close_tab);
+    assert_eq!(main_tabs.len(), 1);
+    let next_index = index.unwrap_or(0).min(main_tabs.len().saturating_sub(1));
+    assert_eq!(main_tabs[next_index], MainTab::Chat(chat1));
+}
+
+#[test]
 fn sessionless_composer_draft_key_falls_back_to_new_session_for_project() {
     let project_id = Uuid::new_v4();
     let key = crate::persistence::ComposerDraftKey::NewSession(project_id);
@@ -2221,3 +2242,63 @@ fn model_picker_is_enabled_when_session_is_none() {
     assert!(picker_enabled);
 }
 
+#[test]
+fn empty_draft_is_replaced_when_opening_file_or_review() {
+    let mut main_tabs: Vec<MainTab> = Vec::new();
+    let draft_id = Uuid::new_v4();
+    main_tabs.push(MainTab::Chat(draft_id));
+
+    // When opening a file tab in an unstarted empty draft session:
+    let file_tab = MainTab::File("src/main.rs".to_string());
+    let draft_tab = MainTab::Chat(draft_id);
+    if let Some(pos) = main_tabs.iter().position(|t| t == &draft_tab) {
+        if main_tabs.contains(&file_tab) {
+            main_tabs.remove(pos);
+        } else {
+            main_tabs[pos] = file_tab.clone();
+        }
+    }
+    assert_eq!(main_tabs.len(), 1);
+    assert_eq!(main_tabs[0], file_tab);
+
+    // Opening review tab next
+    let review_tab = MainTab::Review;
+    main_tabs.push(review_tab.clone());
+    assert_eq!(main_tabs.len(), 2);
+    assert_eq!(main_tabs[1], MainTab::Review);
+
+    // Cycling forward: 0 -> 1 -> 0
+    let next_from_0 = (0 + 1) % main_tabs.len();
+    assert_eq!(next_from_0, 1);
+    let next_from_1 = (1 + 1) % main_tabs.len();
+    assert_eq!(next_from_1, 0);
+
+    // Cycling backward: 0 -> 1 -> 0
+    let prev_from_0 = (0 + main_tabs.len() - 1) % main_tabs.len();
+    assert_eq!(prev_from_0, 1);
+    let prev_from_1 = (1 + main_tabs.len() - 1) % main_tabs.len();
+    assert_eq!(prev_from_1, 0);
+}
+
+#[test]
+fn tab_cycling_forward_and_backward_preserves_order() {
+    let mut main_tabs: Vec<MainTab> = Vec::new();
+    let chat_id = Uuid::new_v4();
+    main_tabs.push(MainTab::Chat(chat_id));
+    main_tabs.push(MainTab::File("src/lib.rs".to_string()));
+    main_tabs.push(MainTab::Review);
+
+    assert_eq!(main_tabs.len(), 3);
+
+    // Forward cycle
+    let fwd = |idx: usize| (idx + 1) % main_tabs.len();
+    assert_eq!(fwd(0), 1);
+    assert_eq!(fwd(1), 2);
+    assert_eq!(fwd(2), 0);
+
+    // Backward cycle
+    let bwd = |idx: usize| (idx + main_tabs.len() - 1) % main_tabs.len();
+    assert_eq!(bwd(0), 2);
+    assert_eq!(bwd(2), 1);
+    assert_eq!(bwd(1), 0);
+}

@@ -1960,10 +1960,18 @@ impl Waku {
             self.ensure_initial_right_panel_file_editor_width();
         }
         if surface == RightPanelSurface::Diff {
-            if reusable_index.is_none() {
-                self.right_panel_width = widened_panel_width_for_review(self.right_panel_width);
-            }
             self.refresh_right_panel_diff(cx);
+            if self.main_tabs.is_empty() {
+                if let Some(session_id) = self.state.selected_session {
+                    self.main_tabs.push(MainTab::Chat(session_id));
+                }
+            }
+            if !self.main_tabs.contains(&MainTab::Review) {
+                self.main_tabs.push(MainTab::Review);
+            }
+            self.active_main_review_tab = true;
+            self.active_main_file_tab = None;
+            self.main_tabs_open = true;
         }
         if matches!(
             surface,
@@ -2009,20 +2017,209 @@ impl Waku {
         self.right_panel_diff_selection.clear();
         self.right_panel_diff_snapshot = None;
         self.right_panel_diff_selected_file = None;
-        self.open_right_panel_surface(RightPanelSurface::Diff, cx);
+        self.open_main_review_tab(cx);
+    }
+
+    pub(super) fn activate_main_tab_at_index(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index >= self.main_tabs.len() {
+            return;
+        }
+        match self.main_tabs[index].clone() {
+            MainTab::Chat(session_id) => {
+                self.active_main_file_tab = None;
+                self.active_main_review_tab = false;
+                self.select_session(session_id, cx);
+            }
+            MainTab::File(path) => {
+                self.active_main_file_tab = Some(path);
+                self.active_main_review_tab = false;
+                if let Some(surface_index) = self
+                    .right_panel_surfaces
+                    .iter()
+                    .position(|surface| matches!(surface, RightPanelSurface::Files))
+                {
+                    self.right_panel_active_surface = Some(surface_index);
+                    self.set_right_panel_visible(true, cx);
+                    self.refresh_right_panel_working_tree(cx);
+                } else {
+                    self.open_right_panel_surface(RightPanelSurface::Files, cx);
+                }
+            }
+            MainTab::Review => {
+                self.active_main_file_tab = None;
+                self.active_main_review_tab = true;
+                if let Some(surface_index) = self
+                    .right_panel_surfaces
+                    .iter()
+                    .position(|surface| matches!(surface, RightPanelSurface::Diff))
+                {
+                    self.right_panel_active_surface = Some(surface_index);
+                    self.set_right_panel_visible(true, cx);
+                    self.refresh_right_panel_diff(cx);
+                } else {
+                    self.open_right_panel_surface(RightPanelSurface::Diff, cx);
+                }
+            }
+        }
+        self.main_tabs_scroll_handle.scroll_to_item(index);
+        cx.notify();
+    }
+
+    pub(super) fn cycle_main_tabs(&mut self, reverse: bool, cx: &mut Context<Self>) {
+        if self.main_tabs.is_empty() {
+            return;
+        }
+        let current_index = if self.active_main_review_tab {
+            self.main_tabs.iter().position(|t| matches!(t, MainTab::Review))
+        } else if let Some(path) = &self.active_main_file_tab {
+            self.main_tabs.iter().position(|t| matches!(t, MainTab::File(p) if p == path))
+        } else if let Some(session_id) = self.state.selected_session {
+            self.main_tabs.iter().position(|t| matches!(t, MainTab::Chat(id) if *id == session_id))
+        } else {
+            None
+        };
+
+        let len = self.main_tabs.len();
+        let next_index = match current_index {
+            Some(idx) => {
+                if reverse {
+                    (idx + len - 1) % len
+                } else {
+                    (idx + 1) % len
+                }
+            }
+            None => 0,
+        };
+
+        self.activate_main_tab_at_index(next_index, cx);
+    }
+
+    pub(super) fn open_main_review_tab(&mut self, cx: &mut Context<Self>) {
+        let empty_draft_to_replace = if !self.active_main_review_tab && self.active_main_file_tab.is_none() {
+            self.state.selected_session.filter(|session_id| {
+                self.state
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == *session_id)
+                    .is_some_and(|session| {
+                        !session.has_started()
+                            && session.messages.is_empty()
+                            && session.turns.is_empty()
+                            && session.queued_messages.is_empty()
+                    })
+            })
+        } else {
+            None
+        };
+
+        let review_tab = MainTab::Review;
+        if let Some(draft_id) = empty_draft_to_replace {
+            let draft_tab = MainTab::Chat(draft_id);
+            if let Some(pos) = self.main_tabs.iter().position(|t| t == &draft_tab) {
+                if self.main_tabs.contains(&review_tab) {
+                    self.main_tabs.remove(pos);
+                } else {
+                    self.main_tabs[pos] = review_tab;
+                }
+            } else if !self.main_tabs.contains(&review_tab) {
+                self.main_tabs.push(review_tab);
+            }
+            self.remove_session(draft_id, cx);
+        } else {
+            if self.main_tabs.is_empty() {
+                if let Some(session_id) = self.state.selected_session {
+                    self.main_tabs.push(MainTab::Chat(session_id));
+                }
+            }
+            if !self.main_tabs.contains(&review_tab) {
+                self.main_tabs.push(review_tab);
+            }
+        }
+        self.active_main_review_tab = true;
+        self.active_main_file_tab = None;
+        self.main_tabs_open = true;
+
+        if let Some(index) = self
+            .right_panel_surfaces
+            .iter()
+            .position(|surface| matches!(surface, RightPanelSurface::Diff))
+        {
+            self.right_panel_active_surface = Some(index);
+            self.set_right_panel_visible(true, cx);
+            self.refresh_right_panel_diff(cx);
+            cx.notify();
+        } else {
+            self.open_right_panel_surface(RightPanelSurface::Diff, cx);
+        }
+    }
+
+    pub(super) fn close_main_review_tab(&mut self, cx: &mut Context<Self>) {
+        let was_active = self.active_main_review_tab;
+        let tab = MainTab::Review;
+        let index = self.main_tabs.iter().position(|t| t == &tab);
+        self.main_tabs.retain(|t| t != &tab);
+
+        if was_active {
+            if !self.main_tabs.is_empty() {
+                let next_index = index.unwrap_or(0).min(self.main_tabs.len().saturating_sub(1));
+                self.activate_main_tab_at_index(next_index, cx);
+            } else {
+                self.active_main_file_tab = None;
+                self.active_main_review_tab = false;
+                self.main_tabs_open = false;
+                if let Some(session_id) = self.state.selected_session {
+                    self.select_session(session_id, cx);
+                }
+            }
+        } else if self.main_tabs.is_empty() {
+            self.main_tabs_open = false;
+        }
+        cx.notify();
     }
 
     fn open_right_panel_file(&mut self, relative_path: String, cx: &mut Context<Self>) {
-        if self.main_tabs.is_empty() {
-            if let Some(session_id) = self.state.selected_session {
-                self.main_tabs.push(MainTab::Chat(session_id));
+        let empty_draft_to_replace = if !self.active_main_review_tab && self.active_main_file_tab.is_none() {
+            self.state.selected_session.filter(|session_id| {
+                self.state
+                    .sessions
+                    .iter()
+                    .find(|session| session.id == *session_id)
+                    .is_some_and(|session| {
+                        !session.has_started()
+                            && session.messages.is_empty()
+                            && session.turns.is_empty()
+                            && session.queued_messages.is_empty()
+                    })
+            })
+        } else {
+            None
+        };
+
+        let file_tab = MainTab::File(relative_path.clone());
+        if let Some(draft_id) = empty_draft_to_replace {
+            let draft_tab = MainTab::Chat(draft_id);
+            if let Some(pos) = self.main_tabs.iter().position(|t| t == &draft_tab) {
+                if self.main_tabs.contains(&file_tab) {
+                    self.main_tabs.remove(pos);
+                } else {
+                    self.main_tabs[pos] = file_tab;
+                }
+            } else if !self.main_tabs.contains(&file_tab) {
+                self.main_tabs.push(file_tab);
+            }
+            self.remove_session(draft_id, cx);
+        } else {
+            if self.main_tabs.is_empty() {
+                if let Some(session_id) = self.state.selected_session {
+                    self.main_tabs.push(MainTab::Chat(session_id));
+                }
+            }
+            if !self.main_tabs.contains(&file_tab) {
+                self.main_tabs.push(file_tab);
             }
         }
-        let file_tab = MainTab::File(relative_path.clone());
-        if !self.main_tabs.contains(&file_tab) {
-            self.main_tabs.push(file_tab);
-        }
         self.active_main_file_tab = Some(relative_path);
+        self.active_main_review_tab = false;
         self.main_tabs_open = true;
 
         // The right panel stays a Files browser. The editor lives in the main
@@ -2052,20 +2249,10 @@ impl Waku {
         if was_active {
             if !self.main_tabs.is_empty() {
                 let next_index = index.unwrap_or(0).min(self.main_tabs.len().saturating_sub(1));
-                match &self.main_tabs[next_index] {
-                    MainTab::File(next_path) => {
-                        self.active_main_file_tab = Some(next_path.clone());
-                    }
-                    MainTab::Chat(next_session_id) => {
-                        let next_session_id = *next_session_id;
-                        self.active_main_file_tab = None;
-                        if self.state.selected_session != Some(next_session_id) {
-                            self.select_session(next_session_id, cx);
-                        }
-                    }
-                }
+                self.activate_main_tab_at_index(next_index, cx);
             } else {
                 self.active_main_file_tab = None;
+                self.active_main_review_tab = false;
                 self.main_tabs_open = false;
                 if let Some(session_id) = self.state.selected_session {
                     self.select_session(session_id, cx);
@@ -2078,7 +2265,8 @@ impl Waku {
     }
 
     pub(super) fn close_main_chat_tab(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
-        let was_active = self.active_main_file_tab.is_none()
+        let was_active = !self.active_main_review_tab
+            && self.active_main_file_tab.is_none()
             && self.state.selected_session == Some(session_id);
         let tab = MainTab::Chat(session_id);
         let index = self.main_tabs.iter().position(|t| t == &tab);
@@ -2099,18 +2287,10 @@ impl Waku {
         if was_active {
             if !self.main_tabs.is_empty() {
                 let next_index = index.unwrap_or(0).min(self.main_tabs.len().saturating_sub(1));
-                match &self.main_tabs[next_index] {
-                    MainTab::Chat(next_session_id) => {
-                        let next_session_id = *next_session_id;
-                        self.active_main_file_tab = None;
-                        self.select_session(next_session_id, cx);
-                    }
-                    MainTab::File(next_path) => {
-                        self.active_main_file_tab = Some(next_path.clone());
-                    }
-                }
+                self.activate_main_tab_at_index(next_index, cx);
             } else {
                 self.active_main_file_tab = None;
+                self.active_main_review_tab = false;
                 self.main_tabs_open = false;
                 let current_project_id = self.selected_project().map(|p| p.id);
                 let fallback = self
@@ -2549,6 +2729,9 @@ impl Waku {
                             this.right_panel_active_surface = Some(index);
                             this.reveal_right_panel_tab(index);
                             this.request_active_terminal_focus();
+                            if this.right_panel_surfaces.get(index) == Some(&RightPanelSurface::Diff) {
+                                this.open_main_review_tab(cx);
+                            }
                             cx.notify();
                         });
                     }),
@@ -3543,42 +3726,61 @@ impl Waku {
 
     fn render_right_panel_diff(
         &mut self,
-        panel_width: f32,
+        _panel_width: f32,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) -> Div {
-        let theme = Theme::current(cx);
         let toolbar = self.render_right_panel_diff_toolbar(cx);
         let content = match self.right_panel_diff_snapshot.clone() {
-            Some(snapshot) => {
-                let tree_width = fitted_file_tree_width(
-                    panel_width,
-                    self.right_panel_file_tree_width.max(220.0),
-                );
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .min_w_0()
-                    .flex()
-                    .child(self.render_right_panel_unified_diff(snapshot.clone(), cx))
-                    .child(
-                        div()
-                            .w(px(tree_width))
-                            .min_w(px(FILE_TREE_MIN_WIDTH))
-                            .h_full()
-                            .flex_none()
-                            .relative()
-                            .border_l_1()
-                            .border_color(theme.border_strong)
-                            .child(self.render_right_panel_diff_tree(window, cx))
-                            .child(self.render_panel_resize_handle(
-                                "right-panel-diff-tree-resize-handle",
-                                PanelResizeTarget::FileTree,
-                                cx,
-                            )),
-                    )
-                    .into_any_element()
-            }
+            Some(snapshot) if snapshot.files.is_empty() => self
+                .render_right_panel_empty_message(
+                    tr!("diff.no_changes"),
+                    tr!("diff.no_changes_description"),
+                    cx,
+                )
+                .into_any_element(),
+            Some(_) => self.render_right_panel_diff_tree(window, cx).into_any_element(),
+            None if self.right_panel_diff_loading => self
+                .render_right_panel_empty_message(
+                    tr!("diff.loading"),
+                    tr!("diff.loading_description"),
+                    cx,
+                )
+                .into_any_element(),
+            None if self.right_panel_diff_error.is_some() => self
+                .render_right_panel_empty_message(
+                    tr!("diff.unavailable"),
+                    self.right_panel_diff_error.clone().unwrap_or_default(),
+                    cx,
+                )
+                .into_any_element(),
+            None => self
+                .render_right_panel_empty_message(
+                    tr!("diff.no_changes"),
+                    tr!("diff.no_changes_description"),
+                    cx,
+                )
+                .into_any_element(),
+        };
+
+        div()
+            .flex_1()
+            .min_h_0()
+            .min_w_0()
+            .relative()
+            .flex()
+            .flex_col()
+            .child(toolbar)
+            .child(content)
+    }
+
+    pub(super) fn render_main_review_diff(
+        &mut self,
+        _window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let content = match self.right_panel_diff_snapshot.clone() {
+            Some(snapshot) => self.render_right_panel_unified_diff(snapshot, cx),
             None if self.right_panel_diff_loading => self
                 .render_right_panel_empty_message(
                     tr!("diff.loading"),
@@ -3612,7 +3814,6 @@ impl Waku {
             .child(md::render::frame_reset(
                 self.right_panel_diff_selection.clone(),
             ))
-            .child(toolbar)
             .child(content)
             .child(self.right_panel_diff_selection_input())
     }
@@ -4570,7 +4771,7 @@ impl Waku {
             self.right_panel_diff_tree_list_state.reset(0);
             self.right_panel_diff_list_state.reset(0);
         }
-        self.open_right_panel_surface(RightPanelSurface::Diff, cx);
+        self.open_main_review_tab(cx);
     }
 
     /// Captures one stable Git range and turns it into render-ready rows. Git,
@@ -4756,6 +4957,9 @@ impl Waku {
 
     fn select_right_panel_diff_file(&mut self, file_index: usize, cx: &mut Context<Self>) {
         self.right_panel_diff_selected_file = Some(file_index);
+        if !self.active_main_review_tab {
+            self.open_main_review_tab(cx);
+        }
         if let Some(line) = self
             .right_panel_diff_snapshot
             .as_ref()

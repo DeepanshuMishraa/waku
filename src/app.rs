@@ -98,6 +98,7 @@ const FILE_TREE_MIN_WIDTH: f32 = 140.0;
 const FILE_TREE_MAX_WIDTH: f32 = 360.0;
 const FILE_EDITOR_MIN_WIDTH: f32 = 140.0;
 const FILE_EDITOR_INITIAL_WIDTH: f32 = 500.0;
+#[allow(dead_code)]
 const REVIEW_INITIAL_WIDTH: f32 = 820.0;
 const MAIN_PANEL_MIN_WIDTH: f32 = 360.0;
 const FOLLOWUP_TURN_TOP_GAP: f32 = 48.0;
@@ -450,6 +451,7 @@ fn widened_panel_width_for_file_editor(panel_width: f32, file_tree_width: f32) -
         .min(RIGHT_PANEL_MAX_WIDTH)
 }
 
+#[allow(dead_code)]
 fn widened_panel_width_for_review(panel_width: f32) -> f32 {
     sanitize_panel_width(
         panel_width,
@@ -1054,6 +1056,7 @@ impl Default for ActivityScrollViewport {
 pub(super) enum MainTab {
     Chat(Uuid),
     File(String),
+    Review,
 }
 
 pub struct Waku {
@@ -1367,6 +1370,7 @@ pub struct Waku {
     main_tabs_open: bool,
     main_tabs: Vec<MainTab>,
     active_main_file_tab: Option<String>,
+    active_main_review_tab: bool,
     main_tabs_scroll_handle: ScrollHandle,
     main_tabs_scrollbar: Rc<ScrollbarState>,
     file_editor_input_expanded: bool,
@@ -2979,6 +2983,7 @@ impl Waku {
                 main_tabs_open: false,
                 main_tabs: Vec::new(),
                 active_main_file_tab: None,
+                active_main_review_tab: false,
                 main_tabs_scroll_handle: ScrollHandle::new(),
                 main_tabs_scrollbar: ScrollbarState::new(),
                 file_editor_input_expanded: false,

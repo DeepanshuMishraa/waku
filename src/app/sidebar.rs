@@ -918,6 +918,7 @@ impl Waku {
         self.state.selected_session = None;
         self.state.selected_project = None;
         self.active_main_file_tab = None;
+        self.active_main_review_tab = false;
         self.main_tabs.clear();
         self.main_tabs_open = false;
         self.save();
@@ -2644,7 +2645,8 @@ impl Waku {
                             continue;
                         }
                     }
-                    let selected = self.active_main_file_tab.is_none()
+                    let selected = !self.active_main_review_tab
+                        && self.active_main_file_tab.is_none()
                         && self.state.selected_session == Some(session_id);
                     let provider = session.provider;
                     let working = matches!(
@@ -2683,9 +2685,7 @@ impl Waku {
                             .hover(|element| element.bg(theme.overlay))
                             .on_click(move |_, _, cx| {
                                 let _ = tab_waku.update(cx, |waku, cx| {
-                                    waku.active_main_file_tab = None;
-                                    waku.select_session(session_id, cx);
-                                    waku.main_tabs_scroll_handle.scroll_to_item(index);
+                                    waku.activate_main_tab_at_index(index, cx);
                                 });
                             })
                             .child(tab_mark)
@@ -2724,14 +2724,14 @@ impl Waku {
                 }
                 MainTab::File(path) => {
                     let path = path.clone();
-                    let path_for_click = path.clone();
                     let path_for_close = path.clone();
                     let label = Path::new(&path)
                         .file_name()
                         .and_then(|name| name.to_str())
                         .unwrap_or(&path)
                         .to_owned();
-                    let selected = self.active_main_file_tab.as_deref() == Some(path.as_str());
+                    let selected = !self.active_main_review_tab
+                        && self.active_main_file_tab.as_deref() == Some(path.as_str());
                     let activate_waku = waku.clone();
                     let close_waku = waku.clone();
                     tabs.push(
@@ -2758,9 +2758,7 @@ impl Waku {
                             .hover(|element| element.bg(theme.overlay))
                             .on_click(move |_, _, cx| {
                                 let _ = activate_waku.update(cx, |waku, cx| {
-                                    waku.active_main_file_tab = Some(path_for_click.clone());
-                                    waku.main_tabs_scroll_handle.scroll_to_item(index);
-                                    cx.notify();
+                                    waku.activate_main_tab_at_index(index, cx);
                                 });
                             })
                             .child(icon(file_icon_for_path(&path), 13.0, theme.text_tertiary))
@@ -2795,6 +2793,69 @@ impl Waku {
                             .into_any_element(),
                     );
                 }
+                MainTab::Review => {
+                    let selected = self.active_main_review_tab;
+                    let activate_waku = waku.clone();
+                    let close_waku = waku.clone();
+                    tabs.push(
+                        div()
+                            .id(SharedString::from(format!("main-review-tab-{index}")))
+                            .h_full()
+                            .max_w(px(200.0))
+                            .pl(px(10.0))
+                            .pr(px(6.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .cursor_default()
+                            .text_size(sp(12.5))
+                            .text_color(if selected {
+                                theme.text
+                            } else {
+                                theme.text_secondary
+                            })
+                            .when(selected, |element| {
+                                element.border_b_2().border_color(theme.accent)
+                            })
+                            .hover(|element| element.bg(theme.overlay))
+                            .on_click(move |_, _, cx| {
+                                let _ = activate_waku.update(cx, |waku, cx| {
+                                    waku.activate_main_tab_at_index(index, cx);
+                                });
+                            })
+                            .child(icon("icons/file-diff.svg", 13.0, theme.text_tertiary))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .flex_1()
+                                    .truncate()
+                                    .child(tr!("right_panel.diff")),
+                            )
+                            .child(
+                                div()
+                                    .id(SharedString::from(format!("main-review-tab-close-{index}")))
+                                    .w(px(16.0))
+                                    .h(px(16.0))
+                                    .flex()
+                                    .items_center()
+                                    .justify_center()
+                                    .rounded(px(3.0))
+                                    .hover(|element| element.bg(theme.overlay_strong))
+                                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                        cx.stop_propagation();
+                                    })
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = close_waku.update(cx, |waku, cx| {
+                                            waku.close_main_review_tab(cx);
+                                        });
+                                    })
+                                    .child(icon("icons/x.svg", 10.0, theme.text_tertiary)),
+                            )
+                            .into_any_element(),
+                    );
+                }
             }
         }
 
@@ -2817,6 +2878,7 @@ impl Waku {
                 let _ = new_tab_waku.update(cx, |waku, cx| {
                     waku.main_tabs_open = true;
                     waku.active_main_file_tab = None;
+                    waku.active_main_review_tab = false;
                     if let Some(session_id) = waku.create_new_chat_tab(cx) {
                         let tab = MainTab::Chat(session_id);
                         if !waku.main_tabs.contains(&tab) {

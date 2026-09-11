@@ -403,11 +403,12 @@ impl Waku {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        let reviewing_diff = self.right_panel_visible
-            && self
-                .right_panel_active_surface
-                .and_then(|index| self.right_panel_surfaces.get(index))
-                .is_some_and(|surface| matches!(surface, RightPanelSurface::Diff));
+        let reviewing_diff = self.active_main_review_tab
+            || (self.right_panel_visible
+                && self
+                    .right_panel_active_surface
+                    .and_then(|index| self.right_panel_surfaces.get(index))
+                    .is_some_and(|surface| matches!(surface, RightPanelSurface::Diff)));
         let reviewing_background_work = self.right_panel_visible
             && self
                 .right_panel_active_surface

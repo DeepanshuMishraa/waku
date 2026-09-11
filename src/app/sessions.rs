@@ -26,6 +26,7 @@ impl Waku {
     pub(super) fn select_session(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
         if self.main_tabs_open || !self.main_tabs.is_empty() {
             self.active_main_file_tab = None;
+            self.active_main_review_tab = false;
             let tab = MainTab::Chat(session_id);
             if !self.main_tabs.contains(&tab) {
                 self.main_tabs.push(tab);
@@ -495,6 +496,7 @@ impl Waku {
         let id = session.id;
         self.state.push_session(session);
         self.active_main_file_tab = None;
+        self.active_main_review_tab = false;
         let tab = MainTab::Chat(id);
         if !self.main_tabs.contains(&tab) {
             self.main_tabs.push(tab);
