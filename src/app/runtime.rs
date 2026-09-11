@@ -1227,6 +1227,7 @@ impl Insulator {
             self.task_switcher.remove(*session_id);
         }
         self.state.projects = snapshot.projects;
+        self.ensure_workspace_sessions();
 
         let attach = self
             .state

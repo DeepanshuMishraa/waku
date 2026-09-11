@@ -20,6 +20,7 @@ impl Insulator {
 
     pub(super) fn select_project(&mut self, project_id: Uuid, cx: &mut Context<Self>) {
         self.state.selected_project = Some(project_id);
+        self.ensure_workspace_sessions();
         self.create_session_for(project_id, self.state.last_provider, cx);
     }
 
@@ -485,6 +486,22 @@ impl Insulator {
             .selected_project()
             .map(|p| p.id)
             .or_else(|| self.state.projects.first().map(|p| p.id))?;
+        if let Some(draft_id) = self
+            .state
+            .sessions
+            .iter()
+            .find(|session| session.project_id == project_id && !session.has_started())
+            .map(|session| session.id)
+        {
+            self.active_main_file_tab = None;
+            self.active_main_review_tab = false;
+            let tab = MainTab::Chat(draft_id);
+            if !self.main_tabs.contains(&tab) {
+                self.main_tabs.push(tab);
+            }
+            self.select_session(draft_id, cx);
+            return Some(draft_id);
+        }
         let runtime_mode =
             new_task_runtime_mode(self.selected_session(), self.state.last_runtime_mode);
         let conversation_root_id = self
@@ -503,6 +520,26 @@ impl Insulator {
         }
         self.select_session(id, cx);
         Some(id)
+    }
+
+    pub(super) fn ensure_workspace_sessions(&mut self) {
+        let projectless_root = crate::projectless::workspace_root();
+        let mut new_sessions = Vec::new();
+        for project in &self.state.projects {
+            if project.is_projectless()
+                || projectless_root
+                    .as_ref()
+                    .is_some_and(|root| project.path.starts_with(root))
+            {
+                continue;
+            }
+            if !self.state.sessions.iter().any(|s| s.project_id == project.id) {
+                new_sessions.push(self.state.new_session(project.id, self.state.last_provider));
+            }
+        }
+        for session in new_sessions {
+            self.state.push_session(session);
+        }
     }
 
     pub(super) fn new_session_action(

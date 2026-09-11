@@ -378,7 +378,7 @@ impl TerminalSession {
                 && column == cursor_column
             {
                 background = theme.text;
-                foreground = theme.terminal;
+                foreground = theme.on_inverse;
             }
 
             cells[row as usize * columns + column] = TerminalCell {
@@ -1219,7 +1219,8 @@ impl Render for TerminalView {
                             len: run.len,
                             font: run_font,
                             color: run.style.foreground,
-                            background_color: Some(run.style.background),
+                            background_color: (run.style.background != theme.terminal)
+                                .then_some(run.style.background),
                             underline: run.style.underline.then_some(UnderlineStyle {
                                 thickness: px(1.0),
                                 color: Some(run.style.foreground),
@@ -1342,7 +1343,6 @@ impl Render for TerminalView {
             .min_w_0()
             .px(px(TERMINAL_PADDING_X))
             .py(px(TERMINAL_PADDING_Y))
-            .bg(theme.terminal)
             .overflow_hidden()
             .flex()
             .flex_col()
@@ -1372,7 +1372,6 @@ impl Render for TerminalView {
                     .gap(px(7.0))
                     .border_b_1()
                     .border_color(theme.border)
-                    .bg(theme.surface)
                     .child(
                         div()
                             .w(px(6.0))

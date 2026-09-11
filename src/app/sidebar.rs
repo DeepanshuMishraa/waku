@@ -358,8 +358,8 @@ fn sidebar_project_is_projectless(project: &Project, projectless_root: Option<&P
     projectless_root.is_some_and(|root| project.path.starts_with(root))
 }
 
-fn sidebar_project_should_show(session_count: usize) -> bool {
-    session_count > 0
+fn sidebar_project_should_show(_session_count: usize) -> bool {
+    true
 }
 
 fn persisted_sidebar_branch_label(workspace: &SessionWorkspace) -> Option<&str> {
@@ -924,6 +924,7 @@ impl Insulator {
         self.active_main_review_tab = false;
         self.main_tabs.clear();
         self.main_tabs_open = false;
+        self.ensure_workspace_sessions();
         self.save();
         cx.notify();
     }
@@ -1410,8 +1411,18 @@ impl Insulator {
             .sessions
             .iter()
             .filter(|session| {
-                session.conversation_root_id.is_none()
-                    && (session.has_started() || self.state.selected_session == Some(session.id))
+                if session.conversation_root_id.is_some() {
+                    return false;
+                }
+                let is_projectless = self.state.projects.iter().any(|project| {
+                    project.id == session.project_id
+                        && sidebar_project_is_projectless(project, projectless_root.as_deref())
+                });
+                if is_projectless {
+                    session.has_started() || self.state.selected_session == Some(session.id)
+                } else {
+                    true
+                }
             })
             .collect::<Vec<_>>();
         sort_sidebar_sessions(&mut sessions, self.state.sidebar_ordering);
@@ -1734,8 +1745,6 @@ impl Insulator {
                 .filter(|session| {
                     session.conversation_root_id.is_none()
                         && session.project_id == project_id
-                        && (session.has_started()
-                            || self.state.selected_session == Some(session.id))
                 })
                 .count()
         } else if matches!(group, SidebarGroup::Projectless) {
@@ -2928,7 +2937,9 @@ impl Insulator {
             .items_center()
             .border_b_1()
             .border_color(theme.border)
-            .bg(theme.surface)
+            .when(self.state.window_style == WindowStyle::Solid, |element| {
+                element.bg(theme.surface)
+            })
             .px(px(6.0))
             .child(
                 div()
@@ -3497,8 +3508,8 @@ mod tests {
     }
 
     #[test]
-    fn empty_unselected_workspace_is_hidden_from_sidebar() {
-        assert!(!sidebar_project_should_show(0));
+    fn workspace_always_shows_in_sidebar() {
+        assert!(sidebar_project_should_show(0));
         assert!(sidebar_project_should_show(1));
     }
 

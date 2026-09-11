@@ -2616,7 +2616,6 @@ impl Insulator {
             .gap(px(6.0))
             .border_b_1()
             .border_color(theme.border)
-            .bg(theme.surface)
             .child(
                 div()
                     .id("right-panel-terminal-collapse-btn")
@@ -3925,7 +3924,9 @@ impl Insulator {
             .min_h_0()
             .flex()
             .flex_col()
-            .bg(theme.surface)
+            .when(self.state.window_style == WindowStyle::Solid, |el| {
+                el.bg(theme.surface)
+            })
             .font_family(md::render::active_mono_family())
             .text_size(px(text_size))
             .line_height(px(line_height))
@@ -4020,7 +4021,9 @@ impl Insulator {
             .flex_1()
             .min_h_0()
             .relative()
-            .bg(theme.surface)
+            .when(self.state.window_style == WindowStyle::Solid, |el| {
+                el.bg(theme.surface)
+            })
             .child(
                 div()
                     .id(SharedString::from(format!("file-preview-{relative_path}")))
@@ -4502,7 +4505,17 @@ impl Insulator {
             .gap(px(8.0))
             .border_b_1()
             .border_color(theme.border)
-            .bg(theme.surface)
+            .bg(if sticky {
+                match self.state.window_style {
+                    WindowStyle::LiquidGlass | WindowStyle::Image => theme.raised,
+                    WindowStyle::Solid => theme.surface,
+                }
+            } else {
+                match self.state.window_style {
+                    WindowStyle::LiquidGlass | WindowStyle::Image => theme.overlay,
+                    WindowStyle::Solid => theme.surface,
+                }
+            })
             .when(sticky, |header| header.block_mouse_except_scroll())
             .child(file_icon(file_icon_for_path(&file.path), 14.0))
             .child(

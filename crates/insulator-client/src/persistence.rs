@@ -772,6 +772,20 @@ impl PersistedState {
     }
 
     fn ensure_runtime_session(&mut self) {
+        let projectless_root = insulator_protocol::projectless::workspace_root();
+        for project in &self.projects {
+            if project.is_projectless()
+                || projectless_root
+                    .as_ref()
+                    .is_some_and(|root| project.path.starts_with(root))
+            {
+                continue;
+            }
+            if !self.sessions.iter().any(|s| s.project_id == project.id) {
+                let session = self.new_session(project.id, self.last_provider);
+                self.sessions.push(session);
+            }
+        }
         if self
             .selected_session
             .is_some_and(|selected| self.sessions.iter().any(|session| session.id == selected))
@@ -782,12 +796,24 @@ impl PersistedState {
         let Some(project_id) = self
             .selected_project
             .filter(|selected| self.projects.iter().any(|project| project.id == *selected))
+            .or_else(|| self.projects.iter().find(|p| !p.is_projectless()).map(|p| p.id))
         else {
             return;
         };
-        let session = self.new_session(project_id, self.last_provider);
-        self.selected_session = Some(session.id);
-        self.sessions.push(session);
+        let session = if let Some(existing) = self
+            .sessions
+            .iter()
+            .find(|s| s.project_id == project_id && !s.has_started())
+        {
+            existing.id
+        } else {
+            let session = self.new_session(project_id, self.last_provider);
+            let id = session.id;
+            self.sessions.push(session);
+            id
+        };
+        self.selected_project = Some(project_id);
+        self.selected_session = Some(session);
     }
 
     fn migrate_loaded(&mut self) {

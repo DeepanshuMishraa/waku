@@ -40,11 +40,11 @@ impl WindowStyle {
 #[serde(rename_all = "snake_case")]
 pub enum ColorTheme {
     InsulatorLight,
+    #[default]
     InsulatorDark,
     CatppuccinLatte,
     CatppuccinFrappe,
     CatppuccinMacchiato,
-    #[default]
     CatppuccinMocha,
     TokyoNight,
     TokyoStorm,

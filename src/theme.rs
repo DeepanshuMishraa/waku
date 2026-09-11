@@ -268,13 +268,18 @@ impl Theme {
                 self.inset = Hsla { a: alpha_inset, ..self.inset };
                 self.surface = Hsla { a: alpha_surface, ..self.surface };
                 self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
+                self.terminal = transparent_black();
             }
             WindowStyle::Image => {
-                self.raised = Hsla { a: 0.88, ..self.raised };
-                self.composer = Hsla { a: 0.88, ..self.composer };
-                self.inset = Hsla { a: 0.82, ..self.inset };
+                let alpha_raised = if self.is_dark { 0.35 } else { 0.45 };
+                let alpha_composer = if self.is_dark { 0.35 } else { 0.45 };
+                let alpha_inset = if self.is_dark { 0.30 } else { 0.40 };
+                self.raised = Hsla { a: alpha_raised, ..self.raised };
+                self.composer = Hsla { a: alpha_composer, ..self.composer };
+                self.inset = Hsla { a: alpha_inset, ..self.inset };
                 self.surface = Hsla { a: 0.85, ..self.surface };
                 self.canvas = Hsla { a: 0.85, ..self.canvas };
+                self.terminal = transparent_black();
             }
             WindowStyle::Solid => {}
         }
