@@ -3212,10 +3212,15 @@ impl Insulator {
             .justify_center()
             .px(px(20.0))
             .pb(px(52.0))
-            .child(icon("icons/sparkle.svg", 20.0, theme.accent))
+            .child(
+                img(crate::assets::insulator_mark())
+                    .w(px(57.0))
+                    .h(px(72.0))
+                    .object_fit(ObjectFit::Contain),
+            )
             .child(
                 div()
-                    .mt(px(14.0))
+                    .mt(px(16.0))
                     .max_w_full()
                     .flex()
                     .flex_wrap()

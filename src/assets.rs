@@ -234,6 +234,7 @@ const TEXT_FONTS: &[&[u8]] = &[
 /// never as a primary GPUI family; see `register_fonts_with_coretext`.
 const SYMBOLS_FONT: &[u8] = include_bytes!("../assets/fonts/SymbolsNerdFontMono-Regular.ttf");
 static HOME_LOGO: OnceLock<Arc<gpui::Image>> = OnceLock::new();
+static INSULATOR_MARK: OnceLock<Arc<gpui::Image>> = OnceLock::new();
 
 /// Family name of [`SYMBOLS_FONT`] for `FontFallbacks` lists.
 pub const SYMBOLS_FONT_FAMILY: &str = "Symbols Nerd Font Mono";
@@ -244,6 +245,17 @@ pub fn home_logo() -> Arc<gpui::Image> {
             Arc::new(gpui::Image::from_bytes(
                 gpui::ImageFormat::Png,
                 include_bytes!("../assets/insulator-logo.png").to_vec(),
+            ))
+        })
+        .clone()
+}
+
+pub fn insulator_mark() -> Arc<gpui::Image> {
+    INSULATOR_MARK
+        .get_or_init(|| {
+            Arc::new(gpui::Image::from_bytes(
+                gpui::ImageFormat::Png,
+                include_bytes!("../assets/insulator-mark.png").to_vec(),
             ))
         })
         .clone()
