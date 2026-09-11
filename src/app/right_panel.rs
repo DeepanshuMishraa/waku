@@ -1896,20 +1896,67 @@ impl Insulator {
     }
 
     pub(super) fn active_right_panel_surface(&self) -> Option<&RightPanelSurface> {
-        self.right_panel_active_surface
-            .and_then(|index| self.right_panel_surfaces.get(index))
+        match &self.right_panel_upper_tab {
+            RightPanelUpperTab::Files => Some(&RightPanelSurface::Files),
+            RightPanelUpperTab::Changes => Some(&RightPanelSurface::Diff),
+            _ => self
+                .right_panel_active_surface
+                .and_then(|index| self.right_panel_surfaces.get(index)),
+        }
+    }
+
+    pub(super) fn right_panel_active_terminal_id(&self) -> Option<Uuid> {
+        self.right_panel_terminal_ids
+            .get(self.right_panel_active_terminal_index)
+            .copied()
+            .or_else(|| self.right_panel_terminal_ids.first().copied())
+    }
+
+    pub(super) fn add_right_panel_terminal(&mut self, cx: &mut Context<Self>) -> Uuid {
+        let terminal_id = Uuid::new_v4();
+        self.right_panel_terminal_ids.push(terminal_id);
+        self.right_panel_active_terminal_index = self.right_panel_terminal_ids.len() - 1;
+        self.right_panel_terminal_collapsed = false;
+        self.ensure_right_panel_terminal(terminal_id, cx);
+        self.request_active_terminal_focus();
+        cx.notify();
+        terminal_id
+    }
+
+    pub(super) fn close_right_panel_terminal(&mut self, terminal_id: Uuid, cx: &mut Context<Self>) {
+        if let Some(pos) = self.right_panel_terminal_ids.iter().position(|id| *id == terminal_id) {
+            self.right_panel_terminal_ids.remove(pos);
+            self.right_panel_terminals.remove(&terminal_id);
+            if self.right_panel_terminal_ids.is_empty() {
+                self.right_panel_active_terminal_index = 0;
+            } else if self.right_panel_active_terminal_index >= self.right_panel_terminal_ids.len() {
+                self.right_panel_active_terminal_index = self.right_panel_terminal_ids.len() - 1;
+            }
+            self.request_active_terminal_focus();
+            cx.notify();
+        }
+    }
+
+    pub(super) fn select_right_panel_terminal(&mut self, index: usize, cx: &mut Context<Self>) {
+        if index < self.right_panel_terminal_ids.len() {
+            self.right_panel_active_terminal_index = index;
+            self.request_active_terminal_focus();
+            cx.notify();
+        }
     }
 
     pub(super) fn request_active_terminal_focus(&mut self) {
         self.right_panel_pending_terminal_focus = self
-            .active_right_panel_surface()
-            .and_then(RightPanelSurface::terminal_id);
+            .right_panel_active_terminal_id()
+            .or_else(|| self.active_right_panel_surface().and_then(RightPanelSurface::terminal_id));
     }
 
     pub(super) fn request_active_browser_focus(&mut self) {
-        self.right_panel_pending_browser_focus = self
-            .active_right_panel_surface()
-            .and_then(RightPanelSurface::browser_id);
+        self.right_panel_pending_browser_focus = if self.right_panel_upper_tab == RightPanelUpperTab::Browser {
+            self.right_panel_browser_id
+        } else {
+            self.active_right_panel_surface().and_then(RightPanelSurface::browser_id)
+        };
     }
 
     /// The file the active editor surface is showing, whether via a File tab
@@ -1950,40 +1997,82 @@ impl Insulator {
         }
     }
 
+    pub(super) fn select_right_panel_upper_tab(
+        &mut self,
+        tab: RightPanelUpperTab,
+        cx: &mut Context<Self>,
+    ) {
+        self.right_panel_upper_tab = tab.clone();
+        match tab {
+            RightPanelUpperTab::Files => {
+                self.refresh_right_panel_working_tree(cx);
+            }
+            RightPanelUpperTab::Changes => {
+                self.refresh_right_panel_diff(cx);
+            }
+            RightPanelUpperTab::Browser => {
+                let browser_id = *self.right_panel_browser_id.get_or_insert_with(Uuid::new_v4);
+                self.right_panel_pending_browser_focus = Some(browser_id);
+            }
+            RightPanelUpperTab::BackgroundWork { .. } => {}
+        }
+        cx.notify();
+    }
+
     pub(super) fn open_right_panel_surface(
         &mut self,
         surface: RightPanelSurface,
         cx: &mut Context<Self>,
     ) {
-        let reusable_index = reusable_surface_index(&self.right_panel_surfaces, &surface);
+        match &surface {
+            RightPanelSurface::Files | RightPanelSurface::File(_) => {
+                self.right_panel_upper_tab = RightPanelUpperTab::Files;
+                self.refresh_right_panel_working_tree(cx);
+            }
+            RightPanelSurface::Diff => {
+                self.right_panel_upper_tab = RightPanelUpperTab::Changes;
+                self.refresh_right_panel_diff(cx);
+                if self.main_tabs.is_empty() {
+                    if let Some(session_id) = self.state.selected_session {
+                        self.main_tabs.push(MainTab::Chat(session_id));
+                    }
+                }
+                if !self.main_tabs.contains(&MainTab::Review) {
+                    self.main_tabs.push(MainTab::Review);
+                }
+                self.active_main_review_tab = true;
+                self.active_main_file_tab = None;
+                self.main_tabs_open = true;
+            }
+            RightPanelSurface::Browser(browser_id) => {
+                self.right_panel_browser_id = Some(*browser_id);
+                self.right_panel_upper_tab = RightPanelUpperTab::Browser;
+                self.right_panel_pending_browser_focus = Some(*browser_id);
+            }
+            RightPanelSurface::Terminal(terminal_id) => {
+                if let Some(pos) = self.right_panel_terminal_ids.iter().position(|id| id == terminal_id) {
+                    self.right_panel_active_terminal_index = pos;
+                } else {
+                    self.right_panel_terminal_ids.push(*terminal_id);
+                    self.right_panel_active_terminal_index = self.right_panel_terminal_ids.len() - 1;
+                }
+                self.right_panel_terminal_collapsed = false;
+                self.ensure_right_panel_terminal(*terminal_id, cx);
+                self.request_active_terminal_focus();
+            }
+            RightPanelSurface::BackgroundWork { key, title } => {
+                self.right_panel_upper_tab = RightPanelUpperTab::BackgroundWork {
+                    key: key.clone(),
+                    title: title.clone(),
+                };
+            }
+        }
+
         if matches!(&surface, RightPanelSurface::File(_)) {
             self.ensure_initial_right_panel_file_editor_width();
         }
-        if surface == RightPanelSurface::Diff {
-            self.refresh_right_panel_diff(cx);
-            if self.main_tabs.is_empty() {
-                if let Some(session_id) = self.state.selected_session {
-                    self.main_tabs.push(MainTab::Chat(session_id));
-                }
-            }
-            if !self.main_tabs.contains(&MainTab::Review) {
-                self.main_tabs.push(MainTab::Review);
-            }
-            self.active_main_review_tab = true;
-            self.active_main_file_tab = None;
-            self.main_tabs_open = true;
-        }
-        if matches!(
-            surface,
-            RightPanelSurface::Files | RightPanelSurface::File(_)
-        ) {
-            self.refresh_right_panel_working_tree(cx);
-        }
-        if let Some(terminal_id) = surface.terminal_id() {
-            self.ensure_right_panel_terminal(terminal_id, cx);
-        }
-        // Browser views are created on the surface's first render, which has
-        // the `Window` their webview must attach to.
+
+        let reusable_index = reusable_surface_index(&self.right_panel_surfaces, &surface);
         let index = match reusable_index {
             Some(index) => index,
             None => {
@@ -1993,8 +2082,6 @@ impl Insulator {
         };
         self.right_panel_active_surface = Some(index);
         self.reveal_right_panel_tab(index);
-        self.request_active_terminal_focus();
-        self.request_active_browser_focus();
         self.set_right_panel_visible(true, cx);
         cx.notify();
     }
@@ -2399,6 +2486,349 @@ impl Insulator {
             }))
     }
 
+    fn render_right_panel_lower_terminal(
+        &mut self,
+        panel_width: f32,
+        window: &mut Window,
+        cx: &mut Context<Self>,
+    ) -> Div {
+        let theme = Theme::current(cx);
+        let active_terminal_id = self.right_panel_active_terminal_id();
+
+        if let Some(terminal_id) = active_terminal_id {
+            self.ensure_right_panel_terminal(terminal_id, cx);
+            if self.right_panel_pending_terminal_focus == Some(terminal_id)
+                && let Some(terminal) = self.right_panel_terminals.get(&terminal_id)
+            {
+                let focus_handle = terminal.read(cx).focus_handle(cx);
+                window.focus(&focus_handle, cx);
+                self.right_panel_pending_terminal_focus = None;
+            }
+        }
+
+        let is_collapsed = self.right_panel_terminal_collapsed;
+        let chevron_icon = if is_collapsed {
+            "icons/chevron-up.svg"
+        } else {
+            "icons/chevron-down.svg"
+        };
+
+        let terminal_ids = self.right_panel_terminal_ids.clone();
+        let active_index = self.right_panel_active_terminal_index;
+
+        let mut tabs_strip = div()
+            .id("right-panel-terminal-tabs")
+            .h_full()
+            .flex_1()
+            .min_w_0()
+            .flex()
+            .items_center()
+            .gap(px(3.0))
+            .overflow_x_scroll()
+            .track_scroll(&self.right_panel_terminal_tabs_scroll_handle);
+
+        for (i, id) in terminal_ids.iter().enumerate() {
+            let is_active = i == active_index;
+            let id = *id;
+            let term_view = self.right_panel_terminals.get(&id).cloned();
+            let is_exited = term_view.as_ref().map_or(false, |t| t.read(cx).is_exited());
+            let tab_element_id = ("right-panel-term-tab", i);
+            let close_element_id = ("close-term-tab", i);
+
+            tabs_strip = tabs_strip.child(
+                div()
+                    .id(tab_element_id)
+                    .h(px(24.0))
+                    .px(px(6.0))
+                    .rounded(px(4.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .cursor_pointer()
+                    .when(is_active, |el| el.bg(theme.overlay_strong))
+                    .when(!is_active, |el| el.hover(|h| h.bg(theme.overlay)))
+                    .child(
+                        div()
+                            .size(px(6.0))
+                            .rounded_full()
+                            .flex_none()
+                            .bg(if is_exited { theme.danger } else { theme.accent }),
+                    )
+                    .child(
+                        div()
+                            .truncate()
+                            .text_size(sp(11.5))
+                            .font_weight(if is_active { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                            .text_color(if is_active { theme.text } else { theme.text_secondary })
+                            .child(format!("Terminal {}", i + 1)),
+                    )
+                    .child(
+                        div()
+                            .id(close_element_id)
+                            .size(px(14.0))
+                            .rounded(px(3.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .hover(|h| h.bg(theme.overlay))
+                            .child(icon("icons/x.svg", 9.0, theme.text_tertiary))
+                            .on_click(cx.listener(move |this, _, _, cx| {
+                                cx.stop_propagation();
+                                this.close_right_panel_terminal(id, cx);
+                            })),
+                    )
+                    .on_click(cx.listener(move |this, _, _, cx| {
+                        this.select_right_panel_terminal(i, cx);
+                    })),
+            );
+        }
+
+        // Plus button to open new terminal
+        tabs_strip = tabs_strip.child(
+            div()
+                .id("add-right-panel-terminal-btn")
+                .size(px(20.0))
+                .rounded(px(4.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .justify_center()
+                .cursor_pointer()
+                .hover(|el| el.bg(theme.overlay))
+                .tooltip(|window, cx| Tooltip::new(SharedString::from("New terminal")).build(window, cx))
+                .child(icon("icons/plus.svg", 11.0, theme.text_secondary))
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.add_right_panel_terminal(cx);
+                })),
+        );
+
+        let active_view = active_terminal_id.and_then(|id| self.right_panel_terminals.get(&id).cloned());
+
+        let mut header = div()
+            .id("right-panel-terminal-header")
+            .h(px(32.0))
+            .flex_none()
+            .px(px(8.0))
+            .flex()
+            .items_center()
+            .gap(px(6.0))
+            .border_b_1()
+            .border_color(theme.border)
+            .bg(theme.surface)
+            .child(
+                div()
+                    .id("right-panel-terminal-collapse-btn")
+                    .size(px(20.0))
+                    .rounded(px(4.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .cursor_pointer()
+                    .hover(|el| el.bg(theme.overlay))
+                    .child(icon(chevron_icon, 11.0, theme.text_secondary))
+                    .on_click(cx.listener(|this, _, _, cx| {
+                        this.right_panel_terminal_collapsed = !this.right_panel_terminal_collapsed;
+                        cx.notify();
+                    })),
+            );
+
+        if terminal_ids.is_empty() {
+            header = header
+                .child(
+                    div()
+                        .flex_1()
+                        .min_w_0()
+                        .flex()
+                        .items_center()
+                        .gap(px(5.0))
+                        .child(icon("icons/terminal.svg", 12.0, theme.text_secondary))
+                        .child(
+                            div()
+                                .text_size(sp(12.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(theme.text_secondary)
+                                .child(tr!("right_panel.terminal")),
+                        ),
+                )
+                .child(
+                    div()
+                        .id("add-right-panel-terminal-btn-empty")
+                        .size(px(20.0))
+                        .rounded(px(4.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|el| el.bg(theme.overlay))
+                        .tooltip(|window, cx| Tooltip::new(SharedString::from("New terminal")).build(window, cx))
+                        .child(icon("icons/plus.svg", 11.0, theme.text_secondary))
+                        .on_click(cx.listener(|this, _, _, cx| {
+                            this.add_right_panel_terminal(cx);
+                        })),
+                );
+        } else {
+            header = header.child(tabs_strip);
+
+            if let Some(ref t) = active_view {
+                let weak_t = t.downgrade();
+                header = header.child(
+                    div()
+                        .id("right-panel-terminal-restart-btn")
+                        .size(px(20.0))
+                        .rounded(px(4.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|el| el.bg(theme.overlay))
+                        .tooltip(|window, cx| Tooltip::new(SharedString::from("Restart terminal")).build(window, cx))
+                        .child(icon("icons/rotate-cw.svg", 11.0, theme.text_tertiary))
+                        .on_click(move |_, _, cx| {
+                            let _ = weak_t.update(cx, |t, cx| {
+                                t.restart(cx);
+                            });
+                        }),
+                );
+            }
+
+            if let Some(active_id) = active_terminal_id {
+                header = header.child(
+                    div()
+                        .id("right-panel-terminal-close-btn")
+                        .size(px(20.0))
+                        .rounded(px(4.0))
+                        .flex_none()
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_pointer()
+                        .hover(|el| el.bg(theme.overlay))
+                        .tooltip(|window, cx| Tooltip::new(SharedString::from("Close terminal")).build(window, cx))
+                        .child(icon("icons/x.svg", 11.0, theme.text_tertiary))
+                        .on_click(cx.listener(move |this, _, _, cx| {
+                            this.close_right_panel_terminal(active_id, cx);
+                        })),
+                );
+            }
+        }
+
+        if is_collapsed {
+            div()
+                .w_full()
+                .h(px(32.0))
+                .flex_none()
+                .flex()
+                .flex_col()
+                .child(header)
+        } else {
+            let term_height = self.right_panel_terminal_height;
+            let content_height = (term_height - 32.0).max(60.0);
+
+            let body = if terminal_ids.is_empty() {
+                div()
+                    .size_full()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .items_center()
+                    .justify_center()
+                    .gap(px(10.0))
+                    .child(
+                        div()
+                            .size(px(36.0))
+                            .rounded_full()
+                            .bg(theme.overlay)
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .child(icon("icons/terminal.svg", 18.0, theme.text_secondary)),
+                    )
+                    .child(
+                        div()
+                            .text_size(sp(12.5))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.text)
+                            .text_center()
+                            .child("Terminal"),
+                    )
+                    .child(
+                        div()
+                            .text_size(sp(11.5))
+                            .text_color(theme.text_tertiary)
+                            .text_center()
+                            .child(if self.selected_workspace_path().is_some() {
+                                "No active terminal session"
+                            } else {
+                                "Open a terminal in your home directory"
+                            }),
+                    )
+                    .child(
+                        div()
+                            .id("start-right-panel-terminal-button")
+                            .h(px(26.0))
+                            .px(px(12.0))
+                            .mt(px(4.0))
+                            .rounded(px(6.0))
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
+                            .bg(theme.inverse)
+                            .hover(|h| h.opacity(0.9))
+                            .cursor_pointer()
+                            .child(icon("icons/terminal.svg", 12.0, theme.on_inverse))
+                            .child(
+                                div()
+                                    .text_size(sp(12.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.on_inverse)
+                                    .child("Start Terminal"),
+                            )
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.add_right_panel_terminal(cx);
+                            })),
+                    )
+                    .into_any_element()
+            } else if let Some(ref t) = active_view {
+                t.update(cx, |t, _| {
+                    t.set_panel_size(panel_width, content_height);
+                    t.set_show_toolbar(false);
+                });
+                t.clone().into_any_element()
+            } else {
+                self.render_right_panel_empty_message(
+                    tr!("right_panel.terminal_unavailable"),
+                    tr!("right_panel.terminal_unavailable_description"),
+                    cx,
+                )
+                .into_any_element()
+            };
+
+            div()
+                .w_full()
+                .h(px(term_height))
+                .flex_none()
+                .flex()
+                .flex_col()
+                .child(header)
+                .child(
+                    div()
+                        .size_full()
+                        .flex_1()
+                        .min_h_0()
+                        .min_w_0()
+                        .flex()
+                        .flex_col()
+                        .child(body),
+                )
+        }
+    }
+
     pub(super) fn render_right_panel(
         &mut self,
         width: f32,
@@ -2406,48 +2836,16 @@ impl Insulator {
         cx: &mut Context<Self>,
     ) -> Stateful<Div> {
         let theme = Theme::current(cx);
-        let active_terminal_id = self
-            .active_right_panel_surface()
-            .and_then(RightPanelSurface::terminal_id);
-        if self.right_panel_pending_terminal_focus == active_terminal_id
-            && let Some(terminal_id) = active_terminal_id
-            && let Some(terminal) = self.right_panel_terminals.get(&terminal_id)
-        {
-            let focus_handle = terminal.read(cx).focus_handle(cx);
-            window.focus(&focus_handle, cx);
-            self.right_panel_pending_terminal_focus = None;
-        }
-        let body = match self.active_right_panel_surface().cloned() {
-            None => self.render_right_panel_chooser(cx).into_any_element(),
-            Some(RightPanelSurface::BackgroundWork { key, .. }) => self
-                .render_background_work_surface(&key, cx)
-                .into_any_element(),
-            Some(RightPanelSurface::Files) => self
+
+        let upper_body = match self.right_panel_upper_tab.clone() {
+            RightPanelUpperTab::Files => self
                 .render_right_panel_files(width, window, cx)
                 .into_any_element(),
-            Some(RightPanelSurface::Diff) => self
+            RightPanelUpperTab::Changes => self
                 .render_right_panel_diff(width, window, cx)
                 .into_any_element(),
-            Some(RightPanelSurface::Terminal(terminal_id)) => self
-                .right_panel_terminals
-                .get(&terminal_id)
-                .cloned()
-                .inspect(|terminal| {
-                    terminal.update(cx, |terminal, _| terminal.set_panel_width(width));
-                })
-                .map(IntoElement::into_any_element)
-                .unwrap_or_else(|| {
-                    self.render_right_panel_empty_message(
-                        tr!("right_panel.terminal_unavailable"),
-                        tr!("right_panel.terminal_unavailable_description"),
-                        cx,
-                    )
-                    .into_any_element()
-                }),
-            Some(RightPanelSurface::File(path)) => self
-                .render_right_panel_file(path, width, window, cx)
-                .into_any_element(),
-            Some(RightPanelSurface::Browser(browser_id)) => {
+            RightPanelUpperTab::Browser => {
+                let browser_id = *self.right_panel_browser_id.get_or_insert_with(Uuid::new_v4);
                 let browser = self.ensure_right_panel_browser(browser_id, window, cx);
                 if self
                     .right_panel_pending_browser_focus
@@ -2458,7 +2856,12 @@ impl Insulator {
                 }
                 browser.into_any_element()
             }
+            RightPanelUpperTab::BackgroundWork { key, .. } => self
+                .render_background_work_surface(&key, cx)
+                .into_any_element(),
         };
+
+        let lower_terminal = self.render_right_panel_lower_terminal(width, window, cx);
 
         div()
             .id("right-panel")
@@ -2477,7 +2880,22 @@ impl Insulator {
             })
             .relative()
             .child(self.render_right_panel_header(window, cx))
-            .child(body)
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .min_w_0()
+                    .flex()
+                    .flex_col()
+                    .overflow_hidden()
+                    .child(upper_body),
+            )
+            .child(self.render_horizontal_panel_resize_handle(
+                "right-panel-split-handle",
+                PanelResizeTarget::RightPanelSplit,
+                cx,
+            ))
+            .child(lower_terminal)
             .child(self.render_panel_resize_handle(
                 "right-panel-resize-handle",
                 PanelResizeTarget::RightPanel,
@@ -2555,9 +2973,9 @@ impl Insulator {
         let active_browser = if self.settings_page.is_none()
             && self.right_panel_visible
             && self.right_panel_slide.is_none()
+            && self.right_panel_upper_tab == RightPanelUpperTab::Browser
         {
-            self.active_right_panel_surface()
-                .and_then(RightPanelSurface::browser_id)
+            self.right_panel_browser_id
         } else {
             None
         };
@@ -2569,7 +2987,7 @@ impl Insulator {
         }
     }
 
-    fn ensure_right_panel_terminal(&mut self, terminal_id: Uuid, cx: &mut Context<Self>) {
+    pub(super) fn ensure_right_panel_terminal(&mut self, terminal_id: Uuid, cx: &mut Context<Self>) {
         if self.daemon.is_remote() {
             // A desktop PTY would interpret the daemon's cwd on the wrong
             // machine. Keep the surface unavailable until the protocol grows
@@ -2580,15 +2998,17 @@ impl Insulator {
         let Some(working_directory) = self
             .selected_workspace_path()
             .map(std::path::Path::to_path_buf)
+            .or_else(|| self.home_directory.clone().or_else(dirs::home_dir).or_else(|| std::env::current_dir().ok()))
         else {
             self.right_panel_terminals.remove(&terminal_id);
             return;
         };
-        let matches_project = self
-            .right_panel_terminals
-            .get(&terminal_id)
-            .is_some_and(|terminal| terminal.read(cx).working_directory() == working_directory);
-        if !matches_project {
+        let matches = match (self.selected_workspace_path(), self.right_panel_terminals.get(&terminal_id)) {
+            (Some(project_path), Some(terminal)) => terminal.read(cx).working_directory() == project_path,
+            (None, Some(_)) => true,
+            _ => false,
+        };
+        if !matches {
             self.right_panel_terminals.insert(
                 terminal_id,
                 cx.new(|cx| TerminalView::new(working_directory.clone(), cx)),
@@ -2597,11 +3017,14 @@ impl Insulator {
     }
 
     pub(super) fn ensure_right_panel_terminals(&mut self, cx: &mut Context<Self>) {
-        let active_terminal_ids = self
+        let mut active_terminal_ids = self
             .right_panel_surfaces
             .iter()
             .filter_map(RightPanelSurface::terminal_id)
             .collect::<Vec<_>>();
+        if self.right_panel_visible {
+            active_terminal_ids.extend(self.right_panel_terminal_ids.iter().copied());
+        }
         let retained_terminal_ids = active_terminal_ids
             .iter()
             .copied()
@@ -2621,7 +3044,15 @@ impl Insulator {
 
     fn render_right_panel_header(&self, window: &Window, cx: &mut Context<Self>) -> Stateful<Div> {
         let theme = Theme::current(cx);
-        let active_surface = self.right_panel_active_surface;
+        let changes_count = self
+            .right_panel_diff_snapshot
+            .as_ref()
+            .map_or(0, |snapshot| snapshot.files.len());
+
+        let is_files = matches!(self.right_panel_upper_tab, RightPanelUpperTab::Files);
+        let is_changes = matches!(self.right_panel_upper_tab, RightPanelUpperTab::Changes);
+        let is_browser = matches!(self.right_panel_upper_tab, RightPanelUpperTab::Browser);
+
         let mut tabs = div()
             .id("right-panel-tabs")
             .h_full()
@@ -2629,203 +3060,159 @@ impl Insulator {
             .flex_1()
             .flex()
             .items_center()
-            .gap(px(4.0))
-            .overflow_x_scroll()
-            .track_scroll(&self.right_panel_tabs_scroll_handle);
-        for (index, surface) in self.right_panel_surfaces.iter().cloned().enumerate() {
-            let active = active_surface == Some(index);
-            let dirty = self.right_panel_surface_is_dirty(&surface);
-            let label = SharedString::from(match &surface {
-                // Browser tabs read like browser tabs: the page title once
-                // known, the address until then.
-                RightPanelSurface::Browser(browser_id) => self
-                    .right_panel_browsers
-                    .get(browser_id)
-                    .and_then(|browser| browser.read(cx).tab_label())
-                    .unwrap_or_else(|| surface.label()),
-                _ => {
-                    right_panel_tab_label(&surface, self.right_panel_files_selected_path.as_deref())
-                }
-            });
-            let icon_path =
-                right_panel_tab_icon(&surface, self.right_panel_files_selected_path.as_deref());
-            let uses_file_icon = matches!(&surface, RightPanelSurface::File(_))
-                || matches!(&surface, RightPanelSurface::Files)
-                    && self.right_panel_files_selected_path.is_some();
-            let activate_weak = cx.entity().downgrade();
-            let close_weak = cx.entity().downgrade();
+            .gap(px(4.0));
+
+        tabs = tabs.child(
+            div()
+                .id("right-panel-tab-files")
+                .h(px(28.0))
+                .px(px(8.0))
+                .rounded(px(6.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .when(is_files, |el| el.bg(theme.overlay_strong))
+                .when(!is_files, |el| el.hover(|h| h.bg(theme.overlay)))
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(sp(12.5))
+                        .font_weight(if is_files { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                        .text_color(if is_files { theme.text } else { theme.text_secondary })
+                        .child("All files"),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.select_right_panel_upper_tab(RightPanelUpperTab::Files, cx);
+                })),
+        );
+
+        tabs = tabs.child(
+            div()
+                .id("right-panel-tab-changes")
+                .h(px(28.0))
+                .px(px(8.0))
+                .rounded(px(6.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .when(is_changes, |el| el.bg(theme.overlay_strong))
+                .when(!is_changes, |el| el.hover(|h| h.bg(theme.overlay)))
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(sp(12.5))
+                        .font_weight(if is_changes { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                        .text_color(if is_changes { theme.text } else { theme.text_secondary })
+                        .child(format!("Changes {changes_count}")),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.select_right_panel_upper_tab(RightPanelUpperTab::Changes, cx);
+                })),
+        );
+
+        tabs = tabs.child(
+            div()
+                .id("right-panel-tab-browser")
+                .h(px(28.0))
+                .px(px(8.0))
+                .rounded(px(6.0))
+                .flex_none()
+                .flex()
+                .items_center()
+                .cursor_pointer()
+                .when(is_browser, |el| el.bg(theme.overlay_strong))
+                .when(!is_browser, |el| el.hover(|h| h.bg(theme.overlay)))
+                .child(
+                    div()
+                        .truncate()
+                        .text_size(sp(12.5))
+                        .font_weight(if is_browser { FontWeight::MEDIUM } else { FontWeight::NORMAL })
+                        .text_color(if is_browser { theme.text } else { theme.text_secondary })
+                        .child("Browser"),
+                )
+                .on_click(cx.listener(|this, _, _, cx| {
+                    this.select_right_panel_upper_tab(RightPanelUpperTab::Browser, cx);
+                })),
+        );
+
+        if let RightPanelUpperTab::BackgroundWork { title, .. } = &self.right_panel_upper_tab {
+            let label = if title.is_empty() {
+                tr!("background.process")
+            } else {
+                title.clone()
+            };
             tabs = tabs.child(
                 div()
-                    .id(SharedString::from(format!("right-panel-tab-{index}")))
+                    .id("right-panel-tab-bg-work")
                     .h(px(28.0))
-                    .min_w(px(100.0))
-                    .max_w(px(176.0))
+                    .max_w(px(160.0))
                     .px(px(8.0))
                     .rounded(px(6.0))
                     .flex_none()
                     .flex()
                     .items_center()
                     .gap(px(6.0))
-                    .cursor_default()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                        cx.stop_propagation();
-                    })
-                    .when(active, |element| element.bg(theme.overlay_strong))
-                    .when(!active, |element| {
-                        element.hover(|element| element.bg(theme.overlay))
-                    })
-                    .child(if uses_file_icon {
-                        file_icon(icon_path, 13.0).into_any_element()
-                    } else {
-                        icon(icon_path, 13.0, theme.text_secondary).into_any_element()
-                    })
+                    .bg(theme.overlay_strong)
+                    .cursor_pointer()
                     .child(
                         div()
                             .min_w_0()
                             .flex_1()
                             .truncate()
                             .text_size(sp(12.5))
-                            .text_color(if active {
-                                theme.text
-                            } else {
-                                theme.text_secondary
-                            })
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.text)
                             .child(label),
                     )
-                    .when(dirty, |element| {
-                        element.child(
-                            div()
-                                .id(SharedString::from(format!("right-panel-tab-dirty-{index}")))
-                                .size(px(7.0))
-                                .flex_none()
-                                .rounded_full()
-                                .bg(theme.warning)
-                                .tooltip(|window, cx| {
-                                    Tooltip::new(tr!(
-                                        "files.unsaved_changes",
-                                        shortcut =
-                                            crate::platform::primary_shortcut("⌘S", "Ctrl+S")
-                                    ))
-                                    .build(window, cx)
-                                }),
-                        )
-                    })
                     .child(
                         div()
-                            .id(SharedString::from(format!("close-right-panel-tab-{index}")))
-                            .w(px(16.0))
-                            .h(px(16.0))
+                            .id("close-right-panel-tab-bg-work")
+                            .size(px(16.0))
                             .rounded(px(4.0))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .hover(|element| element.bg(theme.overlay_strong))
+                            .hover(|el| el.bg(theme.overlay))
                             .child(icon("icons/x.svg", 10.0, theme.text_tertiary))
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                let _ = close_weak.update(cx, |this, cx| {
-                                    this.close_right_panel_surface(index, cx);
-                                });
-                            }),
-                    )
-                    .on_click(move |_, _, cx| {
-                        let _ = activate_weak.update(cx, |this, cx| {
-                            this.right_panel_active_surface = Some(index);
-                            this.reveal_right_panel_tab(index);
-                            this.request_active_terminal_focus();
-                            if this.right_panel_surfaces.get(index) == Some(&RightPanelSurface::Diff) {
-                                this.open_main_review_tab(cx);
-                            }
-                            cx.notify();
-                        });
-                    }),
+                            .on_click(cx.listener(|this, _, _, cx| {
+                                this.select_right_panel_upper_tab(RightPanelUpperTab::Files, cx);
+                            })),
+                    ),
             );
         }
-        tabs = tabs.child(div().w(px(TAB_SCROLL_FADE_WIDTH)).h(px(1.0)).flex_none());
 
-        let mut header = div()
+        let header = div()
             .id("right-panel-header")
-            .h(px(48.0))
+            .h(px(44.0))
             .flex_none()
             .flex()
             .items_center()
             .gap(px(6.0))
-            .pl(px(10.0))
-            .pr(px(14.0))
+            .pl(px(8.0))
+            .pr(px(8.0))
             .child(
                 div()
+                    .id("right-panel-tabs-scroll")
                     .relative()
                     .h_full()
-                    .min_w_0()
                     .flex_1()
-                    .overflow_hidden()
-                    .child(tabs)
-                    .when_some(self.right_panel_pending_tab_reveal, |element, tab_index| {
-                        element.child(tab_scroll_reveal_guard(
-                            self.right_panel_tabs_scroll_handle.clone(),
-                            tab_index,
-                            cx.entity().downgrade(),
-                        ))
-                    })
-                    .child(tab_scroll_fade(
-                        self.right_panel_tabs_scroll_handle.clone(),
-                        TabScrollFadeSide::Left,
-                        theme.surface,
-                    ))
-                    .child(tab_scroll_fade(
-                        self.right_panel_tabs_scroll_handle.clone(),
-                        TabScrollFadeSide::Right,
-                        theme.surface,
-                    )),
-            );
-
-        if !self.right_panel_surfaces.is_empty() {
-            let weak = cx.entity().downgrade();
-            let existing_surfaces = self.right_panel_surfaces.clone();
-            let options = [
-                RightPanelSurface::new_browser(),
-                RightPanelSurface::new_terminal(),
-                RightPanelSurface::Files,
-                RightPanelSurface::Diff,
-            ];
-            let handle = self.menu_handle("add-right-panel-surface", cx);
-            header = header.child(
+                    .min_w_0()
+                    .flex()
+                    .items_center()
+                    .overflow_x_scroll()
+                    .track_scroll(&self.right_panel_tabs_scroll_handle)
+                    .child(tabs),
+            )
+            .child(
                 div()
                     .flex_none()
-                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                        cx.stop_propagation();
-                    })
-                    .child(dropdown_menu(
-                        icon_button("add-right-panel-surface", "icons/plus.svg", theme),
-                        "add-right-panel-surface-menu",
-                        &handle,
-                        MenuAlign::BelowRight,
-                        move |_| {
-                            options
-                                .clone()
-                                .into_iter()
-                                .map(|surface| {
-                                    let weak = weak.clone();
-                                    let open_surface = surface.clone();
-                                    let already_open =
-                                        reusable_surface_index(&existing_surfaces, &surface)
-                                            .is_some();
-                                    MenuItem::new(surface.label(), move |_, cx| {
-                                        let _ = weak.update(cx, |this, cx| {
-                                            this.open_right_panel_surface(open_surface.clone(), cx);
-                                        });
-                                    })
-                                    .icon(surface.icon_path())
-                                    .selected(already_open)
-                                })
-                                .collect()
-                        },
-                    )),
+                    .child(self.render_right_panel_toggle(cx)),
             );
-        }
 
         self.window_drag_region(
-            header.child(self.render_right_panel_toggle(cx)).children(
+            header.children(
                 self.render_client_window_controls(
                     super::window_chrome::WindowControlSide::Right,
                     window,
@@ -4688,9 +5075,9 @@ impl Insulator {
 
     /// Re-reads whichever workspace surface is on screen.
     pub(super) fn refresh_workspace_surfaces(&mut self, cx: &mut Context<Self>) {
-        match self.active_right_panel_surface() {
-            Some(RightPanelSurface::Diff) => self.refresh_right_panel_diff(cx),
-            Some(RightPanelSurface::Files | RightPanelSurface::File(_)) => {
+        match self.right_panel_upper_tab {
+            RightPanelUpperTab::Changes => self.refresh_right_panel_diff(cx),
+            RightPanelUpperTab::Files => {
                 self.refresh_right_panel_working_tree(cx)
             }
             _ => {}

@@ -1899,6 +1899,12 @@ impl Insulator {
             }));
 
         let header_element = if let Some(project_id) = project_id {
+            let project_path = self
+                .state
+                .projects
+                .iter()
+                .find(|p| p.id == project_id)
+                .map(|p| p.path.clone());
             context_menu(
                 div().w_full().child(header),
                 SharedString::from(format!("project-menu-{project_id}")),
@@ -1906,19 +1912,33 @@ impl Insulator {
                 move |_| {
                     let rename_insulator = insulator.clone();
                     let remove_insulator = insulator.clone();
-                    vec![
-                        MenuItem::new(tr!("common.rename"), move |window, cx| {
-                            let _ = rename_insulator.update(cx, |insulator, cx| {
-                                insulator.open_rename_project_dialog(project_id, window, cx);
-                            });
-                        }),
-                        MenuItem::Separator,
-                        MenuItem::new(tr!("common.remove"), move |_, cx| {
-                            let _ = remove_insulator.update(cx, |insulator, cx| {
-                                insulator.remove_project(project_id, cx);
-                            });
-                        }),
-                    ]
+                    let mut items = Vec::new();
+
+                    if let Some(ref path) = project_path {
+                        if let Some(github_url) = github_url_for_project(path) {
+                            items.push(
+                                MenuItem::new(tr!("project.open_in_github"), move |_, cx| {
+                                    cx.open_url(&github_url);
+                                })
+                                .icon("icons/github.svg"),
+                            );
+                            items.push(MenuItem::Separator);
+                        }
+                    }
+
+                    items.push(MenuItem::new(tr!("common.rename"), move |window, cx| {
+                        let _ = rename_insulator.update(cx, |insulator, cx| {
+                            insulator.open_rename_project_dialog(project_id, window, cx);
+                        });
+                    }));
+                    items.push(MenuItem::Separator);
+                    items.push(MenuItem::new(tr!("common.remove"), move |_, cx| {
+                        let _ = remove_insulator.update(cx, |insulator, cx| {
+                            insulator.remove_project(project_id, cx);
+                        });
+                    }));
+
+                    items
                 },
             )
         } else {
@@ -3242,6 +3262,197 @@ fn sidebar_session_selected(
     })
 }
 
+/// Resolves the GitHub repository web URL for a given project directory, if it is a
+/// Git repository configured with a remote pointing to GitHub.
+pub fn github_url_for_project(path: &Path) -> Option<String> {
+    // 1. Direct file resolution (fastest, no subprocess)
+    if let Some(git_dir) = resolve_git_dir(path) {
+        if let Some(url) = extract_github_url_from_git_dir(&git_dir) {
+            return Some(url);
+        }
+    }
+
+    // 2. Fallback to git CLI if git is installed and path is inside a repo
+    git_remote_github_url_via_cli(path)
+}
+
+fn resolve_git_dir(project_path: &Path) -> Option<PathBuf> {
+    let dot_git = project_path.join(".git");
+    if dot_git.is_dir() {
+        return Some(dot_git);
+    }
+    if dot_git.is_file() {
+        if let Ok(content) = std::fs::read_to_string(&dot_git) {
+            if let Some(line) = content.lines().next() {
+                if let Some(rest) = line.strip_prefix("gitdir:") {
+                    let gitdir_path = PathBuf::from(rest.trim());
+                    if gitdir_path.is_absolute() {
+                        return Some(gitdir_path);
+                    } else {
+                        return Some(project_path.join(gitdir_path));
+                    }
+                }
+            }
+        }
+    }
+    None
+}
+
+fn extract_github_url_from_git_dir(git_dir: &Path) -> Option<String> {
+    let config_path = git_dir.join("config");
+    if let Ok(config_text) = std::fs::read_to_string(config_path) {
+        if let Some(url) = find_github_url_in_git_config(&config_text) {
+            return Some(url);
+        }
+    }
+
+    // If this is a worktree, its commondir points to the common repo git dir
+    let commondir_file = git_dir.join("commondir");
+    if let Ok(commondir_content) = std::fs::read_to_string(commondir_file) {
+        let common_path = git_dir.join(commondir_content.trim());
+        let config_path = common_path.join("config");
+        if let Ok(config_text) = std::fs::read_to_string(config_path) {
+            if let Some(url) = find_github_url_in_git_config(&config_text) {
+                return Some(url);
+            }
+        }
+    }
+
+    None
+}
+
+fn find_github_url_in_git_config(config_text: &str) -> Option<String> {
+    let mut current_remote: Option<String> = None;
+    let mut origin_url: Option<String> = None;
+    let mut upstream_url: Option<String> = None;
+    let mut other_url: Option<String> = None;
+
+    for line in config_text.lines() {
+        let line = line.trim();
+        if line.starts_with('[') && line.ends_with(']') {
+            let section = line[1..line.len() - 1].trim();
+            if let Some(rest) = section.strip_prefix("remote ") {
+                let name = rest.trim_matches('"').trim();
+                current_remote = Some(name.to_owned());
+            } else {
+                current_remote = None;
+            }
+        } else if let Some(ref remote_name) = current_remote {
+            if let Some((key, val)) = line.split_once('=') {
+                if key.trim() == "url" {
+                    let val = val.trim();
+                    if let Some(gh_url) = parse_github_remote_url(val) {
+                        if remote_name == "origin" {
+                            origin_url = Some(gh_url);
+                        } else if remote_name == "upstream" {
+                            upstream_url = Some(gh_url);
+                        } else if other_url.is_none() {
+                            other_url = Some(gh_url);
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    origin_url.or(upstream_url).or(other_url)
+}
+
+fn git_remote_github_url_via_cli(path: &Path) -> Option<String> {
+    // Check origin first
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(path)
+        .output()
+    {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            if let Some(url) = parse_github_remote_url(&raw) {
+                return Some(url);
+            }
+        }
+    }
+
+    // Check upstream or other remotes
+    if let Ok(output) = std::process::Command::new("git")
+        .args(["config", "--get-regexp", r"^remote\..*\.url$"])
+        .current_dir(path)
+        .output()
+    {
+        if output.status.success() {
+            let raw = String::from_utf8_lossy(&output.stdout);
+            let mut upstream_url = None;
+            let mut other_url = None;
+            for line in raw.lines() {
+                if let Some((key, val)) = line.split_once(' ') {
+                    if let Some(gh_url) = parse_github_remote_url(val) {
+                        if key.contains("origin") {
+                            return Some(gh_url);
+                        } else if key.contains("upstream") {
+                            upstream_url = Some(gh_url);
+                        } else if other_url.is_none() {
+                            other_url = Some(gh_url);
+                        }
+                    }
+                }
+            }
+            return upstream_url.or(other_url);
+        }
+    }
+
+    None
+}
+
+/// Parse a Git remote URL (SSH, HTTPS, git://, etc.) pointing to GitHub into a web URL
+/// like `https://github.com/owner/repo`.
+pub fn parse_github_remote_url(raw: &str) -> Option<String> {
+    let raw = raw.trim();
+    if raw.is_empty() {
+        return None;
+    }
+
+    // SSH format: git@github.com:owner/repo(.git)
+    if let Some(rest) = raw.strip_prefix("git@github.com:") {
+        let repo_path = rest.trim_end_matches(".git").trim_matches('/');
+        if !repo_path.is_empty() {
+            return Some(format!("https://github.com/{repo_path}"));
+        }
+    }
+
+    // ssh://git@github.com/owner/repo(.git) or ssh://github.com/owner/repo(.git)
+    if let Some(rest) = raw
+        .strip_prefix("ssh://git@github.com/")
+        .or_else(|| raw.strip_prefix("ssh://github.com/"))
+    {
+        let repo_path = rest.trim_end_matches(".git").trim_matches('/');
+        if !repo_path.is_empty() {
+            return Some(format!("https://github.com/{repo_path}"));
+        }
+    }
+
+    // https://, http://, git://
+    for prefix in &["https://github.com/", "http://github.com/", "git://github.com/"] {
+        if let Some(rest) = raw.strip_prefix(prefix) {
+            let repo_path = rest.trim_end_matches(".git").trim_matches('/');
+            if !repo_path.is_empty() {
+                return Some(format!("https://github.com/{repo_path}"));
+            }
+        }
+    }
+
+    // General URL parser for any remaining variations
+    if let Ok(url) = url::Url::parse(raw) {
+        if url.host_str() == Some("github.com") {
+            let path = url.path().trim_end_matches(".git").trim_matches('/');
+            if !path.is_empty() {
+                return Some(format!("https://github.com/{path}"));
+            }
+        }
+    }
+
+    None
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -3604,4 +3815,47 @@ mod tests {
         let target_status = ChatStatus::InProgress;
         assert_ne!(dragged.status, target_status);
     }
+
+    #[test]
+    fn parses_various_github_remote_urls() {
+        assert_eq!(
+            parse_github_remote_url("git@github.com:owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+        assert_eq!(
+            parse_github_remote_url("git@github.com:owner/repo"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+        assert_eq!(
+            parse_github_remote_url("https://github.com/owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+        assert_eq!(
+            parse_github_remote_url("https://github.com/owner/repo"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+        assert_eq!(
+            parse_github_remote_url("ssh://git@github.com/owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+        assert_eq!(
+            parse_github_remote_url("git://github.com/owner/repo.git"),
+            Some("https://github.com/owner/repo".to_string())
+        );
+        assert_eq!(parse_github_remote_url("git@gitlab.com:owner/repo.git"), None);
+        assert_eq!(parse_github_remote_url("https://example.com/owner/repo.git"), None);
+        assert_eq!(parse_github_remote_url(""), None);
+    }
+
+    #[test]
+    fn detects_github_url_for_git_repo_or_none_for_non_git() {
+        let manifest_dir = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+        let url = github_url_for_project(&manifest_dir);
+        assert!(url.is_some());
+        assert!(url.unwrap().contains("github.com/"));
+
+        let non_git = std::env::temp_dir();
+        assert_eq!(github_url_for_project(&non_git), None);
+    }
 }
+

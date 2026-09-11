@@ -162,7 +162,7 @@ settings.render_math_description: 在 Markdown 中显示排版后的公式。关
 settings.theme_system: 跟随系统
 settings.theme_light: 浅色
 settings.theme_dark: 深色
-input.do_anything: 做什么都可以…
+input.do_anything: 请求修改、@引用文件、运行 /命令
 input.search_models: 搜索模型…
 input.search_branches: 搜索分支
 input.new_branch_name: 新分支名称
@@ -257,6 +257,7 @@ sidebar.status_waiting: 正在等待
 sidebar.status_background: 等待后台任务
 sidebar.status_failed: 失败
 project.new_project: 新建项目…
+project.open_in_github: 在 GitHub 中打开
 project.no_project: 不使用项目
 project.no_project_name: 无项目
 project.choose_project: 选择项目
@@ -466,6 +467,7 @@ models.remove_favorite: 从收藏中移除
 models.standard: 标准
 models.reasoning: 推理强度
 models.service_tier: 服务等级
+models.permissions: 权限
 models.context_window: 上下文窗口
 model_option.none: 无
 model_option.minimal: 最低

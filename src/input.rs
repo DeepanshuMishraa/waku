@@ -639,6 +639,7 @@ pub struct TextInput {
     /// up to [`AUTO_HEIGHT_MAX`] before it scrolls; otherwise a
     /// multi-line field inherits the embedding view's metrics.
     auto_height: bool,
+    min_height: Option<Pixels>,
     /// Image and file pastes surface as [`MediaPaste`] instead of being
     /// swallowed by the text path.
     accepts_media_paste: bool,
@@ -743,6 +744,7 @@ impl TextInput {
             read_only: false,
             submit_on_enter: false,
             auto_height: false,
+            min_height: None,
             accepts_media_paste: false,
             clear_on_escape: false,
             select_all_on_focus_click: false,
@@ -881,6 +883,17 @@ impl TextInput {
     pub fn auto_height(mut self) -> Self {
         self.auto_height = true;
         self
+    }
+
+    /// Override the default minimum height for an [`auto_height`] field.
+    #[allow(dead_code)]
+    pub fn min_height(mut self, min_height: Pixels) -> Self {
+        self.min_height = Some(min_height);
+        self
+    }
+
+    pub fn set_min_height(&mut self, min_height: Pixels) {
+        self.min_height = Some(min_height);
     }
 
     /// Surface image and file pastes as a [`MediaPaste`] event instead of
@@ -2865,7 +2878,7 @@ impl Render for TextInput {
             // rely on the same line height.
             .when(self.auto_height, |field| {
                 field
-                    .min_h(px(24.0))
+                    .min_h(self.min_height.unwrap_or(px(24.0)))
                     .max_h(AUTO_HEIGHT_MAX)
                     .overflow_y_scroll()
                     .track_scroll(&scroll_handle)
@@ -3040,6 +3053,14 @@ impl ComposerInput {
     pub fn padding_x(self, padding: Pixels, cx: &mut Context<Self>) -> Self {
         self.input
             .update(cx, |input, _| input.set_padding_x(padding));
+        self
+    }
+
+    /// Forwarded [`TextInput::set_min_height`], for the embedded field the
+    /// constructor already created.
+    pub fn min_height(self, min_height: Pixels, cx: &mut Context<Self>) -> Self {
+        self.input
+            .update(cx, |input, _| input.set_min_height(min_height));
         self
     }
 

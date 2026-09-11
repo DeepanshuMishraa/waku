@@ -806,7 +806,79 @@ impl Insulator {
             .map(|session| session.provider);
         let picker_enabled = session.map(|session| session.can_choose_model(provider)).unwrap_or(true);
 
+        let current_model_meta = self
+            .provider_probe(provider)
+            .and_then(|probe| {
+                let name = selected_model.as_deref().unwrap_or("");
+                probe.models.iter().find(|m| m.id == name).cloned()
+            });
+
+        let selected_effort = session
+            .and_then(|s| s.reasoning_effort.as_deref())
+            .or(self.state.last_reasoning_effort.as_deref())
+            .filter(|selected| {
+                current_model_meta
+                    .as_ref()
+                    .map_or(false, |m| m.reasoning_efforts.iter().any(|opt| opt.id == *selected))
+            })
+            .or_else(|| current_model_meta.as_ref().and_then(|m| m.default_reasoning_effort.as_deref()))
+            .or_else(|| {
+                current_model_meta
+                    .as_ref()
+                    .and_then(|m| m.reasoning_efforts.first().map(|opt| opt.id.as_str()))
+            })
+            .map(str::to_owned);
+
+        let effort_label = selected_effort.as_deref().and_then(|selected| {
+            current_model_meta
+                .as_ref()
+                .and_then(|m| m.reasoning_efforts.iter().find(|opt| opt.id == selected))
+                .map(|opt| opt.label.clone())
+        });
+
+        let selected_tier = session
+            .and_then(|s| s.service_tier.as_deref())
+            .or(self.state.last_service_tier.as_deref())
+            .filter(|selected| {
+                *selected == "default"
+                    || current_model_meta
+                        .as_ref()
+                        .map_or(false, |m| m.service_tiers.iter().any(|opt| opt.id == *selected))
+            })
+            .or_else(|| current_model_meta.as_ref().and_then(|m| m.default_service_tier.as_deref()))
+            .unwrap_or("default")
+            .to_owned();
+
+        let selected_mode = session
+            .map(|session| session.runtime_mode)
+            .unwrap_or(self.state.last_runtime_mode);
+
+        let agent_presets = if provider == ProviderKind::DeepSeek {
+            self.provider_probe(ProviderKind::DeepSeek)
+                .map(|probe| probe.agent_presets.clone())
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
+
+        let selected_preset_id = if provider == ProviderKind::DeepSeek {
+            session
+                .and_then(|s| self.agent_preset_for_session(s))
+                .or_else(|| {
+                    self.provider_probe(ProviderKind::DeepSeek)
+                        .and_then(ProviderProbe::preferred_agent_preset)
+                        .map(|preset| preset.id.clone())
+                })
+        } else {
+            None
+        };
+
         if !picker_enabled {
+            let label = if let Some(ref effort) = effort_label {
+                format!("{selected_model_name}  {effort}")
+            } else {
+                selected_model_name
+            };
             return div()
                 .h(px(24.0))
                 .px(px(7.0))
@@ -821,10 +893,31 @@ impl Insulator {
                 ))
                 .child(
                     div()
-                        .max_w(px(210.0))
+                        .max_w(px(240.0))
                         .truncate()
                         .text_color(theme.text_secondary)
-                        .child(SharedString::from(selected_model_name)),
+                        .child(SharedString::from(label)),
+                )
+                .child(
+                    div()
+                        .text_color(theme.text_ghost)
+                        .child("·"),
+                )
+                .child(
+                    div()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .child(icon(
+                            selected_mode.icon(),
+                            11.5,
+                            runtime_mode_color(&theme, selected_mode),
+                        ))
+                        .child(
+                            div()
+                                .text_color(theme.text_secondary)
+                                .child(selected_mode.label()),
+                        ),
                 )
                 .into_any_element();
         }
@@ -898,21 +991,13 @@ impl Insulator {
                     // against the viewport bounds of the *previous* paint, so
                     // on the container's first-ever paint it reads a zeroed
                     // viewport, lands wrong, and is consumed. By this frame
-                    // the panel has painted real bounds to resolve against.
-                    let picker_focus = if empty {
+                    // the geometry has settled.
+                    let focus = if empty {
                         empty_picker_focus.clone()
                     } else {
                         picker_focus.clone()
                     };
-                    let reveal_weak = reset_weak.clone();
-                    window.on_next_frame(move |window, _| {
-                        window.on_next_frame(move |window, cx| {
-                            window.focus(&picker_focus, cx);
-                            let _ = reveal_weak.update(cx, |this, _| {
-                                this.reveal_selected_picker_model();
-                            });
-                        });
-                    });
+                    window.focus(&focus, cx);
                 }
             })
         };
@@ -941,6 +1026,12 @@ impl Insulator {
         let scroll = self.model_picker_scroll.clone();
         let scrollbar_state = self.model_picker_scrollbar.clone();
 
+        let trigger_label = if let Some(ref effort) = effort_label {
+            format!("{selected_model_name}  {effort}")
+        } else {
+            selected_model_name.clone()
+        };
+
         // With nothing to pick from, naming a model the app cannot run would
         // be a lie. The chip says so instead, and stays a trigger because the
         // panel behind it is where the fix lives. Icon plus wording carry the
@@ -956,16 +1047,33 @@ impl Insulator {
                     provider,
                     provider_color(&theme, provider).opacity(0.9),
                 )
-                .label(selected_model_name)
+                .label(trigger_label)
+                .trailing_tag(
+                    selected_mode.icon(),
+                    runtime_mode_color(&theme, selected_mode),
+                    selected_mode.label(),
+                )
         };
 
+        let footer_model_meta = current_model_meta.clone();
+        let footer_effort = selected_effort.clone();
+        let footer_tier = selected_tier.clone();
+        let footer_mode = selected_mode;
+        let footer_presets = agent_presets.clone();
+        let footer_preset_id = selected_preset_id.clone();
+
         popover(
-            trigger.caret(false).selected(handle.is_open()),
+            trigger.caret(true).selected(handle.is_open()),
             &handle,
             MenuAlign::AboveLeft,
             move |popover, _window, _cx| {
                 let popover = popover.clone();
                 let available_models = available_models.clone();
+                let footer_model_meta = footer_model_meta.clone();
+                let footer_effort = footer_effort.clone();
+                let footer_tier = footer_tier.clone();
+                let footer_presets = footer_presets.clone();
+                let footer_preset_id = footer_preset_id.clone();
 
                 if no_providers {
                     return model_picker_empty_state(&theme, &empty_focus, popover, weak.clone());
@@ -1297,9 +1405,367 @@ impl Insulator {
                 let previous_tab_weak = weak.clone();
                 let confirm_weak = weak.clone();
                 let confirm_popover = popover.clone();
+                let mut footer_rows = Vec::new();
+
+                // 1. Reasoning Effort row
+                if let Some(ref model_meta) = footer_model_meta {
+                    if !model_meta.reasoning_efforts.is_empty() {
+                        let mut pills = div()
+                            .bg(theme.canvas)
+                            .rounded(px(7.0))
+                            .p(px(2.0))
+                            .border_1()
+                            .border_color(theme.border)
+                            .flex()
+                            .items_center()
+                            .gap(px(2.0));
+                        for option in &model_meta.reasoning_efforts {
+                            let is_selected =
+                                footer_effort.as_deref() == Some(option.id.as_str());
+                            let opt_id = option.id.clone();
+                            let opt_label = option.label.clone();
+                            let opt_desc = option.description.clone();
+                            let weak = weak.clone();
+                            let mut pill = div()
+                                .id(SharedString::from(format!("effort-pill-{}", option.id)))
+                                .px(px(8.0))
+                                .py(px(2.5))
+                                .rounded(px(5.0))
+                                .cursor_default()
+                                .text_size(sp(11.5))
+                                .line_height(sp(13.0))
+                                .when(is_selected, |el| {
+                                    el.bg(theme.overlay_strong)
+                                        .text_color(theme.text)
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .shadow_xs()
+                                })
+                                .when(!is_selected, |el| {
+                                    el.text_color(theme.text_tertiary)
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                                })
+                                .child(SharedString::from(opt_label))
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = weak.update(cx, |this, cx| {
+                                        this.set_reasoning_effort(opt_id.clone(), cx);
+                                    });
+                                });
+                            if let Some(desc) = opt_desc {
+                                pill = pill.tooltip(Tooltip::text(SharedString::from(desc)));
+                            }
+                            pills = pills.child(pill);
+                        }
+
+                        footer_rows.push(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(12.0))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(7.0))
+                                        .child(icon("icons/sparkle.svg", 12.5, theme.text_secondary))
+                                        .child(
+                                            div()
+                                                .text_size(sp(12.0))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(theme.text_secondary)
+                                                .child(tr!("models.reasoning")),
+                                        ),
+                                )
+                                .child(pills),
+                        );
+                    }
+
+                    // 2. Service Tier / Speed row
+                    if !model_meta.service_tiers.is_empty() {
+                        let mut tier_pills = div()
+                            .bg(theme.canvas)
+                            .rounded(px(7.0))
+                            .p(px(2.5))
+                            .border_1()
+                            .border_color(theme.border)
+                            .flex()
+                            .items_center()
+                            .gap(px(2.5));
+
+                        let standard_selected = footer_tier == "default";
+                        let weak_std = weak.clone();
+                        tier_pills = tier_pills.child(
+                            div()
+                                .id("tier-pill-default")
+                                .px(px(8.0))
+                                .py(px(3.0))
+                                .rounded(px(5.0))
+                                .cursor_default()
+                                .text_size(sp(11.5))
+                                .line_height(sp(13.0))
+                                .when(standard_selected, |el| {
+                                    el.bg(theme.overlay_strong)
+                                        .text_color(theme.text)
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .shadow_xs()
+                                })
+                                .when(!standard_selected, |el| {
+                                    el.text_color(theme.text_tertiary)
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                                })
+                                .child(SharedString::from(tr!("models.standard")))
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = weak_std.update(cx, |this, cx| {
+                                        this.set_service_tier("default".to_owned(), cx);
+                                    });
+                                }),
+                        );
+
+                        for option in &model_meta.service_tiers {
+                            let is_selected = footer_tier == option.id;
+                            let opt_id = option.id.clone();
+                            let opt_label = option.label.clone();
+                            let opt_desc = option.description.clone();
+                            let weak = weak.clone();
+                            let mut pill = div()
+                                .id(SharedString::from(format!("tier-pill-{}", option.id)))
+                                .px(px(8.0))
+                                .py(px(3.0))
+                                .rounded(px(5.0))
+                                .cursor_default()
+                                .text_size(sp(11.5))
+                                .line_height(sp(13.0))
+                                .when(is_selected, |el| {
+                                    el.bg(theme.overlay_strong)
+                                        .text_color(theme.text)
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .shadow_xs()
+                                })
+                                .when(!is_selected, |el| {
+                                    el.text_color(theme.text_tertiary)
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                                })
+                                .child(SharedString::from(opt_label))
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = weak.update(cx, |this, cx| {
+                                        this.set_service_tier(opt_id.clone(), cx);
+                                    });
+                                });
+                            if let Some(desc) = opt_desc {
+                                pill = pill.tooltip(Tooltip::text(SharedString::from(desc)));
+                            }
+                            tier_pills = tier_pills.child(pill);
+                        }
+
+                        footer_rows.push(
+                            div()
+                                .flex()
+                                .items_center()
+                                .justify_between()
+                                .gap(px(12.0))
+                                .child(
+                                    div()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(7.0))
+                                        .child(icon("icons/zap.svg", 12.5, theme.text_secondary))
+                                        .child(
+                                            div()
+                                                .text_size(sp(12.0))
+                                                .font_weight(FontWeight::MEDIUM)
+                                                .text_color(theme.text_secondary)
+                                                .child(tr!("models.service_tier")),
+                                        ),
+                                )
+                                .child(tier_pills),
+                        );
+                    }
+                }
+
+                // 3. Permissions / Security Mode row
+                let mut perm_pills = div()
+                    .bg(theme.canvas)
+                    .rounded(px(7.0))
+                    .p(px(2.5))
+                    .border_1()
+                    .border_color(theme.border)
+                    .flex()
+                    .items_center()
+                    .gap(px(2.5));
+                for option in RuntimeMode::ACCESS_OPTIONS {
+                    let is_selected = option == footer_mode;
+                    let opt_desc = option.description();
+                    let opt_label = option.label();
+                    let mode_color = runtime_mode_color(&theme, option);
+                    let weak = weak.clone();
+                    perm_pills = perm_pills.child(
+                        div()
+                            .id(SharedString::from(format!("mode-pill-{:?}", option)))
+                            .px(px(8.0))
+                            .py(px(3.0))
+                            .rounded(px(5.0))
+                            .cursor_default()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.0))
+                            .text_size(sp(11.5))
+                            .line_height(sp(13.0))
+                            .when(is_selected, |el| {
+                                el.bg(theme.overlay_strong)
+                                    .border_1()
+                                    .border_color(mode_color.opacity(0.35))
+                                    .text_color(theme.text)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .shadow_xs()
+                            })
+                            .when(!is_selected, |el| {
+                                el.border_1()
+                                    .border_color(gpui::transparent_black())
+                                    .text_color(theme.text_tertiary)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                            })
+                            .tooltip(Tooltip::text(SharedString::from(opt_desc)))
+                            .child(icon(
+                                option.icon(),
+                                11.5,
+                                if is_selected {
+                                    mode_color
+                                } else {
+                                    mode_color.opacity(0.65)
+                                },
+                            ))
+                            .child(SharedString::from(opt_label))
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                let _ = weak.update(cx, |this, cx| {
+                                    this.set_runtime_mode(option, cx);
+                                });
+                            }),
+                    );
+                }
+
+                footer_rows.push(
+                    div()
+                        .flex()
+                        .items_center()
+                        .justify_between()
+                        .gap(px(12.0))
+                        .child(
+                            div()
+                                .flex()
+                                .items_center()
+                                .gap(px(7.0))
+                                .child(icon(
+                                    footer_mode.icon(),
+                                    12.5,
+                                    runtime_mode_color(&theme, footer_mode),
+                                ))
+                                .child(
+                                    div()
+                                        .text_size(sp(12.0))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(theme.text_secondary)
+                                        .child(tr!("models.permissions")),
+                                ),
+                        )
+                        .child(perm_pills),
+                );
+
+                // 4. Agent Presets (DeepSeek only)
+                if !footer_presets.is_empty() {
+                    let mut preset_pills = div()
+                        .bg(theme.canvas)
+                        .rounded(px(7.0))
+                        .p(px(2.5))
+                        .border_1()
+                        .border_color(theme.border)
+                        .flex()
+                        .items_center()
+                        .gap(px(2.5));
+                    for preset in &footer_presets {
+                        let is_selected = footer_preset_id.as_deref() == Some(preset.id.as_str());
+                        let preset_id = preset.id.clone();
+                        let preset_name = preset.display_name();
+                        let preset_desc = preset.display_description();
+                        let weak = weak.clone();
+                        let mut pill = div()
+                            .id(SharedString::from(format!("preset-pill-{}", preset.id)))
+                            .px(px(8.0))
+                            .py(px(3.0))
+                            .rounded(px(5.0))
+                            .cursor_default()
+                            .text_size(sp(11.5))
+                            .line_height(sp(13.0))
+                            .when(is_selected, |el| {
+                                el.bg(theme.overlay_strong)
+                                    .text_color(theme.text)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .shadow_xs()
+                            })
+                            .when(!is_selected, |el| {
+                                el.text_color(theme.text_tertiary)
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                            })
+                            .child(SharedString::from(preset_name))
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                let _ = weak.update(cx, |this, cx| {
+                                    this.set_agent_preset(preset_id.clone(), cx);
+                                });
+                            });
+                        if let Some(desc) = preset_desc {
+                            pill = pill.tooltip(Tooltip::text(SharedString::from(desc)));
+                        }
+                        preset_pills = preset_pills.child(pill);
+                    }
+
+                    footer_rows.push(
+                        div()
+                            .flex()
+                            .items_center()
+                            .justify_between()
+                            .gap(px(12.0))
+                            .child(
+                                div()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(7.0))
+                                    .child(icon("icons/bot.svg", 12.5, theme.text_secondary))
+                                    .child(
+                                        div()
+                                            .text_size(sp(12.0))
+                                            .font_weight(FontWeight::MEDIUM)
+                                            .text_color(theme.text_secondary)
+                                            .child("Preset"),
+                                    ),
+                            )
+                            .child(preset_pills),
+                    );
+                }
+
+                let footer = div()
+                    .flex_none()
+                    .border_t_1()
+                    .border_color(theme.border)
+                    .bg(theme.surface)
+                    .px(px(16.0))
+                    .py(px(12.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(10.0))
+                    .children(footer_rows);
+
                 div()
-                    .w(px(460.0))
-                    .h(px(390.0))
+                    .w(px(640.0))
+                    .h(px(470.0))
                     .rounded(px(13.0))
                     .overflow_hidden()
                     .border_1()
@@ -1357,7 +1823,8 @@ impl Insulator {
                                     .relative()
                                     .child(rows)
                                     .child(scrollbar::vertical(&scroll, &scrollbar_state)),
-                            ),
+                            )
+                            .child(footer),
                     )
                     .into_any_element()
             },
@@ -1459,6 +1926,7 @@ impl Insulator {
         self.choose_model(kind, model_id, cx);
     }
 
+    #[allow(dead_code)]
     pub(super) fn render_model_traits_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = Theme::current(cx);
         let session = self.selected_session();
@@ -1672,6 +2140,7 @@ impl Insulator {
         ))
     }
 
+    #[allow(dead_code)]
     pub(super) fn render_access_control(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::current(cx);
         let selected_mode = self
@@ -1749,6 +2218,7 @@ impl Insulator {
         )
     }
 
+    #[allow(dead_code)]
     pub(super) fn render_agent_preset_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let provider = self
             .selected_session()
@@ -2842,9 +3312,6 @@ impl Insulator {
                         .text_size(sp(12.5))
                         .line_height(sp(14.0))
                         .child(self.render_provider_model_control(cx))
-                        .children(self.render_model_traits_control(cx))
-                        .children(self.render_agent_preset_control(cx))
-                        .child(self.render_access_control(cx))
                         .children(self.render_goal_control(cx))
                         .child(div().flex_1())
                         .child(match submit_action {

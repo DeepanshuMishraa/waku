@@ -611,17 +611,26 @@ impl Insulator {
 
     pub(super) fn set_right_panel_visible(&mut self, visible: bool, cx: &mut Context<Self>) {
         if visible {
+            if self.selected_workspace_path().is_some() && self.right_panel_terminal_ids.is_empty() {
+                self.add_right_panel_terminal(cx);
+            } else {
+                for id in self.right_panel_terminal_ids.clone() {
+                    self.ensure_right_panel_terminal(id, cx);
+                }
+            }
             self.request_active_terminal_focus();
         } else {
             self.right_panel_pending_terminal_focus = None;
+            for id in self.right_panel_terminal_ids.drain(..) {
+                self.right_panel_terminals.remove(&id);
+            }
+            self.right_panel_active_terminal_index = 0;
         }
         if self.right_panel_visible == visible {
             return;
         }
         self.right_panel_visible = visible;
         self.right_panel_slide = self.begin_panel_slide(self.right_panel_rendered_width, cx);
-        if visible {
-        }
         self.persist_panel_layout();
         cx.notify();
     }
@@ -687,7 +696,7 @@ impl Insulator {
         let (sidebar_width, right_panel_width) = self.effective_panel_widths(window);
         // A drag tracks the pointer directly; whatever slide was still
         // finishing would fight it for the same edge.
-        let start_width = match target {
+        let start_size = match target {
             PanelResizeTarget::Sidebar => {
                 self.sidebar_slide = None;
                 self.sidebar_width = sidebar_width;
@@ -705,11 +714,16 @@ impl Insulator {
                 self.right_panel_file_tree_width = width;
                 width
             }
+            PanelResizeTarget::RightPanelSplit => {
+                self.right_panel_terminal_collapsed = false;
+                self.right_panel_terminal_height
+            }
         };
         self.panel_resize_drag = Some(PanelResizeDrag {
             target,
             start_mouse_x: f32::from(event.position.x),
-            start_width,
+            start_mouse_y: f32::from(event.position.y),
+            start_size,
         });
         cx.stop_propagation();
         cx.notify();
@@ -732,7 +746,7 @@ impl Insulator {
                 let maximum = SIDEBAR_MAX_WIDTH
                     .min(viewport_width - MAIN_PANEL_MIN_WIDTH - right_panel_width)
                     .max(SIDEBAR_MIN_WIDTH);
-                let width = (drag.start_width + delta).clamp(SIDEBAR_MIN_WIDTH, maximum);
+                let width = (drag.start_size + delta).clamp(SIDEBAR_MIN_WIDTH, maximum);
                 if (self.sidebar_width - width).abs() < 0.5 {
                     return;
                 }
@@ -743,7 +757,7 @@ impl Insulator {
                 let maximum = RIGHT_PANEL_MAX_WIDTH
                     .min(viewport_width - MAIN_PANEL_MIN_WIDTH - sidebar_width)
                     .max(RIGHT_PANEL_MIN_WIDTH);
-                let width = (drag.start_width - delta).clamp(RIGHT_PANEL_MIN_WIDTH, maximum);
+                let width = (drag.start_size - delta).clamp(RIGHT_PANEL_MIN_WIDTH, maximum);
                 if (self.right_panel_width - width).abs() < 0.5 {
                     return;
                 }
@@ -753,11 +767,23 @@ impl Insulator {
                 let maximum = FILE_TREE_MAX_WIDTH
                     .min(right_panel_width - FILE_EDITOR_MIN_WIDTH)
                     .max(FILE_TREE_MIN_WIDTH);
-                let width = (drag.start_width - delta).clamp(FILE_TREE_MIN_WIDTH, maximum);
+                let width = (drag.start_size - delta).clamp(FILE_TREE_MIN_WIDTH, maximum);
                 if (self.right_panel_file_tree_width - width).abs() < 0.5 {
                     return;
                 }
                 self.right_panel_file_tree_width = width;
+            }
+            PanelResizeTarget::RightPanelSplit => {
+                let viewport_height = f32::from(window.viewport_size().height);
+                let delta_y = drag.start_mouse_y - f32::from(event.position.y);
+                let min_height = 80.0;
+                let max_height = (viewport_height - 180.0).max(min_height);
+                let height = (drag.start_size + delta_y).clamp(min_height, max_height);
+                if (self.right_panel_terminal_height - height).abs() < 0.5 {
+                    return;
+                }
+                self.right_panel_terminal_height = height;
+                self.right_panel_terminal_collapsed = false;
             }
         }
         cx.notify();

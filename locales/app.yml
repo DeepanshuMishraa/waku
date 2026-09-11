@@ -352,7 +352,7 @@ settings.theme_dark:
   en: Dark
 
 input.do_anything:
-  en: Do anything…
+  en: Ask to make changes, @mention files, run /commands
 input.search_models:
   en: Search models…
 input.search_branches:
@@ -571,6 +571,8 @@ project.open_project:
   en: Open project…
 project.open_github:
   en: Open a GitHub project
+project.open_in_github:
+  en: Open in GitHub
 project.clone_github:
   en: Clone GitHub repo
 project.repository_url:
@@ -1020,6 +1022,8 @@ models.reasoning:
   en: Reasoning
 models.service_tier:
   en: Service Tier
+models.permissions:
+  en: Permissions
 models.context_window:
   en: Context Window
 

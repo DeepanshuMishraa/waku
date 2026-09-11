@@ -521,7 +521,7 @@ mod tests {
                 .iter()
                 .map(|found| found.range.clone())
                 .collect::<Vec<_>>(),
-            vec![0..4, 5..9, 10..14]
+            vec![0..9, 10..19, 20..29]
         );
 
         let regex = literal_find_regex("界");

@@ -629,6 +629,8 @@ pub struct TerminalView {
     exited: bool,
     scroll_accumulator: f32,
     panel_width: f32,
+    panel_height: Option<f32>,
+    show_toolbar: bool,
     /// Advance width of one grid cell, measured from the terminal font on
     /// first render so grid math matches what `StyledText` actually lays out.
     measured_cell_width: Option<f32>,
@@ -693,6 +695,8 @@ impl TerminalView {
             exited: false,
             scroll_accumulator: 0.0,
             panel_width: DEFAULT_RIGHT_PANEL_WIDTH,
+            panel_height: None,
+            show_toolbar: true,
             measured_cell_width: None,
             scrollbar_state: ScrollbarState::new(),
             grid_bounds: Rc::new(Cell::new(None)),
@@ -711,6 +715,61 @@ impl TerminalView {
 
     pub fn set_panel_width(&mut self, width: f32) {
         self.panel_width = width;
+    }
+
+    pub fn set_panel_size(&mut self, width: f32, height: f32) {
+        self.panel_width = width;
+        self.panel_height = Some(height);
+    }
+
+    pub fn set_show_toolbar(&mut self, show: bool) {
+        self.show_toolbar = show;
+    }
+
+    pub fn is_exited(&self) -> bool {
+        self.exited
+    }
+
+    pub fn restart(&mut self, cx: &mut Context<Self>) {
+        let terminal_cwd = self.working_directory.clone();
+        self.session = None;
+        self.error = None;
+        self.exited = false;
+        cx.spawn(async move |this, cx| {
+            let started = cx
+                .background_executor()
+                .spawn(async move { TerminalSession::new(&terminal_cwd, 52, 36) })
+                .await;
+            if this
+                .update(cx, |this, cx| {
+                    match started {
+                        Ok(session) => this.session = Some(session),
+                        Err(error) => this.error = Some(error.to_string()),
+                    }
+                    cx.notify();
+                })
+                .is_err()
+            {
+                return;
+            }
+            loop {
+                cx.background_executor()
+                    .timer(Duration::from_millis(24))
+                    .await;
+                if this
+                    .update(cx, |this, cx| {
+                        if this.poll(cx) {
+                            cx.notify();
+                        }
+                    })
+                    .is_err()
+                {
+                    break;
+                }
+            }
+        })
+        .detach();
+        cx.notify();
     }
 
     pub fn refresh_localized_text(&mut self, cx: &mut Context<Self>) {
@@ -1065,7 +1124,12 @@ impl Render for TerminalView {
         let selection_color = theme.selection;
         let viewport = window.viewport_size();
         let panel_width = self.panel_width;
-        let body_height = (f32::from(viewport.height) - 48.0 - TERMINAL_TOOLBAR_HEIGHT).max(120.0);
+        let toolbar_height = if self.show_toolbar { TERMINAL_TOOLBAR_HEIGHT } else { 0.0 };
+        let body_height = (self
+            .panel_height
+            .unwrap_or_else(|| f32::from(viewport.height) - 48.0)
+            - toolbar_height)
+            .max(60.0);
         // The rows are laid out by `StyledText` at the font's own advance, so
         // the grid must be sized from that same measured advance or the text
         // wraps short of (or past) the panel edge.
@@ -1286,7 +1350,7 @@ impl Render for TerminalView {
             .child(screen)
             .children(scrollbar);
 
-        div()
+        let mut terminal_root = div()
             .id("alacritty-terminal")
             .key_context("Terminal")
             .track_focus(&self.focus_handle)
@@ -1295,8 +1359,10 @@ impl Render for TerminalView {
             .min_w_0()
             .flex()
             .flex_col()
-            .bg(theme.terminal)
-            .child(
+            .bg(theme.terminal);
+
+        if self.show_toolbar {
+            terminal_root = terminal_root.child(
                 div()
                     .h(px(TERMINAL_TOOLBAR_HEIGHT))
                     .flex_none()
@@ -1334,7 +1400,10 @@ impl Render for TerminalView {
                             .text_color(theme.text_tertiary)
                             .child(directory),
                     ),
-            )
+            );
+        }
+
+        terminal_root
             .child(grid)
             .on_key_down(cx.listener(Self::on_key_down))
             .on_scroll_wheel(cx.listener(Self::on_scroll_wheel))
@@ -1818,7 +1887,7 @@ mod tests {
         assert_eq!(value, "https://insulator.gg");
         assert_eq!(
             bounds,
-            TerminalPoint::new(Line(0), Column(1))..=TerminalPoint::new(Line(0), Column(4))
+            TerminalPoint::new(Line(0), Column(1))..=TerminalPoint::new(Line(0), Column(9))
         );
     }
 

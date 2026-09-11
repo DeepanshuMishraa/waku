@@ -66,7 +66,7 @@ use crate::ui::text_field::TextField;
 use crate::ui::{
     MenuChip, ProjectNameSelector, Slider, SliderEvent, SliderState, activity_icon,
     activity_noun, contain_horizontal_scroll, contain_scroll, file_icon, h_flex, icon, icon_button,
-    motion, provider_color, provider_mark, status_color, chat_status_color, toggle_switch,
+    motion, provider_color, provider_mark, status_color, chat_status_color, runtime_mode_color, toggle_switch,
 };
 use crate::{
     CancelTaskSwitch, CancelTurn, CloseFind, CloseWindow, ConfirmTaskSwitch, CopySelection,
@@ -258,18 +258,31 @@ enum UsageBreakdown {
     Day,
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(crate) enum RightPanelUpperTab {
+    Files,
+    Changes,
+    Browser,
+    BackgroundWork {
+        key: crate::model::BackgroundWorkKey,
+        title: String,
+    },
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum PanelResizeTarget {
     Sidebar,
     RightPanel,
     FileTree,
+    RightPanelSplit,
 }
 
 #[derive(Clone, Copy, Debug)]
 struct PanelResizeDrag {
     target: PanelResizeTarget,
     start_mouse_x: f32,
-    start_width: f32,
+    start_mouse_y: f32,
+    start_size: f32,
 }
 
 #[derive(Debug)]
@@ -1440,6 +1453,13 @@ pub struct Insulator {
     right_panel_rendered_width: f32,
     fps_counter_visible: bool,
     panel_resize_drag: Option<PanelResizeDrag>,
+    pub(crate) right_panel_upper_tab: RightPanelUpperTab,
+    pub(crate) right_panel_terminal_height: f32,
+    pub(crate) right_panel_terminal_collapsed: bool,
+    pub(crate) right_panel_terminal_ids: Vec<Uuid>,
+    pub(crate) right_panel_active_terminal_index: usize,
+    pub(crate) right_panel_terminal_tabs_scroll_handle: ScrollHandle,
+    pub(crate) right_panel_browser_id: Option<Uuid>,
     right_panel_session_states: HashMap<Uuid, RightPanelSessionState>,
     right_panel_surfaces: Vec<RightPanelSurface>,
     right_panel_active_surface: Option<usize>,
@@ -2055,7 +2075,11 @@ impl Insulator {
             state.ui_font_size,
         )));
 
-        let composer = cx.new(|cx| ComposerInput::new(window, cx).padding_x(px(14.0), cx));
+        let composer = cx.new(|cx| {
+            ComposerInput::new(window, cx)
+                .padding_x(px(14.0), cx)
+                .min_height(px(80.0), cx)
+        });
         let user_input_answer = cx
             .new(|cx| TextInput::new(window, cx).placeholder(tr!("user_input.other_placeholder")));
         let command_palette_search = cx.new(|cx| {
@@ -3056,6 +3080,13 @@ impl Insulator {
                 },
                 fps_counter_visible: false,
                 panel_resize_drag: None,
+                right_panel_upper_tab: RightPanelUpperTab::Files,
+                right_panel_terminal_height: 240.0,
+                right_panel_terminal_collapsed: false,
+                right_panel_terminal_ids: Vec::new(),
+                right_panel_active_terminal_index: 0,
+                right_panel_terminal_tabs_scroll_handle: ScrollHandle::new(),
+                right_panel_browser_id: None,
                 right_panel_session_states: HashMap::new(),
                 right_panel_surfaces: Vec::new(),
                 right_panel_active_surface: None,

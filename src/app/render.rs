@@ -31,6 +31,7 @@ impl Insulator {
         let (strip_left, strip_width) = match target {
             PanelResizeTarget::RightPanel => (-7.0, 8.0),
             PanelResizeTarget::Sidebar | PanelResizeTarget::FileTree => (-5.0, 10.0),
+            PanelResizeTarget::RightPanelSplit => (0.0, 0.0),
         };
         div()
             .id(id)
@@ -54,6 +55,46 @@ impl Insulator {
                         gpui::transparent_black()
                     })
                     .group_hover("panel-resize-handle", |element| {
+                        element.bg(theme.resize_handle)
+                    }),
+            )
+            .on_mouse_down(
+                MouseButton::Left,
+                cx.listener(move |this, event, window, cx| {
+                    this.begin_panel_resize(target, event, window, cx);
+                }),
+            )
+    }
+
+    pub(super) fn render_horizontal_panel_resize_handle(
+        &self,
+        id: &'static str,
+        target: PanelResizeTarget,
+        cx: &mut Context<Self>,
+    ) -> Stateful<Div> {
+        let theme = Theme::current(cx);
+        let active = self
+            .panel_resize_drag
+            .is_some_and(|drag| drag.target == target);
+        div()
+            .id(id)
+            .relative()
+            .w_full()
+            .h(px(8.0))
+            .my(px(-4.0))
+            .group("horizontal-resize-handle")
+            .cursor_row_resize()
+            .child(
+                div()
+                    .w_full()
+                    .h(px(1.0))
+                    .mt(px(3.5))
+                    .bg(if active {
+                        theme.resize_handle
+                    } else {
+                        theme.border
+                    })
+                    .group_hover("horizontal-resize-handle", |element| {
                         element.bg(theme.resize_handle)
                     }),
             )

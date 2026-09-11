@@ -15,7 +15,7 @@ pub mod tooltip;
 #[allow(unused_imports)]
 pub use slider::{Slider, SliderEvent, SliderState, SliderValue};
 
-use crate::model::{ActivityKind, ChatStatus, ProviderKind, SessionStatus};
+use crate::model::{ActivityKind, ChatStatus, ProviderKind, RuntimeMode, SessionStatus};
 use crate::theme::{Theme, sp};
 
 /// A monochrome icon from the embedded set, tinted via text color. Sized in
@@ -289,6 +289,21 @@ pub fn chat_status_color(theme: &Theme, status: ChatStatus) -> Hsla {
     }
 }
 
+pub fn runtime_mode_color(theme: &Theme, mode: RuntimeMode) -> Hsla {
+    match mode {
+        RuntimeMode::Ask => theme.warning,
+        RuntimeMode::AutoAcceptEdits => theme.gauge,
+        RuntimeMode::Auto => {
+            if theme.is_dark {
+                gpui::hsla(270.0 / 360.0, 0.85, 0.70, 1.0)
+            } else {
+                gpui::hsla(270.0 / 360.0, 0.75, 0.52, 1.0)
+            }
+        }
+        RuntimeMode::FullAccess => theme.success,
+    }
+}
+
 pub fn activity_icon(kind: ActivityKind) -> &'static str {
     match kind {
         ActivityKind::Reasoning => "icons/sparkle.svg",
@@ -326,6 +341,7 @@ pub struct MenuChip {
     /// A second, separately coloured icon layer — see [`provider_mark`].
     badge: Option<(&'static str, Hsla)>,
     label: SharedString,
+    trailing_tag: Option<(&'static str, Hsla, SharedString)>,
     caret: bool,
     outlined: bool,
     selected: bool,
@@ -341,6 +357,7 @@ impl MenuChip {
             icon: None,
             badge: None,
             label: SharedString::default(),
+            trailing_tag: None,
             caret: true,
             outlined: false,
             selected: false,
@@ -381,6 +398,16 @@ impl MenuChip {
 
     pub fn label(mut self, label: impl Into<SharedString>) -> Self {
         self.label = label.into();
+        self
+    }
+
+    pub fn trailing_tag(
+        mut self,
+        icon: &'static str,
+        color: Hsla,
+        label: impl Into<SharedString>,
+    ) -> Self {
+        self.trailing_tag = Some((icon, color, label.into()));
         self
     }
 
@@ -480,6 +507,28 @@ impl RenderOnce for MenuChip {
                     .text_color(theme.text_secondary)
                     .child(self.label),
             )
+            .when_some(self.trailing_tag, |element, (icon_path, icon_color, tag_label)| {
+                element
+                    .child(
+                        div()
+                            .text_color(theme.text_ghost)
+                            .child("·"),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(4.0))
+                            .child(icon(icon_path, 11.5, icon_color))
+                            .child(
+                                div()
+                                    .min_w_0()
+                                    .truncate()
+                                    .text_color(theme.text_secondary)
+                                    .child(tag_label),
+                            ),
+                    )
+            })
             .when(self.caret, |element| {
                 element.child(icon("icons/chevron-down.svg", 10.5, theme.text_ghost))
             })

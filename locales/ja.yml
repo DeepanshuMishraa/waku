@@ -167,7 +167,7 @@ settings.theme_system: システム
 settings.theme_light: ライト
 settings.theme_dark: ダーク
 
-input.do_anything: 何でも依頼できます…
+input.do_anything: 変更を依頼、@でファイル参照、/でコマンド実行
 input.search_models: モデルを検索…
 input.search_branches: ブランチを検索
 input.new_branch_name: 新しいブランチ名
@@ -270,6 +270,7 @@ sidebar.status_background: バックグラウンドタスク待ち
 sidebar.status_failed: 失敗
 
 project.new_project: 新規プロジェクト…
+project.open_in_github: GitHub で開く
 project.no_project: プロジェクトを使用しない
 project.no_project_name: プロジェクトなし
 project.choose_project: プロジェクトを選択
@@ -491,6 +492,7 @@ models.remove_favorite: お気に入りから削除
 models.standard: 標準
 models.reasoning: 推論レベル
 models.service_tier: サービスティア
+models.permissions: 権限
 models.context_window: コンテキストウィンドウ
 
 model_option.none: なし
