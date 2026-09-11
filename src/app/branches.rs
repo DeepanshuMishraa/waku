@@ -5,7 +5,7 @@ enum BranchOperation {
     Create(String),
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn sync_branch_picker_rows(&self, rows: &[crate::git_branch::BranchEntry]) {
         let mut cached = self.branch_picker_row_cache.borrow_mut();
         if cached.as_slice() == rows {
@@ -56,7 +56,7 @@ impl Waku {
             Query::Missing(token) => {
                 let fetch_path = workspace_path.clone();
                 let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-                cx.spawn(async move |waku, cx| {
+                cx.spawn(async move |insulator, cx| {
                     let result = cx
                         .background_executor()
                         .spawn({
@@ -79,17 +79,17 @@ impl Waku {
                             }
                         })
                         .await;
-                    let _ = waku.update(cx, |waku, cx| {
-                        if !waku.branch_snapshots.fulfill(token, result.clone()) {
+                    let _ = insulator.update(cx, |insulator, cx| {
+                        if !insulator.branch_snapshots.fulfill(token, result.clone()) {
                             return;
                         }
                         match &result {
-                            Ok(Some(snapshot)) => waku
+                            Ok(Some(snapshot)) => insulator
                                 .cache_sidebar_branch_label(&fetch_path, snapshot.display_branch()),
-                            Ok(None) => waku.cache_sidebar_branch_label(&fetch_path, None),
+                            Ok(None) => insulator.cache_sidebar_branch_label(&fetch_path, None),
                             Err(_) => {}
                         }
-                        let selected = waku
+                        let selected = insulator
                             .selected_workspace_path()
                             .is_some_and(|path| path == fetch_path);
                         if selected {
@@ -97,7 +97,7 @@ impl Waku {
                                 Ok(Some(snapshot)) => {
                                     let mut persisted_branch_changed = false;
                                     if let Some(current) = snapshot.current.as_deref()
-                                        && let Some(session) = waku.selected_session_mut()
+                                        && let Some(session) = insulator.selected_session_mut()
                                         && let SessionWorkspace::Worktree { branch, .. } =
                                             &mut session.workspace
                                         && branch != current
@@ -105,12 +105,12 @@ impl Waku {
                                         *branch = current.to_owned();
                                         persisted_branch_changed = true;
                                     }
-                                    waku.visible_branch_snapshot = Some((fetch_path, snapshot));
+                                    insulator.visible_branch_snapshot = Some((fetch_path, snapshot));
                                     if persisted_branch_changed {
-                                        waku.save();
+                                        insulator.save();
                                     }
                                 }
-                                Ok(None) => waku.visible_branch_snapshot = None,
+                                Ok(None) => insulator.visible_branch_snapshot = None,
                                 Err(_) => {}
                             }
                             cx.notify();
@@ -140,7 +140,7 @@ impl Waku {
     /// real `git switch` on the background executor.
     ///
     /// `true` asks the caller to dismiss the picker after this entity update
-    /// ends. Closing sooner runs the toggle observer, which re-enters `Waku`
+    /// ends. Closing sooner runs the toggle observer, which re-enters `Insulator`
     /// and double-leases the entity.
     pub(super) fn choose_workspace_branch(
         &mut self,
@@ -282,7 +282,7 @@ impl Waku {
     }
 
     /// Apply the keyboard-selected action, returning whether the caller should
-    /// dismiss the picker after releasing its `Waku` update lease.
+    /// dismiss the picker after releasing its `Insulator` update lease.
     pub(super) fn confirm_branch_picker_action(
         &mut self,
         actions: &[BranchPickerAction],
@@ -318,7 +318,7 @@ impl Waku {
         self.branch_operation_pending = true;
         cx.notify();
         let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn({
@@ -343,32 +343,32 @@ impl Waku {
                     }
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                waku.branch_operation_pending = false;
+            let _ = insulator.update(cx, |insulator, cx| {
+                insulator.branch_operation_pending = false;
                 match result {
                     Ok(snapshot) => {
                         let current = snapshot.current.clone();
-                        waku.cache_sidebar_branch_label(&path, snapshot.display_branch());
-                        waku.visible_branch_snapshot = Some((path.clone(), snapshot));
-                        waku.branch_snapshots.invalidate(&path);
-                        let selected_path = waku
+                        insulator.cache_sidebar_branch_label(&path, snapshot.display_branch());
+                        insulator.visible_branch_snapshot = Some((path.clone(), snapshot));
+                        insulator.branch_snapshots.invalidate(&path);
+                        let selected_path = insulator
                             .selected_workspace_path()
                             .map(std::path::Path::to_path_buf);
                         if selected_path.as_ref() == Some(&path) {
                             if let Some(current) = current
-                                && let Some(session) = waku.selected_session_mut()
+                                && let Some(session) = insulator.selected_session_mut()
                                 && let SessionWorkspace::Worktree { branch, .. } =
                                     &mut session.workspace
                             {
                                 *branch = current;
                             }
-                            waku.invalidate_workspace_queries(cx);
-                            waku.reload_clean_right_panel_file_editors(cx);
-                            waku.save();
+                            insulator.invalidate_workspace_queries(cx);
+                            insulator.reload_clean_right_panel_file_editors(cx);
+                            insulator.save();
                         }
                     }
                     Err(error) => {
-                        waku.show_toast(tr!("errors.change_branch", error = error));
+                        insulator.show_toast(tr!("errors.change_branch", error = error));
                     }
                 }
                 cx.notify();

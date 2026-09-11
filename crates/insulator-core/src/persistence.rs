@@ -5,7 +5,7 @@
 //! `~/.insulator/app.json` for Release, daemon preferences in
 //! `~/.insulator/settings.json`, and binary payloads in [`crate::blob_store`].
 //! Of the configuration documents, only the desktop file is written here;
-//! daemon settings cross the RPC boundary and are persisted by `waku-daemon`.
+//! daemon settings cross the RPC boundary and are persisted by `insulator-daemon`.
 //!
 //! A save writes only the rows whose contents changed, so a streaming turn
 //! costs a few kilobytes no matter how much history exists. Fields the sidebar
@@ -62,9 +62,6 @@ fn default_computer_use_enabled() -> bool {
     false
 }
 
-fn default_analytics_enabled() -> bool {
-    true
-}
 
 fn default_provider() -> ProviderKind {
     ProviderKind::Codex
@@ -187,7 +184,6 @@ impl ComposerDraftStore {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AppSettings {
-    pub analytics_enabled: bool,
     pub favorite_models: Vec<FavoriteModel>,
     pub theme: ThemePreference,
     pub color_theme: ColorTheme,
@@ -197,7 +193,6 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            analytics_enabled: default_analytics_enabled(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
@@ -210,10 +205,6 @@ impl Default for AppSettings {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct AppState {
     app_state_version: u32,
-    /// Random installation-scoped analytics identity. It is deliberately
-    /// unrelated to provider accounts, projects, or session content.
-    #[serde(default = "Uuid::new_v4")]
-    analytics_id: Uuid,
     #[serde(default)]
     selected_project: Option<Uuid>,
     #[serde(default)]
@@ -230,6 +221,8 @@ struct AppState {
     last_context_window: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     remembered_model_traits: Vec<RememberedModelTraits>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_models: Vec<FavoriteModel>,
     #[serde(default = "default_sidebar_visibility")]
     sidebar_visible: bool,
     #[serde(default = "default_right_panel_visibility")]
@@ -244,11 +237,6 @@ struct AppState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PersistedState {
     pub version: u32,
-    /// Random installation-scoped analytics identity. See [`AppState`].
-    #[serde(default = "Uuid::new_v4")]
-    pub analytics_id: Uuid,
-    #[serde(default = "default_analytics_enabled")]
-    pub analytics_enabled: bool,
     pub projects: Vec<Project>,
     pub sessions: Vec<AgentSession>,
     pub selected_project: Option<Uuid>,
@@ -264,6 +252,8 @@ pub struct PersistedState {
     pub last_context_window: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remembered_model_traits: Vec<RememberedModelTraits>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_models: Vec<FavoriteModel>,
     #[serde(default)]
     pub favorite_models: Vec<FavoriteModel>,
     #[serde(default)]
@@ -372,8 +362,6 @@ impl PersistedState {
     pub fn empty() -> Self {
         Self {
             version: STATE_VERSION,
-            analytics_id: Uuid::new_v4(),
-            analytics_enabled: true,
             projects: Vec::new(),
             sessions: Vec::new(),
             selected_project: None,
@@ -384,6 +372,7 @@ impl PersistedState {
             last_service_tier: None,
             last_context_window: None,
             remembered_model_traits: Vec::new(),
+            recent_models: Vec::new(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
@@ -480,7 +469,6 @@ impl PersistedState {
 
     fn app_settings(&self) -> AppSettings {
         AppSettings {
-            analytics_enabled: self.analytics_enabled,
             favorite_models: self.favorite_models.clone(),
             theme: self.theme,
             color_theme: self.color_theme,
@@ -501,7 +489,6 @@ impl PersistedState {
     fn app_state(&self) -> AppState {
         AppState {
             app_state_version: APP_STATE_VERSION,
-            analytics_id: self.analytics_id,
             selected_project: self.selected_project,
             selected_session: self.persistable_selected_session(),
             last_provider: self.last_provider,
@@ -510,6 +497,7 @@ impl PersistedState {
             last_service_tier: self.last_service_tier.clone(),
             last_context_window: self.last_context_window.clone(),
             remembered_model_traits: self.remembered_model_traits.clone(),
+            recent_models: self.recent_models.clone(),
             sidebar_visible: self.sidebar_visible,
             right_panel_visible: self.right_panel_visible,
             sidebar_width: self.sidebar_width,
@@ -518,7 +506,6 @@ impl PersistedState {
     }
 
     fn apply_app_settings(&mut self, settings: AppSettings) {
-        self.analytics_enabled = settings.analytics_enabled;
         self.favorite_models = settings.favorite_models;
         self.theme = settings.theme;
         self.language = settings.language;
@@ -533,7 +520,6 @@ impl PersistedState {
     }
 
     fn apply_app_state(&mut self, app_state: AppState) {
-        self.analytics_id = app_state.analytics_id;
         self.selected_project = app_state.selected_project;
         self.selected_session = app_state.selected_session;
         self.last_provider = app_state.last_provider;
@@ -542,6 +528,7 @@ impl PersistedState {
         self.last_service_tier = app_state.last_service_tier;
         self.last_context_window = app_state.last_context_window;
         self.remembered_model_traits = app_state.remembered_model_traits;
+        self.recent_models = app_state.recent_models;
         self.sidebar_visible = app_state.sidebar_visible;
         self.right_panel_visible = app_state.right_panel_visible;
         self.sidebar_width = app_state.sidebar_width;
@@ -900,7 +887,7 @@ pub struct StateStore {
     /// cache. It is never read by the daemon.
     app_state_path: PathBuf,
     /// Desktop-owned preferences. Debug stays isolated in the checkout while
-    /// Release uses the explicit cross-client Waku configuration directory.
+    /// Release uses the explicit cross-client Insulator configuration directory.
     app_settings_path: PathBuf,
     /// Read-only migration sources for the former combined settings document.
     legacy_settings_paths: Vec<PathBuf>,
@@ -951,7 +938,7 @@ impl StateStore {
         Self::with_settings_paths(path, app_settings_path, legacy_settings_paths)
     }
 
-    /// Local database owner used inside `waku-daemon`. It never reads or
+    /// Local database owner used inside `insulator-daemon`. It never reads or
     /// writes desktop-only `app.json` or client navigation state.
     pub fn daemon(path: PathBuf) -> Self {
         let mut store = Self::new(path);
@@ -1196,8 +1183,6 @@ impl StateStore {
         let app_state_is_saved = if !self.desktop_files {
             true
         } else if app_state_missing {
-            // Persist the random installation ID before the first analytics
-            // event is sent. Failure must not discard valid database state.
             self.write_app_state(&app_state).is_ok()
         } else {
             true
@@ -1857,7 +1842,7 @@ mod tests {
     use base64::Engine as _;
 
     fn temporary_directory() -> PathBuf {
-        std::env::temp_dir().join(format!("waku-state-{}", Uuid::new_v4()))
+        std::env::temp_dir().join(format!("insulator-state-{}", Uuid::new_v4()))
     }
 
     fn store_in(directory: &Path) -> StateStore {
@@ -1902,44 +1887,12 @@ mod tests {
     }
 
     #[test]
-    fn analytics_preference_and_identity_use_their_respective_files() {
-        let mut state = PersistedState::empty();
-        state.analytics_enabled = false;
-        let analytics_id = state.analytics_id;
-        let mut settings = serde_json::to_value(state.app_settings()).unwrap();
-
-        let restored: AppSettings = serde_json::from_value(settings.clone()).unwrap();
-        assert!(!restored.analytics_enabled);
-        assert!(settings.get("analytics_id").is_none());
-
-        let app_state: AppState =
-            serde_json::from_value(serde_json::to_value(state.app_state()).unwrap()).unwrap();
-        assert_eq!(app_state.analytics_id, analytics_id);
-
-        settings
-            .as_object_mut()
-            .unwrap()
-            .remove("analytics_enabled");
-        let backfilled: AppSettings = serde_json::from_value(settings).unwrap();
-        assert!(backfilled.analytics_enabled);
-    }
-
-    #[test]
     fn missing_settings_and_app_state_are_created_during_load() {
         let directory = temporary_directory();
         let store = store_in(&directory);
-        let restored = store.load().unwrap();
-        let settings_path = directory.join("app.json");
-        let settings: serde_json::Value =
-            serde_json::from_slice(&fs::read(&settings_path).unwrap()).unwrap();
-        let app_state: serde_json::Value =
-            serde_json::from_slice(&fs::read(directory.join("state.json")).unwrap()).unwrap();
-
-        assert_eq!(settings["analytics_enabled"], true);
-        assert!(settings.get("analytics_id").is_none());
-        assert_eq!(app_state["analytics_id"], restored.analytics_id.to_string());
-        assert!(app_state.get("analytics_enabled").is_none());
-
+        store.load().unwrap();
+        assert!(directory.join("app.json").is_file());
+        assert!(directory.join("state.json").is_file());
         fs::remove_dir_all(directory).ok();
     }
 
@@ -1950,7 +1903,6 @@ mod tests {
         let legacy_path = directory.join("settings.json");
         let legacy = r#"{
             "theme": "dark",
-            "analytics_enabled": false,
             "computer_use_enabled": true,
             "disabled_providers": ["claude"]
         }"#;
@@ -1958,7 +1910,6 @@ mod tests {
 
         let restored = store_in(&directory).load().unwrap();
         assert_eq!(restored.theme, ThemePreference::Dark);
-        assert!(!restored.analytics_enabled);
 
         let app: serde_json::Value =
             serde_json::from_slice(&fs::read(directory.join("app.json")).unwrap()).unwrap();
@@ -1991,7 +1942,6 @@ mod tests {
 
         assert_eq!(settings.theme, ThemePreference::Dark);
         assert_eq!(settings.language, AppLanguage::System);
-        assert!(settings.analytics_enabled);
     }
 
     #[test]
@@ -2196,7 +2146,7 @@ mod tests {
         state.sessions[0].auto_title = Some("Investigate".into());
         state.sessions[0].workspace = SessionWorkspace::Worktree {
             path: PathBuf::from("/tmp/worktrees/investigate"),
-            branch: "waku/investigate".into(),
+            branch: "insulator/investigate".into(),
         };
         state.sessions[0].begin_turn("Ask");
         state.sessions[0].push_message(MessageRole::Assistant, "an answer");
@@ -2229,7 +2179,7 @@ mod tests {
             session.workspace,
             SessionWorkspace::Worktree {
                 path: PathBuf::from("/tmp/worktrees/investigate"),
-                branch: "waku/investigate".into(),
+                branch: "insulator/investigate".into(),
             }
         );
         assert!(
@@ -2348,7 +2298,7 @@ mod tests {
             name: "reference.png".to_owned(),
             is_dir: false,
             is_image: true,
-            blob_reference: Some("waku-blob:abcdef.png".to_owned()),
+            blob_reference: Some("insulator-blob:abcdef.png".to_owned()),
         };
         state.sessions[0].begin_turn_with_presentation(
             "compare @/tmp/reference.png",
@@ -2911,7 +2861,6 @@ mod tests {
         for app_managed_key in [
             "version",
             "app_state_version",
-            "analytics_id",
             "selected_project",
             "selected_session",
             "last_provider",
@@ -2920,6 +2869,7 @@ mod tests {
             "last_service_tier",
             "last_context_window",
             "remembered_model_traits",
+            "recent_models",
             "sidebar_visible",
             "right_panel_visible",
             "sidebar_width",
@@ -2936,7 +2886,6 @@ mod tests {
         assert_eq!(app_state["sidebar_width"], 301.0);
         assert_eq!(app_state["app_state_version"], APP_STATE_VERSION);
         for setting_key in [
-            "analytics_enabled",
             "favorite_models",
             "theme",
             "language",

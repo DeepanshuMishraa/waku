@@ -41,7 +41,7 @@ impl DaemonSettings {
     }
 
     pub fn discard_legacy_app_keys(&mut self) {
-        for key in ["analytics_enabled", "favorite_models", "theme", "language"] {
+        for key in ["favorite_models", "theme", "language"] {
             self.extra.remove(key);
         }
     }

@@ -4,7 +4,7 @@
 //! the transcript is what made the old single-file state unusable: one
 //! computer-use session reached 8 MB, base64 inflates the payload by a third,
 //! and every render decoded the string again. Blobs live in files instead, and
-//! the transcript keeps only a `waku-blob:` reference.
+//! the transcript keeps only a `insulator-blob:` reference.
 
 use std::fs;
 use std::io;
@@ -89,7 +89,7 @@ impl BlobStore {
         }
     }
 
-    /// Resolves a `waku-blob:` reference against this daemon store's root.
+    /// Resolves a `insulator-blob:` reference against this daemon store's root.
     pub fn path_for(&self, reference: &str) -> Option<PathBuf> {
         resolve_path(&self.root, reference)
     }
@@ -224,7 +224,7 @@ mod tests {
     use std::collections::HashSet;
 
     fn temporary_root() -> PathBuf {
-        std::env::temp_dir().join(format!("waku-blobs-{}", uuid::Uuid::new_v4()))
+        std::env::temp_dir().join(format!("insulator-blobs-{}", uuid::Uuid::new_v4()))
     }
 
     fn data_url(mime_type: &str, bytes: &[u8]) -> String {
@@ -318,7 +318,7 @@ mod tests {
     #[test]
     fn traversal_references_are_rejected() {
         let store = BlobStore::new(temporary_root());
-        assert!(store.path_for("waku-blob:../../etc/passwd").is_none());
+        assert!(store.path_for("insulator-blob:../../etc/passwd").is_none());
         assert!(store.path_for("data:image/png;base64,AAAA").is_none());
     }
 }

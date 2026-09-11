@@ -275,7 +275,7 @@ pub fn init_reduce_motion(cx: &mut gpui::App) {
 
 #[cfg(target_os = "linux")]
 pub fn init_reduce_motion(cx: &mut gpui::App) {
-    if let Ok(value) = std::env::var("WAKU_REDUCE_MOTION")
+    if let Ok(value) = std::env::var("INSULATOR_REDUCE_MOTION")
         && let Some(enabled) = parse_boolean_setting(&value)
     {
         cx.set_reduce_motion(enabled);
@@ -343,7 +343,7 @@ fn parse_boolean_setting(value: &str) -> Option<bool> {
 }
 
 /// Deliver an audible macOS notification. GPUI owns the notification-center
-/// delegate (and therefore click responses); Waku only supplies content here
+/// delegate (and therefore click responses); Insulator only supplies content here
 /// because GPUI's generic payload does not currently expose a sound field.
 #[cfg(target_os = "macos")]
 pub fn show_task_notification(tag: &str, title: &str, body: &str, _: &gpui::App) {
@@ -593,7 +593,7 @@ pub const fn primary_shortcut<'a>(macos: &'a str, other: &'a str) -> &'a str {
     }
 }
 
-/// Keep Waku's single main window alive when the user closes it. This preserves
+/// Keep Insulator's single main window alive when the user closes it. This preserves
 /// the current session and lets a Dock activation reveal the same GPUI window.
 #[cfg(target_os = "macos")]
 pub fn configure_main_window_close_behavior(window: &Window, cx: &gpui::App) {

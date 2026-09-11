@@ -273,7 +273,7 @@ pub fn provider_session_history(
 }
 
 // The development watcher terminates the app with SIGTERM, which does not run
-// Rust destructors. Keep one pipe open in Waku and let this wrapper terminate
+// Rust destructors. Keep one pipe open in Insulator and let this wrapper terminate
 // the resident Host when that pipe closes, so a rebuild cannot orphan `dsh
 // web`. The second watcher makes a spontaneous Host exit observable through
 // the wrapper Child as well as through the ordinary process monitor.
@@ -397,7 +397,7 @@ impl DeepSeekServer {
         let mut command = {
             let mut command = crate::command_env::command("/bin/sh");
             command
-                .args(["-c", DSH_GUARDIAN_SCRIPT, "waku-dsh-guardian"])
+                .args(["-c", DSH_GUARDIAN_SCRIPT, "insulator-dsh-guardian"])
                 .arg(binary)
                 .args(["web", "--host", "127.0.0.1", "--port", "0"]);
             if supports_no_open {
@@ -438,14 +438,14 @@ impl DeepSeekServer {
         let (stdout_tx, stdout_rx) = std::sync::mpsc::channel();
         let (stderr_tx, stderr_rx) = std::sync::mpsc::channel();
         thread::Builder::new()
-            .name("waku-deepseek-stdout".into())
+            .name("insulator-deepseek-stdout".into())
             .spawn(move || {
                 for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                     let _ = stdout_tx.send(line);
                 }
             })?;
         thread::Builder::new()
-            .name("waku-deepseek-stderr".into())
+            .name("insulator-deepseek-stderr".into())
             .spawn(move || {
                 for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                     let _ = stderr_tx.send(line);
@@ -501,7 +501,7 @@ impl DeepSeekServer {
             let events = Arc::clone(&events);
             let streams = Arc::clone(&streams);
             thread::Builder::new()
-                .name(format!("waku-deepseek-{name}-events"))
+                .name(format!("insulator-deepseek-{name}-events"))
                 .spawn(move || run_downlink(name, port, path, &events, &streams))?;
         }
 
@@ -509,7 +509,7 @@ impl DeepSeekServer {
         let monitor_events = Arc::clone(&events);
         let monitor_streams = Arc::clone(&streams);
         thread::Builder::new()
-            .name("waku-deepseek-process-monitor".into())
+            .name("insulator-deepseek-process-monitor".into())
             .spawn(move || {
                 loop {
                     if monitor_streams.is_cancelled() {
@@ -520,10 +520,10 @@ impl DeepSeekServer {
                         Ok(Some(status)) => {
                             monitor_events.publish(json!({
                                 "type": "server-request",
-                                "rpcId": format!("waku-process-{}", Uuid::new_v4()),
-                                "method": "waku/process-exited",
+                                "rpcId": format!("insulator-process-{}", Uuid::new_v4()),
+                                "method": "insulator/process-exited",
                                 "payload": {
-                                    "type": "waku/process-exited",
+                                    "type": "insulator/process-exited",
                                     "message": format!("DeepSeek Harness exited ({status})")
                                 }
                             }));
@@ -533,10 +533,10 @@ impl DeepSeekServer {
                         Err(error) => {
                             monitor_events.publish(json!({
                             "type": "server-request",
-                            "rpcId": format!("waku-process-{}", Uuid::new_v4()),
-                            "method": "waku/process-exited",
+                            "rpcId": format!("insulator-process-{}", Uuid::new_v4()),
+                            "method": "insulator/process-exited",
                             "payload": {
-                                "type": "waku/process-exited",
+                                "type": "insulator/process-exited",
                                 "message": format!("could not observe DeepSeek Harness: {error}")
                             }
                         }));
@@ -559,7 +559,7 @@ impl DeepSeekServer {
     }
 
     pub(crate) fn rpc(&self, method: &str, payload: Value) -> anyhow::Result<Value> {
-        let rpc_id = format!("waku-{}", Uuid::new_v4());
+        let rpc_id = format!("insulator-{}", Uuid::new_v4());
         let body = json!({
             "type": "client-request",
             "rpcId": rpc_id,
@@ -771,7 +771,7 @@ fn run_downlink(
 fn stream_error(message: String) -> Value {
     json!({
         "type": "server-request",
-        "rpcId": format!("waku-stream-{}", Uuid::new_v4()),
+        "rpcId": format!("insulator-stream-{}", Uuid::new_v4()),
         "method": "stream/error",
         "payload": {
             "type": "stream/error",
@@ -1032,7 +1032,7 @@ mod tests {
         assert_eq!(history.messages[0].content, "queued");
     }
 
-    /// Exercises Waku's HTTP envelope, WebSocket handshakes, and process-tree
+    /// Exercises Insulator's HTTP envelope, WebSocket handshakes, and process-tree
     /// lifecycle against the locally installed Harness without creating a
     /// session or making a model request.
     #[test]
@@ -1047,7 +1047,7 @@ mod tests {
         assert!(listed.get("items").and_then(Value::as_array).is_some());
         #[cfg(unix)]
         {
-            // Simulate an abruptly terminated Waku process: the OS closes its
+            // Simulate an abruptly terminated Insulator process: the OS closes its
             // pipe without giving DeepSeekServer a chance to run Drop.
             drop(server.child.lock().stdin.take());
             let deadline = Instant::now() + Duration::from_secs(5);
@@ -1079,19 +1079,19 @@ mod tests {
         let binary =
             crate::command_env::find_executable("dsh").expect("DeepSeek Harness is not installed");
         let root =
-            TempHarnessHome(std::env::temp_dir().join(format!("waku-dsh-test-{}", Uuid::new_v4())));
+            TempHarnessHome(std::env::temp_dir().join(format!("insulator-dsh-test-{}", Uuid::new_v4())));
         std::fs::create_dir_all(&root.0).unwrap();
         {
             let server = DeepSeekServer::start_with_dsh_home(&binary, Some(&root.0))
                 .expect("Harness Host should start");
-            let session_id = format!("waku-test-{}", Uuid::new_v4());
+            let session_id = format!("insulator-test-{}", Uuid::new_v4());
             let events = server.subscribe(&session_id);
             let created = server
                 .rpc(
                     "session.create",
                     json!({"cwd": root.0.to_string_lossy(), "sessionId": session_id}),
                 )
-                .expect("session.create should accept Waku's payload");
+                .expect("session.create should accept Insulator's payload");
             assert_eq!(
                 created.get("sessionId").and_then(Value::as_str),
                 Some(session_id.as_str())
@@ -1101,7 +1101,7 @@ mod tests {
                     "session.history",
                     json!({"sessionId": session_id, "maxMessages": 200}),
                 )
-                .expect("session.history should accept Waku's payload");
+                .expect("session.history should accept Insulator's payload");
             assert!(history.get("events").and_then(Value::as_array).is_some());
             assert!(
                 server

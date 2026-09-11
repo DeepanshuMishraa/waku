@@ -1,7 +1,7 @@
 //! Historical token and cost usage for the settings Usage page, scanned from
 //! the provider CLIs' own on-disk session transcripts (Claude Code's
 //! `~/.claude/projects` and Codex's `~/.codex/sessions`) the way T3 Code and
-//! `ccusage` do it, so usage covers turns driven outside Waku too. Costs are
+//! `ccusage` do it, so usage covers turns driven outside Insulator too. Costs are
 //! priced against LiteLLM's model rate table, fetched at most daily and cached
 //! beside the app database.
 //!
@@ -1233,7 +1233,7 @@ mod tests {
         // Shape captured from a live transcript on 2026-08-08.
         let line = r#"{"type":"assistant","timestamp":"2026-08-08T15:18:37.487Z",
             "requestId":"req_1","sessionId":"session-1","costUSD":null,
-            "cwd":"/Users/me/dev/waku",
+            "cwd":"/Users/me/dev/insulator",
             "message":{"id":"msg_1","model":"claude-fable-5",
             "usage":{"input_tokens":2,"cache_creation_input_tokens":50700,
             "cache_read_input_tokens":0,"output_tokens":1238}}}"#
@@ -1242,7 +1242,7 @@ mod tests {
         assert_eq!(record.provider, UsageProvider::Claude);
         assert_eq!(record.model, "claude-fable-5");
         assert_eq!(record.session_id, "session-1");
-        assert_eq!(record.project, "/Users/me/dev/waku");
+        assert_eq!(record.project, "/Users/me/dev/insulator");
         assert_eq!(record.dedupe_key.as_deref(), Some("msg_1:req_1"));
         assert_eq!(record.reported_cost_usd, None);
         assert_eq!(record.totals.uncached_input, 2);
@@ -1258,7 +1258,7 @@ mod tests {
     fn codex_lines_carry_model_forward_and_skip_duplicates() {
         let mut state = CodexScanState::new();
         let meta = r#"{"timestamp":"2026-08-06T16:31:19.166Z","type":"session_meta",
-            "payload":{"id":"codex-session","cwd":"/Users/me/dev/waku"}}"#
+            "payload":{"id":"codex-session","cwd":"/Users/me/dev/insulator"}}"#
             .replace('\n', " ");
         let context = r#"{"timestamp":"2026-08-06T16:31:20.000Z","type":"turn_context",
             "payload":{"model":"gpt-5.3-codex"}}"#
@@ -1278,7 +1278,7 @@ mod tests {
         let record = parse_codex_line(&count, &mut state).expect("model is known now");
         assert_eq!(record.model, "gpt-5.3-codex");
         assert_eq!(record.session_id, "codex-session");
-        assert_eq!(record.project, "/Users/me/dev/waku");
+        assert_eq!(record.project, "/Users/me/dev/insulator");
         // input_tokens includes the cached portion.
         assert_eq!(record.totals.uncached_input, 21047 - 1000 - 47);
         assert_eq!(record.totals.cached_input, 1000);
@@ -1426,7 +1426,7 @@ mod tests {
             timestamp_ms: Local::now().timestamp_millis(),
             model: "claude-fable-5".to_owned(),
             session_id: "session-1".to_owned(),
-            project: "/Users/me/dev/waku/crates/ui".to_owned(),
+            project: "/Users/me/dev/insulator/crates/ui".to_owned(),
             totals: TokenTotals {
                 uncached_input: 1_000,
                 cached_input: 10_000,
@@ -1438,7 +1438,7 @@ mod tests {
             dedupe_key: Some("msg:req".to_owned()),
         };
         let today = Local::now().date_naive();
-        let roots = [PathBuf::from("/Users/me/dev/waku")];
+        let roots = [PathBuf::from("/Users/me/dev/insulator")];
         let mut aggregator = Aggregator::new(today - chrono::Days::new(29), today, &roots);
         aggregator.add(&record, &rates);
         // The same message copied into a forked session's transcript.
@@ -1471,7 +1471,7 @@ mod tests {
         // the month fold carries the same totals as the single active day.
         assert_eq!(history.projects.len(), 1);
         let project = &history.projects[0];
-        assert_eq!(project.path, "/Users/me/dev/waku");
+        assert_eq!(project.path, "/Users/me/dev/insulator");
         assert_eq!(project.sessions, 1);
         assert_eq!(project.total_tokens, 13_500);
         assert!((project.cost_share - 1.0).abs() < f64::EPSILON);
@@ -1610,7 +1610,7 @@ mod tests {
         // Missing cache rates fall back to the input rate, not to free.
         assert_eq!(rates["gpt-5.3-codex"].cache_read, 3e-6);
 
-        let dir = std::env::temp_dir().join(format!("waku-usage-rates-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("insulator-usage-rates-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let path = dir.join(RATES_CACHE_FILE);
         write_rates_cache(&path, 12345, &rates);

@@ -239,7 +239,7 @@ mod tests {
     impl TestWorkspace {
         fn new() -> Self {
             let path =
-                std::env::temp_dir().join(format!("waku-opencode-pool-test-{}", Uuid::new_v4()));
+                std::env::temp_dir().join(format!("insulator-opencode-pool-test-{}", Uuid::new_v4()));
             std::fs::create_dir(&path).expect("the test workspace should be created");
             Self { path }
         }
@@ -263,7 +263,7 @@ mod tests {
     /// workspace share a single process, the server outlives the first
     /// session, the last session's drop kills it, and a later session starts
     /// a fresh one. Ignored by default: needs the CLI installed. Run with
-    /// `cargo test --bin waku opencode_pool -- --ignored`.
+    /// `cargo test --bin insulator opencode_pool -- --ignored`.
     #[test]
     #[ignore = "requires an installed opencode"]
     fn workspace_sessions_share_one_server_until_the_last_drops() {

@@ -580,7 +580,7 @@ mod tests {
     }
 
     fn repository() -> PathBuf {
-        let root = std::env::temp_dir().join(format!("waku-workspace-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-workspace-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         git_ok(&root, &["init", "-b", "main"]);
         fs::create_dir_all(root.join("src")).unwrap();
@@ -590,9 +590,9 @@ mod tests {
             &root,
             &[
                 "-c",
-                "user.name=Waku Tests",
+                "user.name=Insulator Tests",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "-m",
                 "baseline",
@@ -635,7 +635,7 @@ mod tests {
     #[test]
     fn directory_browser_lists_an_arbitrary_daemon_directory() {
         let directory =
-            std::env::temp_dir().join(format!("waku-directory-browser-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("insulator-directory-browser-{}", Uuid::new_v4()));
         fs::create_dir_all(directory.join("folder")).unwrap();
         fs::create_dir_all(directory.join(".git")).unwrap();
         fs::write(directory.join("notes.txt"), "notes").unwrap();
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn file_reader_keeps_the_complete_disk_content() {
-        let root = std::env::temp_dir().join(format!("waku-editor-file-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-editor-file-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         let content = "line\n".repeat(10_000);
         fs::write(root.join("large.txt"), &content).unwrap();
@@ -704,9 +704,9 @@ mod tests {
             &root,
             &[
                 "-c",
-                "user.name=Waku Tests",
+                "user.name=Insulator Tests",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "-m",
                 "feature",
@@ -784,9 +784,9 @@ mod tests {
             &root,
             &[
                 "-c",
-                "user.name=Waku Tests",
+                "user.name=Insulator Tests",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "-m",
                 "feature baseline",
@@ -799,9 +799,9 @@ mod tests {
             &root,
             &[
                 "-c",
-                "user.name=Waku Tests",
+                "user.name=Insulator Tests",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "-m",
                 "main baseline",

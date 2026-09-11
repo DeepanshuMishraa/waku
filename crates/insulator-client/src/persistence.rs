@@ -96,9 +96,6 @@ fn default_code_font_family() -> String {
     DEFAULT_CODE_FONT_FAMILY.to_owned()
 }
 
-fn default_analytics_enabled() -> bool {
-    true
-}
 
 fn default_provider() -> ProviderKind {
     ProviderKind::Codex
@@ -158,7 +155,7 @@ impl ComposerDraftStore {
                 Ok(drafts)
             }
             _ => Err(io::Error::other(
-                "Waku daemon returned an invalid composer-drafts response",
+                "Insulator daemon returned an invalid composer-drafts response",
             )),
         }
     }
@@ -192,7 +189,7 @@ impl ComposerDraftStore {
                 Ok(())
             }
             _ => Err(io::Error::other(
-                "Waku daemon returned an invalid composer-drafts save response",
+                "Insulator daemon returned an invalid composer-drafts save response",
             )),
         }
     }
@@ -263,7 +260,6 @@ pub struct PersistedWindowState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 #[serde(default)]
 pub struct AppSettings {
-    pub analytics_enabled: bool,
     pub favorite_models: Vec<FavoriteModel>,
     pub theme: ThemePreference,
     pub color_theme: ColorTheme,
@@ -306,7 +302,6 @@ pub struct AppSettings {
 impl Default for AppSettings {
     fn default() -> Self {
         Self {
-            analytics_enabled: default_analytics_enabled(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
@@ -357,8 +352,6 @@ pub fn sanitized_code_font_size(size: f32) -> f32 {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 struct AppState {
     app_state_version: u32,
-    #[serde(default = "Uuid::new_v4")]
-    analytics_id: Uuid,
     #[serde(default)]
     selected_project: Option<Uuid>,
     #[serde(default)]
@@ -377,6 +370,8 @@ struct AppState {
     last_context_window: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     remembered_model_traits: Vec<RememberedModelTraits>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    recent_models: Vec<FavoriteModel>,
     #[serde(default = "default_sidebar_visibility")]
     sidebar_visible: bool,
     #[serde(default = "default_right_panel_visibility")]
@@ -402,10 +397,6 @@ struct AppState {
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct PersistedState {
     pub version: u32,
-    #[serde(default = "Uuid::new_v4")]
-    pub analytics_id: Uuid,
-    #[serde(default = "default_analytics_enabled")]
-    pub analytics_enabled: bool,
     pub projects: Vec<Project>,
     pub sessions: Vec<AgentSession>,
     pub selected_project: Option<Uuid>,
@@ -423,6 +414,8 @@ pub struct PersistedState {
     pub last_context_window: Option<String>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub remembered_model_traits: Vec<RememberedModelTraits>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub recent_models: Vec<FavoriteModel>,
     #[serde(default)]
     pub favorite_models: Vec<FavoriteModel>,
     #[serde(default)]
@@ -510,8 +503,6 @@ impl PersistedState {
     pub fn empty() -> Self {
         Self {
             version: STATE_VERSION,
-            analytics_id: Uuid::new_v4(),
-            analytics_enabled: true,
             projects: Vec::new(),
             sessions: Vec::new(),
             selected_project: None,
@@ -523,6 +514,7 @@ impl PersistedState {
             last_service_tier: None,
             last_context_window: None,
             remembered_model_traits: Vec::new(),
+            recent_models: Vec::new(),
             favorite_models: Vec::new(),
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
@@ -656,7 +648,6 @@ impl PersistedState {
 
     fn app_settings(&self) -> AppSettings {
         AppSettings {
-            analytics_enabled: self.analytics_enabled,
             favorite_models: self.favorite_models.clone(),
             theme: self.theme,
             color_theme: self.color_theme,
@@ -680,7 +671,6 @@ impl PersistedState {
     fn app_state(&self) -> AppState {
         AppState {
             app_state_version: APP_STATE_VERSION,
-            analytics_id: self.analytics_id,
             selected_project: self.selected_project,
             selected_session: self.persistable_selected_session(),
             last_provider: self.last_provider,
@@ -690,6 +680,7 @@ impl PersistedState {
             last_service_tier: self.last_service_tier.clone(),
             last_context_window: self.last_context_window.clone(),
             remembered_model_traits: self.remembered_model_traits.clone(),
+            recent_models: self.recent_models.clone(),
             sidebar_visible: self.sidebar_visible,
             right_panel_visible: self.right_panel_visible,
             sidebar_width: self.sidebar_width,
@@ -703,7 +694,6 @@ impl PersistedState {
     }
 
     fn apply_app_settings(&mut self, settings: AppSettings) {
-        self.analytics_enabled = settings.analytics_enabled;
         self.favorite_models = settings.favorite_models;
         self.theme = settings.theme;
         self.color_theme = settings.color_theme;
@@ -724,7 +714,6 @@ impl PersistedState {
     }
 
     fn apply_app_state(&mut self, app_state: AppState) {
-        self.analytics_id = app_state.analytics_id;
         self.selected_project = app_state.selected_project;
         self.selected_session = app_state.selected_session;
         self.last_provider = app_state.last_provider;
@@ -734,6 +723,7 @@ impl PersistedState {
         self.last_service_tier = app_state.last_service_tier;
         self.last_context_window = app_state.last_context_window;
         self.remembered_model_traits = app_state.remembered_model_traits;
+        self.recent_models = app_state.recent_models;
         self.sidebar_visible = app_state.sidebar_visible;
         self.right_panel_visible = app_state.right_panel_visible;
         self.sidebar_width = app_state.sidebar_width;
@@ -743,6 +733,25 @@ impl PersistedState {
         self.right_panel_width = app_state.right_panel_width;
         self.markdown_preview = app_state.markdown_preview;
         self.window_state = app_state.window_state;
+    }
+
+    pub fn record_recent_model(&mut self, provider: ProviderKind, model: &str) {
+        let trimmed = model.trim();
+        if trimmed.is_empty() {
+            return;
+        }
+        self.recent_models
+            .retain(|r| !(r.provider == provider && r.model == trimmed));
+        self.recent_models.insert(
+            0,
+            FavoriteModel {
+                provider,
+                model: trimmed.to_owned(),
+            },
+        );
+        if self.recent_models.len() > 20 {
+            self.recent_models.truncate(20);
+        }
     }
 
     fn persistable_selected_session(&self) -> Option<Uuid> {
@@ -973,7 +982,7 @@ impl StateStore {
         {
             ResponsePayload::SessionMessageMatches { matches } => Ok(matches),
             _ => Err(io::Error::other(
-                "Waku daemon returned an invalid message-search response",
+                "Insulator daemon returned an invalid message-search response",
             )),
         }
     }
@@ -995,7 +1004,7 @@ impl StateStore {
         {
             ResponsePayload::ProviderSessions { sessions } => Ok(sessions),
             _ => Err(io::Error::other(
-                "Waku daemon returned an invalid provider-session response",
+                "Insulator daemon returned an invalid provider-session response",
             )),
         }
     }
@@ -1017,7 +1026,7 @@ impl StateStore {
         {
             ResponsePayload::ProviderSessionHistory { history } => Ok(history),
             _ => Err(io::Error::other(
-                "Waku daemon returned an invalid provider-session history response",
+                "Insulator daemon returned an invalid provider-session history response",
             )),
         }
     }
@@ -1072,7 +1081,7 @@ impl StateStore {
             }
             _ => {
                 return Err(io::Error::other(
-                    "Waku daemon returned an invalid task-state response",
+                    "Insulator daemon returned an invalid task-state response",
                 ));
             }
         };
@@ -1204,7 +1213,7 @@ pub fn hydrate_session(
     {
         ResponsePayload::Session { session } => Ok(session),
         _ => Err(io::Error::other(
-            "Waku daemon returned an invalid session-hydration response",
+            "Insulator daemon returned an invalid session-hydration response",
         )),
     }
 }

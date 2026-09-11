@@ -8,7 +8,7 @@ use gpui::{KeyBinding, actions};
 
 use super::*;
 
-actions!(waku_image_preview, [DismissImagePreview]);
+actions!(insulator_image_preview, [DismissImagePreview]);
 
 const IMAGE_PREVIEW_CONTEXT: &str = "ImagePreview";
 const IMAGE_PREVIEW_ANIMATION_DURATION: Duration = Duration::from_millis(140);
@@ -40,7 +40,7 @@ pub(super) fn attachment_menu_items(path: PathBuf, can_reveal: bool) -> Vec<Menu
     ]
 }
 
-impl Waku {
+impl Insulator {
     /// Resolve one daemon-owned image for a visible row. Frames consult only
     /// in-memory state; the first miss starts a deduplicated background RPC and
     /// a later notification lets GPUI render the returned bytes from memory.
@@ -80,7 +80,7 @@ impl Waku {
         let fetch_reference = cache_key.clone();
         let daemon_path = daemon_path.map(Path::to_path_buf);
         let daemon = self.daemon.clone();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let image = cx
                 .background_executor()
                 .spawn(async move {
@@ -92,8 +92,8 @@ impl Waku {
                     .map(|bytes| Arc::new(gpui::Image::from_bytes(format, bytes)))
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                waku.remote_images.borrow_mut().insert(
+            let _ = insulator.update(cx, |insulator, cx| {
+                insulator.remote_images.borrow_mut().insert(
                     cache_key,
                     image.map_or(RemoteImageState::Unavailable, RemoteImageState::Ready),
                 );

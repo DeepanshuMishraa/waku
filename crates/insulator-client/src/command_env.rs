@@ -101,7 +101,7 @@ pub fn default_terminal_shell() -> PathBuf {
 
 /// The account's login shell first, then `SHELL`.
 ///
-/// `SHELL` describes whatever launched Waku — a desktop session, the dev
+/// `SHELL` describes whatever launched Insulator — a desktop session, the dev
 /// watcher, a terminal profile pinned to a different shell — and on macOS it
 /// keeps the value the login session started with, so it goes stale the moment
 /// someone runs `chsh`. The passwd entry is the shell the user actually chose,

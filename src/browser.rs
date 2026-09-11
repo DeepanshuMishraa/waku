@@ -6,7 +6,7 @@
 //!
 //! - Geometry: the surface's content area syncs the native frame from element
 //!   layout every frame, deduplicated so an unchanged frame costs nothing.
-//! - Visibility: [`Waku`] recomputes "should the webview be on screen" once
+//! - Visibility: [`Insulator`] recomputes "should the webview be on screen" once
 //!   per frame — panel visible, Browser tab active, no settings page — and
 //!   pushes it down here. On a window without GPUI's overlay plane the live
 //!   view also swaps for a frozen snapshot while a menu or popover is open,
@@ -22,7 +22,7 @@
 //! nothing, so this module forwards mouse input, cursor and focus by hand.
 //! [`host`] carries the detail.
 //!
-//! [`Waku`]: crate::app::Waku
+//! [`Insulator`]: crate::app::Insulator
 
 use std::rc::Rc;
 
@@ -385,7 +385,7 @@ mod host {
     //! An ordinary `ICoreWebView2Controller` cannot be upgraded to a
     //! composition controller after the fact — only the environment creates
     //! one — so none of this is reachable through wry's `WebViewExtWindows`,
-    //! and Waku drives `webview2-com` directly rather than carrying a wry
+    //! and Insulator drives `webview2-com` directly rather than carrying a wry
     //! fork. It uses a narrow slice of it (bounds, visibility, focus,
     //! navigation, six events), so there is little of wry's custom-protocol,
     //! IPC and window-lifecycle machinery to give up.
@@ -447,7 +447,7 @@ mod host {
         }
     }
 
-    /// Where WebView2 keeps its profile: per-user, beside the rest of Waku's
+    /// Where WebView2 keeps its profile: per-user, beside the rest of Insulator's
     /// data, so a per-user install never needs to write into its own
     /// program directory.
     fn user_data_folder() -> Option<HSTRING> {
@@ -1936,7 +1936,7 @@ impl BrowserView {
     /// Run a document editing command in the page.
     ///
     /// WebView2 handles the standard chords itself when the page holds the
-    /// keyboard; this covers the case where Waku's own Browser-scoped
+    /// keyboard; this covers the case where Insulator's own Browser-scoped
     /// bindings claimed the keystroke first.
     #[cfg(target_os = "windows")]
     fn perform_editing_command(&self, command: &str) {
@@ -2646,7 +2646,7 @@ mod tests {
     fn download_names_do_not_overwrite() {
         // Pure-logic check of the uniquing shape; the filesystem probe path is
         // exercised by using a directory that cannot collide.
-        let unique = std::env::temp_dir().join(format!("waku-download-{}", uuid::Uuid::new_v4()));
+        let unique = std::env::temp_dir().join(format!("insulator-download-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&unique).unwrap();
         std::fs::write(unique.join("file.txt"), "x").unwrap();
         let (stem, extension) = match "file.txt".rsplit_once('.') {

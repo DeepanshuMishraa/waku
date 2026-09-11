@@ -116,14 +116,14 @@ fn build_opencode_computer_use_config(
         .as_object_mut()
         .ok_or_else(|| anyhow!("OPENCODE_CONFIG_CONTENT.mcp must be a JSON object"))?;
     mcp.insert(
-        "waku_js_repl".into(),
+        "insulator_js_repl".into(),
         serde_json::json!({
             "type": "local",
             "command": [repl_path.display().to_string()],
             "enabled": true,
             "environment": {
-                "WAKU_COMPUTER_USE_SERVER": server_path.display().to_string(),
-                "WAKU_COMPUTER_USE_PROCESS_DIRECTORY": process_directory.display().to_string(),
+                "INSULATOR_COMPUTER_USE_SERVER": server_path.display().to_string(),
+                "INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY": process_directory.display().to_string(),
             },
         }),
     );
@@ -156,11 +156,11 @@ pub(super) fn opencode_computer_use_environment(
     vec![
         ("OPENCODE_CONFIG_CONTENT".to_owned(), config_content.clone()),
         (
-            "WAKU_COMPUTER_USE_SERVER".to_owned(),
+            "INSULATOR_COMPUTER_USE_SERVER".to_owned(),
             base.server_path.display().to_string(),
         ),
         (
-            "WAKU_COMPUTER_USE_PROCESS_DIRECTORY".to_owned(),
+            "INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY".to_owned(),
             base.process_directory.display().to_string(),
         ),
     ]
@@ -235,7 +235,7 @@ fn build_grok_computer_use_config(
         });
     let rules = fs::read_to_string(&base.skill_path).with_context(|| {
         format!(
-            "could not read Waku Computer Use skill {}",
+            "could not read Insulator Computer Use skill {}",
             base.skill_path.display()
         )
     })?;
@@ -264,11 +264,11 @@ fn build_grok_computer_use_toml(
         .ok_or_else(|| anyhow!("Grok config.toml mcp_servers must be a table"))?;
     let mut environment = toml::Table::new();
     environment.insert(
-        "WAKU_COMPUTER_USE_SERVER".into(),
+        "INSULATOR_COMPUTER_USE_SERVER".into(),
         toml::Value::String(base.server_path.display().to_string()),
     );
     environment.insert(
-        "WAKU_COMPUTER_USE_PROCESS_DIRECTORY".into(),
+        "INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY".into(),
         toml::Value::String(base.process_directory.display().to_string()),
     );
     let mut server = toml::Table::new();
@@ -279,7 +279,7 @@ fn build_grok_computer_use_toml(
     server.insert("args".into(), toml::Value::Array(Vec::new()));
     server.insert("env".into(), toml::Value::Table(environment));
     server.insert("enabled".into(), toml::Value::Boolean(true));
-    mcp_servers.insert("waku_js_repl".into(), toml::Value::Table(server));
+    mcp_servers.insert("insulator_js_repl".into(), toml::Value::Table(server));
     toml::to_string(&root).context("could not encode Grok Computer Use configuration")
 }
 
@@ -303,11 +303,11 @@ pub(super) fn grok_computer_use_launch_configuration(
         let mut environment = vec![
             ("GROK_HOME".to_owned(), grok_home.display().to_string()),
             (
-                "WAKU_COMPUTER_USE_SERVER".to_owned(),
+                "INSULATOR_COMPUTER_USE_SERVER".to_owned(),
                 base.server_path.display().to_string(),
             ),
             (
-                "WAKU_COMPUTER_USE_PROCESS_DIRECTORY".to_owned(),
+                "INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY".to_owned(),
                 base.process_directory.display().to_string(),
             ),
         ];
@@ -373,7 +373,7 @@ pub(super) fn classify_tool(name: &str) -> ActivityKind {
 /// one-shot provider reply and keeps the rule in driver-local state. On v1
 /// that protected a per-workspace pooled server. On v2 it is more
 /// load-bearing still: an `always` reply writes into `/api/permission/saved`,
-/// a GLOBAL store shared with the user's own terminal, so a Full Access Waku
+/// a GLOBAL store shared with the user's own terminal, so a Full Access Insulator
 /// task would silently disarm prompts in every other workspace and in the
 /// user's TUI. `always` is never put on the wire.
 #[derive(Clone, Debug)]
@@ -509,12 +509,12 @@ mod tests {
 
     fn computer_use_config() -> computer_use_runtime::ComputerUseConfig {
         computer_use_runtime::ComputerUseConfig {
-            server_path: PathBuf::from("/tmp/Waku Computer Use"),
-            repl_path: PathBuf::from("/Applications/Waku.app/Contents/Resources/waku_js_repl"),
+            server_path: PathBuf::from("/tmp/Insulator Computer Use"),
+            repl_path: PathBuf::from("/Applications/Insulator.app/Contents/Resources/insulator_js_repl"),
             skill_path: PathBuf::from(
-                "/Applications/Waku.app/Contents/Resources/skills/waku-computer-use/SKILL.md",
+                "/Applications/Insulator.app/Contents/Resources/skills/insulator-computer-use/SKILL.md",
             ),
-            process_directory: PathBuf::from("/tmp/waku-computer-use/session"),
+            process_directory: PathBuf::from("/tmp/insulator-computer-use/session"),
         }
     }
 
@@ -550,12 +550,12 @@ mod tests {
                     "plugin": ["existing-plugin"]
                 }"#,
             ),
-            Path::new("/Applications/Waku Computer Use"),
-            Path::new("/Applications/Waku.app/Contents/Resources/waku_js_repl"),
+            Path::new("/Applications/Insulator Computer Use"),
+            Path::new("/Applications/Insulator.app/Contents/Resources/insulator_js_repl"),
             Path::new(
-                "/Applications/Waku.app/Contents/Resources/skills/waku-computer-use/SKILL.md",
+                "/Applications/Insulator.app/Contents/Resources/skills/insulator-computer-use/SKILL.md",
             ),
-            Path::new("/tmp/waku computer use/session"),
+            Path::new("/tmp/insulator computer use/session"),
         )
         .unwrap();
         let value: Value = serde_json::from_str(&content).unwrap();
@@ -568,22 +568,22 @@ mod tests {
         );
         assert_eq!(
             value
-                .pointer("/mcp/waku_js_repl/command/0")
+                .pointer("/mcp/insulator_js_repl/command/0")
                 .and_then(Value::as_str),
-            Some("/Applications/Waku.app/Contents/Resources/waku_js_repl")
+            Some("/Applications/Insulator.app/Contents/Resources/insulator_js_repl")
         );
         assert_eq!(
             value
-                .pointer("/mcp/waku_js_repl/environment/WAKU_COMPUTER_USE_SERVER")
+                .pointer("/mcp/insulator_js_repl/environment/INSULATOR_COMPUTER_USE_SERVER")
                 .and_then(Value::as_str),
-            Some("/Applications/Waku Computer Use")
+            Some("/Applications/Insulator Computer Use")
         );
         assert_eq!(
             value.get("instructions").and_then(Value::as_array).unwrap(),
             &[
                 Value::String("existing.md".into()),
                 Value::String(
-                    "/Applications/Waku.app/Contents/Resources/skills/waku-computer-use/SKILL.md"
+                    "/Applications/Insulator.app/Contents/Resources/skills/insulator-computer-use/SKILL.md"
                         .into(),
                 ),
             ]
@@ -592,11 +592,11 @@ mod tests {
             value.pointer("/plugin/0").and_then(Value::as_str),
             Some("existing-plugin")
         );
-        assert!(value.pointer("/mcp/waku_computer_use").is_none());
+        assert!(value.pointer("/mcp/insulator_computer_use").is_none());
     }
 
     #[test]
-    fn grok_computer_use_config_preserves_existing_config_and_replaces_waku_server() {
+    fn grok_computer_use_config_preserves_existing_config_and_replaces_insulator_server() {
         let content = build_grok_computer_use_toml(
             Some(
                 r#"
@@ -628,18 +628,18 @@ mod tests {
         );
         let server = value
             .get("mcp_servers")
-            .and_then(|mcp| mcp.get("waku_js_repl"))
+            .and_then(|mcp| mcp.get("insulator_js_repl"))
             .unwrap();
         assert_eq!(
             server.get("command").and_then(toml::Value::as_str),
-            Some("/Applications/Waku.app/Contents/Resources/waku_js_repl")
+            Some("/Applications/Insulator.app/Contents/Resources/insulator_js_repl")
         );
         assert_eq!(
             server
                 .get("env")
-                .and_then(|env| env.get("WAKU_COMPUTER_USE_SERVER"))
+                .and_then(|env| env.get("INSULATOR_COMPUTER_USE_SERVER"))
                 .and_then(toml::Value::as_str),
-            Some("/tmp/Waku Computer Use")
+            Some("/tmp/Insulator Computer Use")
         );
     }
 
@@ -647,16 +647,16 @@ mod tests {
     fn grok_computer_use_command_is_process_scoped_and_loads_rules() {
         let config = HeadlessComputerUseConfig::Grok {
             base: computer_use_config(),
-            grok_home: PathBuf::from("/tmp/waku-computer-use/session/grok-home"),
+            grok_home: PathBuf::from("/tmp/insulator-computer-use/session/grok-home"),
             auth_path: Some(PathBuf::from("/Users/test/.grok/auth.json")),
-            rules: "Waku Computer Use rules".into(),
+            rules: "Insulator Computer Use rules".into(),
         };
         let (arguments, environment) = grok_computer_use_launch_configuration(Some(&config));
-        assert_eq!(arguments, ["--rules=Waku Computer Use rules"]);
+        assert_eq!(arguments, ["--rules=Insulator Computer Use rules"]);
         let environment = environment.into_iter().collect::<HashMap<_, _>>();
         assert_eq!(
             environment.get("GROK_HOME"),
-            Some(&"/tmp/waku-computer-use/session/grok-home".into())
+            Some(&"/tmp/insulator-computer-use/session/grok-home".into())
         );
         assert_eq!(
             environment.get("GROK_AUTH_PATH"),
@@ -668,7 +668,7 @@ mod tests {
     fn provider_stderr_keeps_cli_argument_errors_compact() {
         let message = provider_stderr_error(vec![
             "error: unexpected argument '---".into(),
-            "name: waku-computer-use".into(),
+            "name: insulator-computer-use".into(),
             "description: a very long bundled skill".into(),
             "---' found".into(),
             "tip: to pass it as a value, use '-- ---'".into(),

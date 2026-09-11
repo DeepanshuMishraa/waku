@@ -359,8 +359,8 @@ mod tests {
     #[test]
     fn imports_any_daemon_file_without_routing_bytes_through_the_client() {
         let source_directory =
-            std::env::temp_dir().join(format!("waku-file-source-{}", Uuid::new_v4()));
-        let root = std::env::temp_dir().join(format!("waku-attachments-{}", Uuid::new_v4()));
+            std::env::temp_dir().join(format!("insulator-file-source-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-attachments-{}", Uuid::new_v4()));
         fs::create_dir_all(&source_directory).unwrap();
         let source = source_directory.join("design.md");
         fs::write(&source, "daemon-owned").unwrap();
@@ -382,8 +382,8 @@ mod tests {
     fn daemon_path_import_follows_symbolic_links() {
         use std::os::unix::fs::symlink;
 
-        let outside = std::env::temp_dir().join(format!("waku-outside-{}", Uuid::new_v4()));
-        let root = std::env::temp_dir().join(format!("waku-attachments-{}", Uuid::new_v4()));
+        let outside = std::env::temp_dir().join(format!("insulator-outside-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-attachments-{}", Uuid::new_v4()));
         fs::create_dir_all(&outside).unwrap();
         fs::write(outside.join("secret.txt"), "secret").unwrap();
         let linked = outside.join("linked.txt");
@@ -402,7 +402,7 @@ mod tests {
 
     #[test]
     fn retain_removes_only_unreferenced_materializations() {
-        let root = std::env::temp_dir().join(format!("waku-attachments-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-attachments-{}", Uuid::new_v4()));
         let store = AttachmentStore::new(root.clone());
         let keep = store
             .import(
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn recent_unreferenced_attachments_survive_a_grace_period_sweep() {
-        let root = std::env::temp_dir().join(format!("waku-attachments-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-attachments-{}", Uuid::new_v4()));
         let store = AttachmentStore::new(root.clone());
         let recent = store
             .import(

@@ -21,9 +21,9 @@ use crate::workspace::{WorkspaceOperation, WorkspaceResult};
 
 pub const PROTOCOL_VERSION: u32 = 7;
 pub const MAX_WIRE_MESSAGE_BYTES: usize = 48 * 1024 * 1024;
-pub const DAEMON_TOKEN_ENV: &str = "WAKU_DAEMON_TOKEN";
-pub const DAEMON_ADDRESS_ENV: &str = "WAKU_DAEMON_ADDRESS";
-pub const APP_EXECUTABLE_ENV: &str = "WAKU_APP_EXECUTABLE";
+pub const DAEMON_TOKEN_ENV: &str = "INSULATOR_DAEMON_TOKEN";
+pub const DAEMON_ADDRESS_ENV: &str = "INSULATOR_DAEMON_ADDRESS";
+pub const APP_EXECUTABLE_ENV: &str = "INSULATOR_APP_EXECUTABLE";
 
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]
 #[serde(rename_all = "camelCase")]

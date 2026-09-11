@@ -1,6 +1,6 @@
 //! `opencode serve` is OpenCode's real API: one resident process serves
 //! every session in a workspace, streams server-sent events, and answers
-//! permission requests the user can actually be asked. Waku already started
+//! permission requests the user can actually be asked. Insulator already started
 //! this server for a side-quest — forking a session — while running
 //! conversations through one-shot `opencode run` invocations; this drives
 //! everything through it, pooled per workspace via `opencode_pool` so
@@ -115,7 +115,7 @@ fn start_native_command(
     // Keep the control worker free to answer permissions, stop, and steer.
     // A port alone cannot keep the pooled server alive after driver teardown.
     thread::Builder::new()
-        .name("waku-opencode-command".into())
+        .name("insulator-opencode-command".into())
         .spawn(move || {
             let result = crate::opencode_session::request_json_on_port(
                 port,
@@ -251,7 +251,7 @@ impl OpenCodeDriver {
         };
 
         // OpenCode's build agent allows ordinary shell commands by default.
-        // Waku must therefore install the selected access policy on this
+        // Insulator must therefore install the selected access policy on this
         // native session; listening for permission events alone cannot make
         // Supervised mode ask. Session-local rules are also safe on the shared
         // per-workspace server and replace a previous mode when resuming.
@@ -323,7 +323,7 @@ impl OpenCodeDriver {
         let metadata_events = events.clone();
         let background_usage_metadata = usage_metadata.clone();
         thread::Builder::new()
-            .name("waku-opencode-usage-metadata".into())
+            .name("insulator-opencode-usage-metadata".into())
             .spawn(move || {
                 // `/api/model` answers with an empty catalog until the server
                 // warms it up. The first session of a workspace starts a cold
@@ -382,7 +382,7 @@ impl OpenCodeDriver {
         let stream_permissions = Arc::clone(&permissions);
         let stream_control = Arc::clone(&event_stream);
         thread::Builder::new()
-            .name("waku-opencode-events".into())
+            .name("insulator-opencode-events".into())
             .spawn(move || {
                 let mut state = OpenCodeStreamState {
                     usage_metadata: stream_usage_metadata,
@@ -396,7 +396,7 @@ impl OpenCodeDriver {
                     Ok(Some(stream)) => {
                         // The stream is live before this snapshot is read, so
                         // a request can neither fall between the two nor be
-                        // lost when Waku reconnects after it was asked. Events
+                        // lost when Insulator reconnects after it was asked. Events
                         // that arrive during the snapshot wait in the socket;
                         // request-level de-duplication handles the overlap.
                         if let Ok(pending) = crate::opencode_session::request_json_on_port(
@@ -468,7 +468,7 @@ impl OpenCodeDriver {
         let worker_turn = turn_active;
         let worker_commands = commands.clone();
         thread::Builder::new()
-            .name("waku-opencode-driver".into())
+            .name("insulator-opencode-driver".into())
             .spawn(move || {
                 let mut generation = 0_u64;
                 while let Ok(message) = command_rx.recv() {
@@ -1029,7 +1029,7 @@ fn rehydrate_pending_permissions(
 
     // A pending native permission proves that the resumed provider turn is
     // still live. Restore this driver-local edge so the eventual
-    // `session.idle` settles Waku's persisted running turn exactly once.
+    // `session.idle` settles Insulator's persisted running turn exactly once.
     *turn_active.lock() = true;
     for request in requests {
         request_permission(request, events, commands, auto_approve, permissions);
@@ -1155,7 +1155,7 @@ fn request_permission(
 
     // OpenCode's `always` response updates a process-wide approval cache. A
     // pooled Full Access task must never suppress prompts in a Supervised task,
-    // so Waku sends only one-shot provider replies and retains durable choices
+    // so Insulator sends only one-shot provider replies and retains durable choices
     // in this driver's session-local state.
     let mut permission_state = permissions.lock();
     if permission_state.pending.contains_key(request_id)
@@ -1498,7 +1498,7 @@ mod tests {
 
     /// Drives a real `opencode serve` through the actual driver. Ignored by
     /// default: needs the CLI installed, credentials, and the network. Run with
-    /// `cargo test --bin waku opencode_session_against_a_real_server -- --ignored`.
+    /// `cargo test --bin insulator opencode_session_against_a_real_server -- --ignored`.
     #[test]
     #[ignore = "requires an installed, authenticated opencode"]
     fn opencode_session_against_a_real_server() {
@@ -2057,7 +2057,7 @@ mod tests {
                 "id": "per_def",
                 "sessionID": "ses_1",
                 "permission": "bash",
-                "patterns": ["rm -rf /tmp/waku-cache"],
+                "patterns": ["rm -rf /tmp/insulator-cache"],
                 "metadata": {},
                 "always": ["rm -rf *"]
             }

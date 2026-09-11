@@ -135,7 +135,7 @@ const STREAM_SAVE_INTERVAL: Duration = Duration::from_secs(1);
 const DEFAULT_TOAST_DURATION: Duration = Duration::from_secs(5);
 const MINIMUM_TOAST_RESUME_DURATION: Duration = Duration::from_millis(800);
 const TOAST_ANIMATION_DURATION: Duration = Duration::from_millis(150);
-const TASK_NOTIFICATION_TAG_PREFIX: &str = "waku-task:";
+const TASK_NOTIFICATION_TAG_PREFIX: &str = "insulator-task:";
 
 pub(crate) fn task_notification_tag(session_id: Uuid) -> String {
     format!("{TASK_NOTIFICATION_TAG_PREFIX}{session_id}")
@@ -197,6 +197,7 @@ enum StreamDeltaKind {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum ModelPickerTab {
+    Recents,
     Favorites,
     Provider(ProviderKind),
 }
@@ -574,7 +575,7 @@ struct SessionTitleRequest {
 }
 
 /// A provider process that has started off-thread but is not installed into
-/// Waku's runtime map yet. Its event receiver safely buffers early events.
+/// Insulator's runtime map yet. Its event receiver safely buffers early events.
 struct PreparedDriver {
     handle: DriverHandle,
     events: Receiver<DriverEvent>,
@@ -661,7 +662,7 @@ enum EventPumpSchedule {
 }
 
 /// One cached island of the root view: a region rendered by delegating back
-/// into [`Waku`] under its own view identity.
+/// into [`Insulator`] under its own view identity.
 ///
 /// All state stays on the root entity; what the island buys is scope for
 /// gpui's cached-view machinery. The pulse clock and the streaming veil lease
@@ -671,25 +672,25 @@ enum EventPumpSchedule {
 /// invalidation semantics exactly — any root notify still re-renders every
 /// island — so caching cannot show state the single-view architecture would
 /// have repainted.
-struct WakuPane {
-    waku: Option<WeakEntity<Waku>>,
-    content: fn(&mut Waku, &mut Window, &mut Context<Waku>) -> AnyElement,
+struct InsulatorPane {
+    insulator: Option<WeakEntity<Insulator>>,
+    content: fn(&mut Insulator, &mut Window, &mut Context<Insulator>) -> AnyElement,
 }
 
-impl WakuPane {
+impl InsulatorPane {
     fn new(
-        content: fn(&mut Waku, &mut Window, &mut Context<Waku>) -> AnyElement,
+        content: fn(&mut Insulator, &mut Window, &mut Context<Insulator>) -> AnyElement,
         cx: &mut App,
     ) -> Entity<Self> {
         cx.new(|_| Self {
-            waku: None,
+            insulator: None,
             content,
         })
     }
 
-    fn bind(&mut self, waku: &Entity<Waku>, cx: &mut Context<Self>) {
-        self.waku = Some(waku.downgrade());
-        cx.observe(waku, |_, waku, cx| {
+    fn bind(&mut self, insulator: &Entity<Insulator>, cx: &mut Context<Self>) {
+        self.insulator = Some(insulator.downgrade());
+        cx.observe(insulator, |_, insulator, cx| {
             // A panel slide notifies the root at display rate for its 200ms,
             // and this fan-out would price every one of those ticks at a
             // three-island rebuild. Skipping it hands the decision to the
@@ -701,7 +702,7 @@ impl WakuPane {
             // (terminal output, pulse leases) dirty their ancestor pane
             // without this observer, and the slide's retirement notify
             // below re-runs the fan-out, so nothing outlasts the 200ms.
-            if !waku.read(cx).panels_sliding() {
+            if !insulator.read(cx).panels_sliding() {
                 cx.notify();
             }
         })
@@ -709,22 +710,73 @@ impl WakuPane {
     }
 }
 
-impl Render for WakuPane {
+impl Render for InsulatorPane {
     fn render(&mut self, window: &mut Window, cx: &mut Context<Self>) -> impl IntoElement {
-        let Some(waku) = self.waku.as_ref().and_then(WeakEntity::upgrade) else {
+        let Some(insulator) = self.insulator.as_ref().and_then(WeakEntity::upgrade) else {
             return gpui::div().into_any_element();
         };
         let content = self.content;
-        waku.update(cx, |waku, cx| content(waku, window, cx))
+        insulator.update(cx, |insulator, cx| content(insulator, window, cx))
     }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct FileEditorSnippet {
+    pub(super) start_line: usize,
+    pub(super) end_line: usize,
+    pub(super) text: String,
+    pub(super) byte_range: std::ops::Range<usize>,
+}
+
+impl FileEditorSnippet {
+    pub(super) fn from_range(range: std::ops::Range<usize>, content: &str) -> Self {
+        let len = content.len();
+        let start = range.start.min(len);
+        let start = (0..=start).rev().find(|&i| content.is_char_boundary(i)).unwrap_or(0);
+        let end = range.end.min(len).max(start);
+        let end = (end..=len).find(|&i| content.is_char_boundary(i)).unwrap_or(len);
+        let valid_range = start..end;
+        let start_line = content[..start].bytes().filter(|b| *b == b'\n').count() + 1;
+        let selected_prefix = &content[..end];
+        let end_line = selected_prefix.bytes().filter(|b| *b == b'\n').count()
+            + usize::from(!selected_prefix.ends_with('\n') && start != end);
+        Self {
+            start_line,
+            end_line: end_line.max(start_line),
+            text: content[valid_range.clone()].to_owned(),
+            byte_range: valid_range,
+        }
+    }
+}
+
+pub(super) fn normalize_snippets(snippets: &mut Vec<FileEditorSnippet>, content: &str) {
+    if snippets.is_empty() {
+        return;
+    }
+    snippets.sort_by_key(|s| s.byte_range.start);
+
+    let mut merged: Vec<std::ops::Range<usize>> = Vec::with_capacity(snippets.len());
+    for snippet in snippets.iter() {
+        let r = snippet.byte_range.clone();
+        if let Some(last) = merged.last_mut() {
+            if r.start <= last.end {
+                last.end = last.end.max(r.end);
+                continue;
+            }
+        }
+        merged.push(r);
+    }
+
+    *snippets = merged
+        .into_iter()
+        .map(|r| FileEditorSnippet::from_range(r, content))
+        .collect();
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct FileEditorSelection {
     pub(super) path: String,
-    pub(super) start_line: usize,
-    pub(super) end_line: usize,
-    pub(super) text: String,
+    pub(super) snippets: Vec<FileEditorSnippet>,
 }
 
 struct RightPanelFileEditor {
@@ -1059,7 +1111,7 @@ pub(super) enum MainTab {
     Review,
 }
 
-pub struct Waku {
+pub struct Insulator {
     /// Owns the headless provider process for exactly as long as the desktop
     /// app entity. Debug builds can replace it independently after a rebuild;
     /// all live driver handles below are lightweight RPC proxies.
@@ -1073,7 +1125,6 @@ pub struct Waku {
     /// Selection is committed only after this target's transcript arrives, so
     /// the currently visible task stays intact during daemon latency.
     pending_session_activation: Option<PendingSessionActivation>,
-    analytics: crate::analytics::Analytics,
     state: PersistedState,
     store: StateStore,
     /// Cached before rendering so path labels can abbreviate the home prefix
@@ -1629,10 +1680,10 @@ pub struct Waku {
     menus: RefCell<HashMap<SharedString, ContextMenuHandle>>,
     navigation_rail: Entity<ConversationNavigationRail>,
     navigation_rail_reset_generation: Cell<u64>,
-    /// Cached islands of the root view; see [`WakuPane`].
-    sidebar_pane: Entity<WakuPane>,
-    transcript_pane: Entity<WakuPane>,
-    right_panel_pane: Entity<WakuPane>,
+    /// Cached islands of the root view; see [`InsulatorPane`].
+    sidebar_pane: Entity<InsulatorPane>,
+    transcript_pane: Entity<InsulatorPane>,
+    right_panel_pane: Entity<InsulatorPane>,
     /// The unix second the pending time-label wake-up targets, or `None` when
     /// none is armed. See `schedule_time_label_wake`.
     time_label_wake: Cell<Option<u64>>,
@@ -1767,7 +1818,7 @@ fn migrate_legacy_projectless_projects(
     (changed, None)
 }
 
-impl Waku {
+impl Insulator {
     fn updater_button_expanded(&self) -> bool {
         self.updater_button_hovered || self.updater_button_focused
     }
@@ -2003,23 +2054,6 @@ impl Waku {
         window.set_rem_size(px(insulator_client::persistence::sanitized_ui_font_size(
             state.ui_font_size,
         )));
-        let analytics = crate::analytics::Analytics::new(
-            state.language.locale(),
-            state.analytics_id,
-            state.analytics_enabled,
-        );
-        analytics.track(crate::analytics::Event::AppLaunched {
-            task_count: state
-                .sessions
-                .iter()
-                .filter(|session| session.has_started())
-                .count(),
-            project_count: state
-                .projects
-                .iter()
-                .filter(|project| !project.is_projectless())
-                .count(),
-        });
 
         let composer = cx.new(|cx| ComposerInput::new(window, cx).padding_x(px(14.0), cx));
         let user_input_answer = cx
@@ -2099,9 +2133,9 @@ impl Waku {
         let right_panel_diff_filter =
             cx.new(|cx| TextInput::new(window, cx).placeholder(tr!("diff.filter_files")));
         let navigation_rail = cx.new(|_| ConversationNavigationRail::new());
-        let sidebar_pane = WakuPane::new(Waku::sidebar_pane_content, cx);
-        let transcript_pane = WakuPane::new(Waku::transcript_pane_content, cx);
-        let right_panel_pane = WakuPane::new(Waku::right_panel_pane_content, cx);
+        let sidebar_pane = InsulatorPane::new(Insulator::sidebar_pane_content, cx);
+        let transcript_pane = InsulatorPane::new(Insulator::transcript_pane_content, cx);
+        let right_panel_pane = InsulatorPane::new(Insulator::right_panel_pane_content, cx);
         let workspace_client = insulator_client::WorkspaceClient::new(daemon.client());
         let (projectless_migrated, projectless_migration_error) =
             migrate_legacy_projectless_projects(&mut state, &workspace_client);
@@ -2274,7 +2308,7 @@ impl Waku {
             let event_wake = event_wake_tx.clone();
             let daemon = daemon.client();
             std::thread::Builder::new()
-                .name("waku-computer-permission-probe".into())
+                .name("insulator-computer-permission-probe".into())
                 .spawn(move || {
                     let result = match daemon.request(
                         Uuid::nil(),
@@ -2293,13 +2327,36 @@ impl Waku {
                 })
                 .ok();
         }
-        let model_picker_tab = ModelPickerTab::Provider(
-            state
-                .selected_session
-                .and_then(|id| state.sessions.iter().find(|session| session.id == id))
-                .map(|session| session.provider)
-                .unwrap_or(state.last_provider),
-        );
+        if state.recent_models.is_empty() {
+            if let Some(last_model) = state.last_model.clone() {
+                let last_provider = state.last_provider;
+                state.record_recent_model(last_provider, &last_model);
+            }
+            let mut session_models: Vec<(ProviderKind, String)> = Vec::new();
+            for session in state.sessions.iter().rev() {
+                if let Some(model) = session.model.as_deref() {
+                    if !session_models
+                        .iter()
+                        .any(|(p, m)| *p == session.provider && m == model)
+                    {
+                        session_models.push((session.provider, model.to_owned()));
+                    }
+                }
+            }
+            for (provider, model) in session_models {
+                if !state
+                    .recent_models
+                    .iter()
+                    .any(|r| r.provider == provider && r.model == model)
+                {
+                    state.recent_models.push(FavoriteModel { provider, model });
+                }
+            }
+            if state.recent_models.len() > 20 {
+                state.recent_models.truncate(20);
+            }
+        }
+        let model_picker_tab = ModelPickerTab::Recents;
         let mut session_navigation = SessionNavigation::default();
         if let Some(session_id) = state.selected_session.filter(|session_id| {
             state
@@ -2533,7 +2590,7 @@ impl Waku {
             .detach();
 
             // Clipboard images and Finder file copies are attachment payloads,
-            // not text paths. The input owns representation priority; Waku
+            // not text paths. The input owns representation priority; Insulator
             // owns durable staging and composer/session state.
             cx.subscribe(
                 &composer,
@@ -2808,10 +2865,10 @@ impl Waku {
             .detach();
 
             let markdown_link_handler: md::render::LinkHandler = {
-                let waku = cx.entity().downgrade();
+                let insulator = cx.entity().downgrade();
                 Rc::new(move |target, _, cx| {
-                    let handled = waku
-                        .update(cx, |waku, cx| waku.open_transcript_link(target, cx))
+                    let handled = insulator
+                        .update(cx, |insulator, cx| insulator.open_transcript_link(target, cx))
                         .unwrap_or(false);
                     if !handled {
                         cx.open_url(target);
@@ -2824,7 +2881,6 @@ impl Waku {
                 daemon_hostname,
                     session_hydrations: HashSet::new(),
                 pending_session_activation: None,
-                analytics,
                 state,
                 store,
                 home_directory,
@@ -3135,7 +3191,7 @@ impl Waku {
                 fps_value: 0,
             }
         });
-        navigation_rail.update(cx, |rail, _| rail.set_waku(entity.downgrade()));
+        navigation_rail.update(cx, |rail, _| rail.set_insulator(entity.downgrade()));
         for pane in [&sidebar_pane, &transcript_pane, &right_panel_pane] {
             pane.update(cx, |pane, cx| pane.bind(&entity, cx));
         }

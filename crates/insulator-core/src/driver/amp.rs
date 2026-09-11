@@ -5,7 +5,7 @@
 //! stdin closes, so one process serves the whole conversation.
 //!
 //! Unlike every other long-lived transport here, Amp exposes no permission
-//! request over the stream — its rules live in `amp permissions`, so Waku still
+//! request over the stream — its rules live in `amp permissions`, so Insulator still
 //! decides the posture at launch. Turn completion is not a `result` message
 //! either: Amp signals it with `stop_reason: "end_turn"` on the assistant
 //! message. Both facts came from probing the real CLI.
@@ -158,7 +158,7 @@ impl AmpDriver {
         let reader_events = events.clone();
         let reader_turn = turn_active.clone();
         let reader_thread = thread::Builder::new()
-            .name("waku-amp-reader".into())
+            .name("insulator-amp-reader".into())
             .spawn(move || {
                 let mut state = AmpStreamState {
                     thread_id: reader_initial_thread_id,
@@ -178,7 +178,7 @@ impl AmpDriver {
                         let binary = title_binary.clone();
                         let cwd = title_cwd.clone();
                         title_refresh.start(
-                            "waku-amp-title",
+                            "insulator-amp-title",
                             vec![Duration::from_millis(500), Duration::from_secs(2)],
                             reader_events.clone(),
                             move || crate::amp_session::thread_title(&binary, &cwd, &thread_id),
@@ -190,7 +190,7 @@ impl AmpDriver {
         let writer_events = events.clone();
         let writer_turn = turn_active;
         thread::Builder::new()
-            .name("waku-amp-writer".into())
+            .name("insulator-amp-writer".into())
             .spawn(move || {
                 let mut stdin = stdin;
                 // A branch replays its retained history in the first prompt,
@@ -302,7 +302,7 @@ impl AmpDriver {
         let stderr_last_error = last_visible_stderr.clone();
         let stderr_events = events.clone();
         let stderr_thread = thread::Builder::new()
-            .name("waku-amp-stderr".into())
+            .name("insulator-amp-stderr".into())
             .spawn(move || {
                 let lines = BufReader::new(stderr)
                     .lines()
@@ -318,7 +318,7 @@ impl AmpDriver {
 
         let process_pid = active_pid.clone();
         thread::Builder::new()
-            .name("waku-amp-process".into())
+            .name("insulator-amp-process".into())
             .spawn(move || {
                 let status = child.wait();
                 process_pid.store(0, Ordering::Relaxed);

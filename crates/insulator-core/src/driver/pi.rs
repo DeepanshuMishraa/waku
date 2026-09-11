@@ -31,7 +31,7 @@ const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 /// more headroom than a request against the already-running process.
 const CLONE_TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Oh My Pi refuses to reassemble beyond this, so neither should Waku.
+/// Oh My Pi refuses to reassemble beyond this, so neither should Insulator.
 const MAX_REASSEMBLED_FRAME_BYTES: usize = 64 * 1024 * 1024;
 
 /// Which dialect of the Pi RPC protocol a session speaks.
@@ -50,7 +50,7 @@ impl PiFlavor {
     }
 
     /// Pi has no permission system and only needs project-local files trusted;
-    /// Oh My Pi does have one, and Waku only ever runs these in Full access.
+    /// Oh My Pi does have one, and Insulator only ever runs these in Full access.
     fn full_access_arg(self) -> &'static str {
         match self {
             Self::Pi => "--approve",
@@ -105,9 +105,9 @@ impl PiFlavor {
         matches!(self, Self::OhMyPi)
     }
 
-    /// Waku's computer-use bridge is a Pi extension written against Pi's
+    /// Insulator's computer-use bridge is a Pi extension written against Pi's
     /// extension API. Oh My Pi ships its own `/computer` instead.
-    fn supports_waku_computer_use(self) -> bool {
+    fn supports_insulator_computer_use(self) -> bool {
         matches!(self, Self::Pi)
     }
 
@@ -183,10 +183,10 @@ fn configure_pi_computer_use_command(
             .arg(extension)
             .arg("--skill")
             .arg(&config.skill_path)
-            .env("WAKU_JS_REPL_SERVER", &config.repl_path)
-            .env("WAKU_COMPUTER_USE_SERVER", &config.server_path)
+            .env("INSULATOR_JS_REPL_SERVER", &config.repl_path)
+            .env("INSULATOR_COMPUTER_USE_SERVER", &config.server_path)
             .env(
-                "WAKU_COMPUTER_USE_PROCESS_DIRECTORY",
+                "INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY",
                 &config.process_directory,
             );
     }
@@ -239,7 +239,7 @@ impl PiDriver {
             parse_model_slug(model)?;
         }
 
-        let computer_use = (computer_use_enabled && flavor.supports_waku_computer_use())
+        let computer_use = (computer_use_enabled && flavor.supports_insulator_computer_use())
             .then(|| computer_use_runtime::ComputerUseRuntime::start(events.clone()))
             .transpose()?;
         let pi_extension = computer_use
@@ -285,7 +285,7 @@ impl PiDriver {
         let reader_events = events.clone();
         let reader_thread =
             thread::Builder::new()
-                .name("waku-pi-reader".into())
+                .name("insulator-pi-reader".into())
                 .spawn(move || {
                     let mut stream_state = PiStreamState::default();
                     let mut chunks = ChunkAssembly::default();
@@ -350,7 +350,7 @@ impl PiDriver {
         let writer_pending = pending;
         let writer_events = events.clone();
         thread::Builder::new()
-            .name("waku-pi-writer".into())
+            .name("insulator-pi-writer".into())
             .spawn(move || {
                 let mut stdin = stdin;
                 let mut next_request_id = 0_u64;
@@ -679,7 +679,7 @@ impl PiDriver {
         let stderr_events = events.clone();
         let stderr_thread =
             thread::Builder::new()
-                .name("waku-pi-stderr".into())
+                .name("insulator-pi-stderr".into())
                 .spawn(move || {
                     for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                         if line.to_ascii_lowercase().contains("error") {
@@ -694,7 +694,7 @@ impl PiDriver {
         // thread drops its stdin. Something still has to reap it, or every
         // session that ever ran leaves a zombie behind for the life of the app.
         thread::Builder::new()
-            .name("waku-pi-process".into())
+            .name("insulator-pi-process".into())
             .spawn(move || {
                 let status = child.wait();
                 let _ = reader_thread.join();
@@ -755,7 +755,7 @@ impl DriverControl for PiDriver {
     fn apply_options(&self, options: SessionOptions) -> bool {
         // Both flavors have setters for the model and thinking level, so those
         // apply to the live session. Neither exposes one for permissions — and
-        // Waku only runs them with Full access anyway, so a mode change asks
+        // Insulator only runs them with Full access anyway, so a mode change asks
         // for a fresh start, which is where that is reported.
         if options.mode != RuntimeMode::FullAccess {
             return false;
@@ -830,7 +830,7 @@ fn send_request(
     mut request: Value,
 ) -> Result<Value, String> {
     *next_request_id += 1;
-    let id = format!("waku-{}", next_request_id);
+    let id = format!("insulator-{}", next_request_id);
     request["id"] = Value::String(id.clone());
     let (response_tx, response_rx) = bounded(1);
     pending
@@ -859,7 +859,7 @@ fn send_prompt(
     prompt: &str,
 ) -> Result<(), String> {
     *next_request_id += 1;
-    let id = format!("waku-{}", next_request_id);
+    let id = format!("insulator-{}", next_request_id);
     {
         let mut pending = pending.lock();
         // A response from an older prompt cannot settle the next turn.
@@ -1033,7 +1033,7 @@ fn pi_context_usage(state: &Value, stats: Option<&Value>) -> Option<(Option<u64>
 
 /// Pi's providers normally fill `totalTokens`, but Pi itself deliberately
 /// falls back to the four component counters when a provider leaves it zero.
-/// Keep Waku's meter aligned with that provider-native calculation.
+/// Keep Insulator's meter aligned with that provider-native calculation.
 fn pi_message_context_tokens(message: &Value) -> Option<u64> {
     let usage = message.get("usage")?;
     usage
@@ -1141,7 +1141,7 @@ fn pi_fork_request(
     let name = flavor.display_name();
     if turns_to_remove > messages.len() {
         return Err(format!(
-            "{name} has only {} native turns, but Waku needs to remove {turns_to_remove}",
+            "{name} has only {} native turns, but Insulator needs to remove {turns_to_remove}",
             messages.len()
         ));
     }
@@ -1190,7 +1190,7 @@ fn clone_ohmypi_session(
             .ok_or_else(|| "Oh My Pi stdout unavailable".to_owned())?;
         let (tx, rx) = bounded(1);
         thread::Builder::new()
-            .name("waku-ohmypi-clone".into())
+            .name("insulator-ohmypi-clone".into())
             .spawn(move || {
                 let mut chunks = ChunkAssembly::default();
                 for line in BufReader::new(stdout).lines().map_while(Result::ok) {
@@ -1200,7 +1200,7 @@ fn clone_ohmypi_session(
                     let Ok(Some(value)) = chunks.accept(value) else {
                         continue;
                     };
-                    if value.get("id").and_then(Value::as_str) == Some("waku-clone") {
+                    if value.get("id").and_then(Value::as_str) == Some("insulator-clone") {
                         let _ = tx.send(value);
                         break;
                     }
@@ -1209,7 +1209,7 @@ fn clone_ohmypi_session(
             .map_err(|error| format!("could not read the Oh My Pi session copy: {error}"))?;
         write_json_line(
             &mut stdin,
-            &json!({"id": "waku-clone", "type": "get_state"}),
+            &json!({"id": "insulator-clone", "type": "get_state"}),
         )
         .map_err(|error| format!("could not ask Oh My Pi for the copied session: {error}"))?;
         let state = rx
@@ -1633,10 +1633,10 @@ mod tests {
         let (events, event_rx) = unbounded();
         send_prompt(&mut Vec::new(), &pending, &mut 0, "/context").unwrap();
         for frame in [
-            json!({"type": "response", "id": "waku-1", "command": "prompt", "success": true}),
+            json!({"type": "response", "id": "insulator-1", "command": "prompt", "success": true}),
             json!({"type": "command_output", "text": "Available commands\n"}),
             json!({"type": "command_output", "text": "/compact"}),
-            json!({"type": "response", "id": "waku-1", "command": "prompt", "success": true, "data": {"agentInvoked": false}}),
+            json!({"type": "response", "id": "insulator-1", "command": "prompt", "success": true, "data": {"agentInvoked": false}}),
             json!({"type": "agent_end", "isTerminal": true}),
         ] {
             handle_pi_message(
@@ -1673,7 +1673,7 @@ mod tests {
         send_prompt(&mut wire, &pending, &mut next, "/new").unwrap();
         handle_pi_message(
             PiFlavor::Pi,
-            json!({"type": "response", "id": "waku-1", "success": false, "error": "stale"}),
+            json!({"type": "response", "id": "insulator-1", "success": false, "error": "stale"}),
             &pending,
             &commands,
             &events,
@@ -1682,7 +1682,7 @@ mod tests {
         assert!(event_rx.try_recv().is_err());
         handle_pi_message(
             PiFlavor::Pi,
-            json!({"type": "response", "id": "waku-2", "success": false, "error": "command failed"}),
+            json!({"type": "response", "id": "insulator-2", "success": false, "error": "command failed"}),
             &pending,
             &commands,
             &events,
@@ -1810,10 +1810,10 @@ mod tests {
     #[test]
     fn pi_computer_use_uses_only_session_scoped_extension_and_skill_arguments() {
         let config = computer_use_runtime::ComputerUseConfig {
-            server_path: PathBuf::from("/tmp/Waku Computer Use"),
-            repl_path: PathBuf::from("/Applications/Waku.app/Resources/waku_js_repl"),
-            skill_path: PathBuf::from("/Applications/Waku.app/Resources/skills/SKILL.md"),
-            process_directory: PathBuf::from("/tmp/waku-computer-use/session"),
+            server_path: PathBuf::from("/tmp/Insulator Computer Use"),
+            repl_path: PathBuf::from("/Applications/Insulator.app/Resources/insulator_js_repl"),
+            skill_path: PathBuf::from("/Applications/Insulator.app/Resources/skills/SKILL.md"),
+            process_directory: PathBuf::from("/tmp/insulator-computer-use/session"),
         };
         let mut command = std::process::Command::new("pi");
 
@@ -1821,7 +1821,7 @@ mod tests {
             &mut command,
             Some((
                 &config,
-                Path::new("/Applications/Waku.app/Resources/computer-use/pi-extension.ts"),
+                Path::new("/Applications/Insulator.app/Resources/computer-use/pi-extension.ts"),
             )),
         );
 
@@ -1833,9 +1833,9 @@ mod tests {
             arguments,
             [
                 "--extension",
-                "/Applications/Waku.app/Resources/computer-use/pi-extension.ts",
+                "/Applications/Insulator.app/Resources/computer-use/pi-extension.ts",
                 "--skill",
-                "/Applications/Waku.app/Resources/skills/SKILL.md",
+                "/Applications/Insulator.app/Resources/skills/SKILL.md",
             ]
         );
         let environment = command
@@ -1848,14 +1848,14 @@ mod tests {
             })
             .collect::<HashMap<_, _>>();
         assert_eq!(
-            environment.get("WAKU_JS_REPL_SERVER"),
+            environment.get("INSULATOR_JS_REPL_SERVER"),
             Some(&Some(
-                "/Applications/Waku.app/Resources/waku_js_repl".into()
+                "/Applications/Insulator.app/Resources/insulator_js_repl".into()
             ))
         );
         assert_eq!(
-            environment.get("WAKU_COMPUTER_USE_PROCESS_DIRECTORY"),
-            Some(&Some("/tmp/waku-computer-use/session".into()))
+            environment.get("INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY"),
+            Some(&Some("/tmp/insulator-computer-use/session".into()))
         );
     }
 
@@ -2135,7 +2135,7 @@ mod tests {
         use base64::Engine as _;
         let encode = |bytes: &[u8]| base64::engine::general_purpose::STANDARD.encode(bytes);
 
-        let payload = json!({"type": "response", "id": "waku-1", "success": true});
+        let payload = json!({"type": "response", "id": "insulator-1", "success": true});
         let bytes = serde_json::to_vec(&payload).unwrap();
         let (first, second) = bytes.split_at(bytes.len() / 2);
         let chunk = |index: u64, data: &[u8]| {
@@ -2164,7 +2164,7 @@ mod tests {
         assert!(assembly.accept(plain).is_err());
         assert!(assembly.active.is_none());
 
-        // A run that starts mid-sequence is not a frame Waku can trust.
+        // A run that starts mid-sequence is not a frame Insulator can trust.
         let mut assembly = ChunkAssembly::default();
         assert!(assembly.accept(chunk(1, second)).is_err());
     }

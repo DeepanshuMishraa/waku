@@ -15,7 +15,7 @@ use serde_json::{Value, json};
 
 const PROBE_TIMEOUT: Duration = Duration::from_secs(25);
 const MAX_LINE_BYTES: usize = 4 * 1024 * 1024;
-const REQUEST_ID: &str = "waku-initialize-catalog";
+const REQUEST_ID: &str = "insulator-initialize-catalog";
 
 /// Return Claude Code's initialization response for the requested settings
 /// scope. A project-aware command probe supplies its cwd and all setting

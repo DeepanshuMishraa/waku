@@ -72,5 +72,5 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           bun run protocol:check
-          bun run --filter @waku/client check
-          bun run --filter @waku/client test
+          bun run --filter @insulator/client check
+          bun run --filter @insulator/client test

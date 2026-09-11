@@ -88,7 +88,7 @@ pub fn generate_message(
 ) -> anyhow::Result<String> {
     let prompt = commit_prompt(cwd, include_unstaged)?;
     let amp_settings = if invocation.provider == ProviderKind::Amp {
-        let path = std::env::temp_dir().join(format!("waku-amp-commit-{}.json", Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("insulator-amp-commit-{}.json", Uuid::new_v4()));
         fs::write(
             &path,
             r#"{"amp.tools.enable":[],"amp.notifications.enabled":false,"amp.skills.disableClaudeCodeSkills":true}"#,
@@ -663,11 +663,11 @@ mod tests {
     }
 
     fn repository() -> PathBuf {
-        let root = std::env::temp_dir().join(format!("waku-commit-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-commit-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         run_git(&root, &["init", "-b", "main"]);
-        run_git(&root, &["config", "user.name", "Waku Tests"]);
-        run_git(&root, &["config", "user.email", "waku@example.com"]);
+        run_git(&root, &["config", "user.name", "Insulator Tests"]);
+        run_git(&root, &["config", "user.email", "insulator@example.com"]);
         fs::write(root.join("README.md"), "one\n").unwrap();
         run_git(&root, &["add", "."]);
         run_git(&root, &["commit", "-m", "initial"]);

@@ -187,18 +187,18 @@ fn helper_app_path() -> anyhow::Result<PathBuf> {
     let executable = host_executable_path()?;
     let macos = executable
         .parent()
-        .ok_or_else(|| anyhow!("Waku executable has no parent directory"))?;
+        .ok_or_else(|| anyhow!("Insulator executable has no parent directory"))?;
     let contents = macos
         .parent()
-        .ok_or_else(|| anyhow!("Waku app bundle is malformed"))?;
+        .ok_or_else(|| anyhow!("Insulator app bundle is malformed"))?;
     let app_name = executable
         .file_name()
         .and_then(|name| name.to_str())
-        .ok_or_else(|| anyhow!("Waku executable name is invalid"))?;
+        .ok_or_else(|| anyhow!("Insulator executable name is invalid"))?;
     let helper_name = format!("{app_name} Computer Use");
     let path = contents.join("Helpers").join(format!("{helper_name}.app"));
     if !path.is_dir() {
-        bail!("Computer Use helper is missing from this Waku build")
+        bail!("Computer Use helper is missing from this Insulator build")
     }
     Ok(path)
 }
@@ -211,7 +211,7 @@ pub fn helper_display_name() -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .map(|app_name| format!("{app_name} Computer Use"))
-        .unwrap_or_else(|| "Waku Computer Use".into())
+        .unwrap_or_else(|| "Insulator Computer Use".into())
 }
 
 pub fn mcp_server_command() -> anyhow::Result<PathBuf> {
@@ -227,15 +227,15 @@ pub fn js_repl_server_path() -> anyhow::Result<PathBuf> {
     let executable = host_executable_path()?;
     let macos = executable
         .parent()
-        .ok_or_else(|| anyhow!("Waku executable has no parent directory"))?;
+        .ok_or_else(|| anyhow!("Insulator executable has no parent directory"))?;
     let contents = macos
         .parent()
-        .ok_or_else(|| anyhow!("Waku app bundle is malformed"))?;
+        .ok_or_else(|| anyhow!("Insulator app bundle is malformed"))?;
     let path = contents.join("Resources").join("insulator_js_repl");
     if path.is_file() {
         return Ok(path);
     }
-    let fallback = contents.join("Resources").join("waku_js_repl");
+    let fallback = contents.join("Resources").join("insulator_js_repl");
     if fallback.is_file() {
         return Ok(fallback);
     }
@@ -246,16 +246,16 @@ pub fn pi_extension_path() -> anyhow::Result<PathBuf> {
     let executable = host_executable_path()?;
     let macos = executable
         .parent()
-        .ok_or_else(|| anyhow!("Waku executable has no parent directory"))?;
+        .ok_or_else(|| anyhow!("Insulator executable has no parent directory"))?;
     let contents = macos
         .parent()
-        .ok_or_else(|| anyhow!("Waku app bundle is malformed"))?;
+        .ok_or_else(|| anyhow!("Insulator app bundle is malformed"))?;
     let path = contents
         .join("Resources")
         .join("computer-use")
         .join("pi-extension.ts");
     if !path.is_file() {
-        bail!("Waku Pi Computer Use extension is missing from this Waku build")
+        bail!("Insulator Pi Computer Use extension is missing from this Insulator build")
     }
     Ok(path)
 }
@@ -263,11 +263,11 @@ pub fn pi_extension_path() -> anyhow::Result<PathBuf> {
 /// Install the bundled helper as an independent, stable runtime service.
 ///
 /// Screen Recording differs from Accessibility on macOS: it follows the
-/// responsible application. A helper launched from inside Waku's bundle is
-/// therefore attributed to Waku even though the capture API runs in the
+/// responsible application. A helper launched from inside Insulator's bundle is
+/// therefore attributed to Insulator even though the capture API runs in the
 /// helper. Launching this standalone copy through Launch Services gives the
 /// helper its own TCC identity while the signed app bundle remains the source
-/// shipped with Waku.
+/// shipped with Insulator.
 fn install_helper_app(source: &Path) -> anyhow::Result<PathBuf> {
     let application_support =
         dirs::data_dir().ok_or_else(|| anyhow!("Application Support directory is unavailable"))?;
@@ -309,7 +309,7 @@ fn helper_install_matches(source: &Path, destination: &Path) -> anyhow::Result<b
     }
     let read_fingerprint = |path: &Path| -> Option<Vec<u8>> {
         fs::read(path.join("Contents/Resources/.insulator-helper-fingerprint"))
-            .or_else(|_| fs::read(path.join("Contents/Resources/.waku-helper-fingerprint")))
+            .or_else(|_| fs::read(path.join("Contents/Resources/.insulator-helper-fingerprint")))
             .ok()
     };
     let (Some(source_fingerprint), Some(installed_fingerprint)) = (
@@ -349,13 +349,13 @@ pub fn skill_root_path() -> anyhow::Result<PathBuf> {
     let executable = host_executable_path()?;
     let macos = executable
         .parent()
-        .ok_or_else(|| anyhow!("Waku executable has no parent directory"))?;
+        .ok_or_else(|| anyhow!("Insulator executable has no parent directory"))?;
     let contents = macos
         .parent()
-        .ok_or_else(|| anyhow!("Waku app bundle is malformed"))?;
+        .ok_or_else(|| anyhow!("Insulator app bundle is malformed"))?;
     let path = contents.join("Resources").join("skills");
-    if !path.join("waku-computer-use").join("SKILL.md").is_file() {
-        bail!("Waku Computer Use skill is missing from this Waku build")
+    if !path.join("insulator-computer-use").join("SKILL.md").is_file() {
+        bail!("Insulator Computer Use skill is missing from this Insulator build")
     }
     Ok(path)
 }
@@ -365,7 +365,7 @@ fn host_executable_path() -> anyhow::Result<PathBuf> {
         .filter(|path| !path.is_empty())
         .map(PathBuf::from)
         .map(Ok)
-        .unwrap_or_else(|| std::env::current_exe().context("Waku executable path is unavailable"))
+        .unwrap_or_else(|| std::env::current_exe().context("Insulator executable path is unavailable"))
 }
 
 #[cfg(test)]

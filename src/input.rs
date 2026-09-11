@@ -663,6 +663,9 @@ pub struct TextInput {
     /// Index into `search_matches` of the match navigation is on, painted
     /// stronger than its siblings.
     active_search_match: Option<usize>,
+    /// Additional persistent selection/highlight ranges painted with the selection
+    /// wash (e.g. multi-line selections staged for AI context).
+    extra_selection_ranges: Vec<Range<usize>>,
     content: SharedString,
     placeholder: SharedString,
     selected_range: Range<usize>,
@@ -748,6 +751,7 @@ impl TextInput {
             highlight: Vec::new(),
             search_matches: Vec::new(),
             active_search_match: None,
+            extra_selection_ranges: Vec::new(),
             content: "".into(),
             placeholder: "".into(),
             selected_range: 0..0,
@@ -1007,6 +1011,21 @@ impl TextInput {
         self.selected_range.clone()
     }
 
+    pub fn is_selecting(&self) -> bool {
+        self.is_selecting
+    }
+
+    pub fn extra_selection_ranges(&self) -> &[Range<usize>] {
+        &self.extra_selection_ranges
+    }
+
+    pub fn set_extra_selection_ranges(&mut self, ranges: Vec<Range<usize>>, cx: &mut Context<Self>) {
+        if self.extra_selection_ranges != ranges {
+            self.extra_selection_ranges = ranges;
+            cx.notify();
+        }
+    }
+
     /// Move the selection to `range`, as find-next does when it lands on a
     /// match. Ignored unless the range sits on character boundaries, so a
     /// selection computed against stale content cannot split a code point.
@@ -1031,6 +1050,18 @@ impl TextInput {
         self.selected_range = 0..self.content.len();
         self.selection_reversed = false;
         self.vertical_navigation = None;
+        self.pause_blink_cursor(cx);
+        cx.notify();
+    }
+
+    /// Clear the selection and extra selection ranges, collapsing to an empty
+    /// cursor at the end of the current selection.
+    pub fn clear_selection(&mut self, cx: &mut Context<Self>) {
+        let offset = self.selected_range.end;
+        self.selected_range = offset..offset;
+        self.selection_reversed = false;
+        self.vertical_navigation = None;
+        self.extra_selection_ranges.clear();
         self.pause_blink_cursor(cx);
         cx.notify();
     }
@@ -1885,11 +1916,14 @@ impl TextInput {
     }
 
     fn on_mouse_up(&mut self, _: &MouseUpEvent, _: &mut Window, cx: &mut Context<Self>) {
+        let was_selecting = self.is_selecting;
         self.is_selecting = false;
         self.selected_word_range = None;
         if self.focus_click_select_all {
             self.focus_click_select_all = false;
             self.select_all_text(cx);
+        } else if was_selecting {
+            cx.notify();
         }
     }
 
@@ -2462,6 +2496,7 @@ fn input_text_runs(
     display_len: usize,
     base_run: TextRun,
     selected_range: Option<&Range<usize>>,
+    extra_selection_ranges: &[Range<usize>],
     marked_range: Option<&Range<usize>>,
     selection_color: Hsla,
     highlight: &[(Range<usize>, TokenClass)],
@@ -2470,6 +2505,10 @@ fn input_text_runs(
 ) -> Vec<TextRun> {
     let mut boundaries = vec![0, display_len];
     for range in [selected_range, marked_range].into_iter().flatten() {
+        boundaries.push(range.start.min(display_len));
+        boundaries.push(range.end.min(display_len));
+    }
+    for range in extra_selection_ranges {
         boundaries.push(range.start.min(display_len));
         boundaries.push(range.end.min(display_len));
     }
@@ -2511,7 +2550,9 @@ fn input_text_runs(
                 .is_some_and(|range| range.start <= start && range.end >= end)
             {
                 Some(search.active_color)
-            } else if selected_range.is_some_and(|range| range.start < end && range.end > start) {
+            } else if selected_range.is_some_and(|range| range.start < end && range.end > start)
+                || extra_selection_ranges.iter().any(|range| range.start < end && range.end > start)
+            {
                 Some(selection_color)
             } else if covering_match(start, end) {
                 Some(search.match_color)
@@ -2602,6 +2643,7 @@ impl Element for InputElement {
             display_text.len(),
             base_run,
             selected_range,
+            &input.extra_selection_ranges,
             marked_range,
             theme.inverse.opacity(0.18),
             if content_is_empty {
@@ -3935,6 +3977,7 @@ mod tests {
                 strikethrough: None,
             },
             Some(&selection),
+            &[],
             None,
             hsla(0.0, 0.0, 1.0, 0.18),
             &highlight,
@@ -3978,6 +4021,7 @@ mod tests {
                 strikethrough: None,
             },
             Some(&selection),
+            &[],
             Some(&marked),
             hsla(0.0, 0.0, 1.0, 0.18),
             &[],
@@ -4028,6 +4072,7 @@ mod tests {
                 strikethrough: None,
             },
             Some(&selection),
+            &[],
             None,
             selection_color,
             &[],
@@ -4055,6 +4100,72 @@ mod tests {
         assert_eq!(background_at(8), Some(active_color));
         assert_eq!(background_at(14), Some(match_color));
         assert_eq!(background_at(6), None);
+    }
+
+    #[test]
+    fn extra_selection_ranges_paint_with_selection_color() {
+        let plain = hsla(0.0, 0.0, 1.0, 1.0);
+        let selection_color = hsla(0.6, 1.0, 0.5, 0.4);
+        let extra = vec![2..5, 10..15];
+        let runs = input_text_runs(
+            20,
+            TextRun {
+                len: 20,
+                font: font(".SystemUIFont"),
+                color: plain,
+                background_color: None,
+                underline: None,
+                strikethrough: None,
+            },
+            None,
+            &extra,
+            None,
+            selection_color,
+            &[],
+            |_| plain,
+            SearchPaint::none(),
+        );
+
+        let background_at = |offset: usize| {
+            let mut cursor = 0;
+            runs.iter()
+                .find_map(|run| {
+                    let range = cursor..cursor + run.len;
+                    cursor += run.len;
+                    range.contains(&offset).then_some(run.background_color)
+                })
+                .unwrap()
+        };
+        assert_eq!(background_at(0), None);
+        assert_eq!(background_at(3), Some(selection_color));
+        assert_eq!(background_at(7), None);
+        assert_eq!(background_at(12), Some(selection_color));
+        assert_eq!(background_at(18), None);
+    }
+
+    #[gpui::test]
+    fn clear_selection_collapses_cursor_and_clears_extra_ranges(cx: &mut TestAppContext) {
+        let (input, cx) = setup_input(cx, "hello world from insulator", px(300.));
+        cx.update(|_, cx| {
+            input.update(cx, |input, cx| {
+                input.select_range(6..11, cx);
+                input.set_extra_selection_ranges(vec![0..5, 12..16], cx);
+            })
+        });
+        cx.read_entity(&input, |input, _| {
+            assert_eq!(input.selected_range(), 6..11);
+            assert_eq!(input.extra_selection_ranges(), &[0..5, 12..16]);
+        });
+        cx.update(|_, cx| {
+            input.update(cx, |input, cx| {
+                input.clear_selection(cx);
+            })
+        });
+        cx.read_entity(&input, |input, _| {
+            assert_eq!(input.selected_range(), 11..11);
+            assert!(input.selected_range().is_empty());
+            assert!(input.extra_selection_ranges().is_empty());
+        });
     }
 
     /// The single-line scroll follows the caret with an em of lookahead and

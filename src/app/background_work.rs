@@ -503,7 +503,7 @@ fn work_elapsed(item: &BackgroundWorkItem) -> String {
     }
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn background_output_refresh_delay(&self) -> Option<Duration> {
         self.background_work
             .values()
@@ -1441,7 +1441,7 @@ fn render_background_summary_card(
     identifiers: Option<TaskIdentifierSection>,
     environment: Option<EnvironmentSummary>,
     entries: Rc<Vec<BackgroundSummaryEntry>>,
-    weak: WeakEntity<Waku>,
+    weak: WeakEntity<Insulator>,
     cx: &mut App,
 ) -> AnyElement {
     let theme = Theme::current(cx);
@@ -1519,7 +1519,7 @@ fn render_background_summary_card(
 
 fn render_task_identifiers_section(
     section: TaskIdentifierSection,
-    weak: WeakEntity<Waku>,
+    weak: WeakEntity<Insulator>,
     theme: &Theme,
 ) -> Div {
     let mut rows = vec![render_task_identifier_row(
@@ -1560,7 +1560,7 @@ fn render_task_identifier_row(
     control_id: &'static str,
     focus: &FocusHandle,
     copied: bool,
-    weak: WeakEntity<Waku>,
+    weak: WeakEntity<Insulator>,
     theme: &Theme,
 ) -> Div {
     let tooltip = Tooltip::text(if copied {
@@ -1658,7 +1658,7 @@ fn render_task_identifier_row(
 fn render_environment_summary_section(
     environment: EnvironmentSummary,
     handle: ContextMenuHandle,
-    weak: WeakEntity<Waku>,
+    weak: WeakEntity<Insulator>,
     theme: &Theme,
 ) -> Div {
     let commit_handle = handle.clone();
@@ -1796,7 +1796,7 @@ fn render_background_summary_section(
     entries: Vec<BackgroundSummaryEntry>,
     session_id: Uuid,
     handle: ContextMenuHandle,
-    weak: WeakEntity<Waku>,
+    weak: WeakEntity<Insulator>,
     theme: &Theme,
 ) -> Div {
     let mut rows = div().w_full().flex().flex_col().gap(px(2.0));
@@ -1828,7 +1828,7 @@ fn render_background_summary_row(
     entry: BackgroundSummaryEntry,
     session_id: Uuid,
     handle: ContextMenuHandle,
-    weak: WeakEntity<Waku>,
+    weak: WeakEntity<Insulator>,
     theme: &Theme,
 ) -> Stateful<Div> {
     let item = entry.item;
@@ -2038,7 +2038,7 @@ mod tests {
     }
 
     #[test]
-    fn info_popover_uses_waku_task_and_native_agent_ids() {
+    fn info_popover_uses_insulator_task_and_native_agent_ids() {
         let task_id = Uuid::parse_str("ed28ee51-43cf-4a83-a52f-04c509ca2c09").unwrap();
         let mut session = AgentSession::new(Uuid::nil(), ProviderKind::Codex);
         session.id = task_id;

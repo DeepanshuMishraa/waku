@@ -476,7 +476,7 @@ mod tests {
     use super::*;
 
     fn write_session(lines: &[&str]) -> PathBuf {
-        let dir = std::env::temp_dir().join(format!("waku-pi-session-{}", Uuid::new_v4()));
+        let dir = std::env::temp_dir().join(format!("insulator-pi-session-{}", Uuid::new_v4()));
         fs::create_dir_all(&dir).unwrap();
         let path = dir.join("session.jsonl");
         fs::write(&path, format!("{}\n", lines.join("\n"))).unwrap();

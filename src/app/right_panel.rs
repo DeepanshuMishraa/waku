@@ -42,7 +42,7 @@ fn line_fragment(fragment: &str) -> bool {
 
 /// Removes the `:line`, `:line:column`, or `#LlineCcolumn` suffixes Codex uses
 /// in clickable local-file references. The location is not yet consumed by
-/// Waku's compact editor, but it must not become part of the filesystem path.
+/// Insulator's compact editor, but it must not become part of the filesystem path.
 fn strip_file_location(target: &str) -> &str {
     if let Some((path, fragment)) = target.rsplit_once('#')
         && line_fragment(fragment)
@@ -180,7 +180,7 @@ pub(super) fn file_icon_for_path(path: &str) -> &'static str {
 fn review_diff_gap_icon_path(direction: crate::review_diff::ExpansionDirection) -> &'static str {
     match direction {
         // Pierre's direction attributes and rendered chevrons are inverted by
-        // CSS. Waku names the data operation directly, so encode the resulting
+        // CSS. Insulator names the data operation directly, so encode the resulting
         // visual here: reveal-from-start points down; reveal-from-end points up.
         crate::review_diff::ExpansionDirection::Start => "icons/chevron-down.svg",
         crate::review_diff::ExpansionDirection::End => "icons/chevron-up.svg",
@@ -834,7 +834,7 @@ fn file_highlighter_language(relative_path: &str) -> &'static str {
 /// Reads a file for the editor, returning its text and whether it can be saved.
 ///
 /// One unbounded `read_to_string`, so callers keep it off the UI thread; the
-/// only caller is [`Waku::read_right_panel_file_into_editor`].
+/// only caller is [`Insulator::read_right_panel_file_into_editor`].
 fn read_right_panel_file(
     workspace: &insulator_client::WorkspaceClient,
     project_path: &Path,
@@ -990,7 +990,7 @@ fn fade_safe_tab_offset(
 fn tab_scroll_reveal_guard(
     scroll_handle: ScrollHandle,
     tab_index: usize,
-    waku: WeakEntity<Waku>,
+    insulator: WeakEntity<Insulator>,
 ) -> impl IntoElement {
     canvas(
         move |_, window, _| {
@@ -1011,7 +1011,7 @@ fn tab_scroll_reveal_guard(
             }
 
             window.on_next_frame(move |_, cx| {
-                let _ = waku.update(cx, |this, cx| {
+                let _ = insulator.update(cx, |this, cx| {
                     if this.right_panel_pending_tab_reveal == Some(tab_index) {
                         this.right_panel_pending_tab_reveal = None;
                         cx.notify();
@@ -1431,11 +1431,11 @@ mod tests {
 
     #[test]
     fn working_tree_only_descends_into_expanded_directories() {
-        let root = std::env::temp_dir().join(format!("waku-working-tree-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-working-tree-{}", Uuid::new_v4()));
         std::fs::create_dir_all(root.join("src/nested")).unwrap();
         std::fs::create_dir_all(root.join(".git")).unwrap();
         std::fs::write(root.join("src/main.rs"), "fn main() {}\n").unwrap();
-        std::fs::write(root.join("README.md"), "# Waku\n").unwrap();
+        std::fs::write(root.join("README.md"), "# Insulator\n").unwrap();
 
         let collapsed = visible_working_tree_entries(&root, &HashSet::new());
         assert_eq!(
@@ -1738,7 +1738,7 @@ mod tests {
     }
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn open_transcript_link(&mut self, target: &str, cx: &mut Context<Self>) -> bool {
         match transcript_link_route(target, self.selected_workspace_path()) {
             TranscriptLinkRoute::ProjectFile(relative_path) => {
@@ -2065,6 +2065,7 @@ impl Waku {
         cx.notify();
     }
 
+    #[allow(dead_code)]
     pub(super) fn cycle_main_tabs(&mut self, reverse: bool, cx: &mut Context<Self>) {
         if self.main_tabs.is_empty() {
             return;
@@ -2241,6 +2242,9 @@ impl Waku {
     }
 
     pub(super) fn close_main_file_tab(&mut self, path: &str, cx: &mut Context<Self>) {
+        if self.file_editor_selection.as_ref().map_or(false, |s| s.path == path) {
+            self.clear_file_editor_selection(Some(cx));
+        }
         let was_active = self.active_main_file_tab.as_deref() == Some(path);
         let tab = MainTab::File(path.to_string());
         let index = self.main_tabs.iter().position(|t| t == &tab);
@@ -3249,6 +3253,11 @@ impl Waku {
                         cx.notify();
                     }
                 }
+                if let Some(ref sel) = this.file_editor_selection {
+                    if sel.path == subscribed_path {
+                        this.clear_file_editor_selection(Some(cx));
+                    }
+                }
                 // Any content change — typing, a replace, a reload from disk —
                 // moves the text out from under an open find's match list.
                 this.refresh_file_search_for_edit(subscribed_path.as_str(), cx);
@@ -3257,28 +3266,70 @@ impl Waku {
         .detach();
 
         let selection_path = relative_path.to_owned();
+        let active_drag_index: std::rc::Rc<std::cell::Cell<Option<usize>>> =
+            std::rc::Rc::new(std::cell::Cell::new(None));
         cx.observe(&state, move |this, state, cx| {
             let range = state.read(cx).selected_range();
-            let next = if range.is_empty() {
-                this.file_editor_selection.clone()
-            } else {
-                let content = state.read(cx).content();
-                let start_line = content[..range.start].bytes().filter(|byte| *byte == b'\n').count() + 1;
-                let selected_prefix = &content[..range.end];
-                let end_line = selected_prefix.bytes().filter(|byte| *byte == b'\n').count()
-                    + usize::from(!selected_prefix.ends_with('\n'));
-                Some(FileEditorSelection {
-                    path: selection_path.clone(), start_line, end_line,
-                    text: content[range].to_owned(),
-                })
-            };
-            if this.file_editor_selection != next {
-                if next.is_some() {
-                    this.file_editor_input_expanded = true;
-                }
-                this.file_editor_selection = next;
-                cx.notify();
+            let is_selecting = state.read(cx).is_selecting();
+
+            if range.is_empty() {
+                active_drag_index.set(None);
+                return;
             }
+
+            let content = state.read(cx).content().to_owned();
+            let new_snippet = FileEditorSnippet::from_range(range.clone(), &content);
+
+            let mut selection = match this.file_editor_selection.take() {
+                Some(sel) if sel.path == selection_path => sel,
+                _ => FileEditorSelection {
+                    path: selection_path.clone(),
+                    snippets: Vec::new(),
+                },
+            };
+
+            if let Some(idx) = active_drag_index.get() {
+                if idx < selection.snippets.len() {
+                    selection.snippets[idx] = new_snippet;
+                } else {
+                    selection.snippets.push(new_snippet);
+                    active_drag_index.set(Some(selection.snippets.len() - 1));
+                }
+            } else {
+                let overlap_idx = selection.snippets.iter().position(|s| {
+                    s.byte_range.start <= range.end && range.start <= s.byte_range.end
+                });
+                if let Some(idx) = overlap_idx {
+                    let existing = &selection.snippets[idx];
+                    let merged_range = existing.byte_range.start.min(range.start)..existing.byte_range.end.max(range.end);
+                    selection.snippets[idx] = FileEditorSnippet::from_range(merged_range, &content);
+                    active_drag_index.set(Some(idx));
+                } else {
+                    selection.snippets.push(new_snippet);
+                    active_drag_index.set(Some(selection.snippets.len() - 1));
+                }
+            }
+
+            if !is_selecting {
+                normalize_snippets(&mut selection.snippets, &content);
+                active_drag_index.set(None);
+            }
+
+            let extra_ranges: Vec<std::ops::Range<usize>> = selection
+                .snippets
+                .iter()
+                .map(|s| s.byte_range.clone())
+                .collect();
+
+            if state.read(cx).extra_selection_ranges() != extra_ranges.as_slice() {
+                state.update(cx, |input, cx| {
+                    input.set_extra_selection_ranges(extra_ranges, cx);
+                });
+            }
+
+            this.file_editor_input_expanded = true;
+            this.file_editor_selection = Some(selection);
+            cx.notify();
         }).detach();
 
         let focused_path = relative_path.to_owned();
@@ -3332,7 +3383,7 @@ impl Waku {
         let epoch = editor.read_epoch;
         let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
 
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let read = cx
                 .background_executor()
                 .spawn({
@@ -3341,22 +3392,22 @@ impl Waku {
                     async move { read_right_panel_file(&workspace, &project_path, &relative_path) }
                 })
                 .await;
-            waku.update(cx, |waku, cx| {
-                if waku.state.selected_session != Some(session_id)
-                    || waku
+            insulator.update(cx, |insulator, cx| {
+                if insulator.state.selected_session != Some(session_id)
+                    || insulator
                         .selected_workspace_path()
                         .is_none_or(|path| path != project_path)
                 {
                     // The editor moved into another session's stored state, or
                     // the project changed. Clear the flag so a later reload can
                     // ask again, and drop the text.
-                    if let Some(editor) = waku.right_panel_file_editors.get_mut(&relative_path) {
+                    if let Some(editor) = insulator.right_panel_file_editors.get_mut(&relative_path) {
                         editor.reading = false;
                     }
                     return;
                 }
                 let (content, writable) = read;
-                let Some(editor) = waku.right_panel_file_editors.get_mut(&relative_path) else {
+                let Some(editor) = insulator.right_panel_file_editors.get_mut(&relative_path) else {
                     return;
                 };
                 // A save landed while the read was in flight, so this text
@@ -3675,7 +3726,7 @@ impl Waku {
             return;
         };
         let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn({
@@ -3694,9 +3745,9 @@ impl Waku {
                     }
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                if waku.state.selected_session != Some(session_id)
-                    || waku
+            let _ = insulator.update(cx, |insulator, cx| {
+                if insulator.state.selected_session != Some(session_id)
+                    || insulator
                         .selected_workspace_path()
                         .is_none_or(|path| path != project_path)
                 {
@@ -3704,7 +3755,7 @@ impl Waku {
                 }
                 match result {
                     Ok(()) => {
-                        if let Some(editor) = waku.right_panel_file_editors.get_mut(&relative_path)
+                        if let Some(editor) = insulator.right_panel_file_editors.get_mut(&relative_path)
                             && editor.read_epoch == epoch
                         {
                             let current = editor.state.read(cx).content();
@@ -3712,7 +3763,7 @@ impl Waku {
                             editor.dirty = current != content;
                         }
                     }
-                    Err(error) => waku.show_toast(tr!(
+                    Err(error) => insulator.show_toast(tr!(
                         "files.could_not_save",
                         path = relative_path,
                         error = error.to_string()
@@ -4669,7 +4720,7 @@ impl Waku {
             Query::Missing(token) => {
                 let expanded = self.right_panel_expanded_paths.clone();
                 let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-                cx.spawn(async move |waku, cx| {
+                cx.spawn(async move |insulator, cx| {
                     let entries = cx
                         .background_executor()
                         .spawn({
@@ -4699,13 +4750,13 @@ impl Waku {
                             }
                         })
                         .await;
-                    waku.update(cx, |waku, cx| {
-                        if waku.working_trees.fulfill(token, entries.clone())
-                            && waku
+                    insulator.update(cx, |insulator, cx| {
+                        if insulator.working_trees.fulfill(token, entries.clone())
+                            && insulator
                                 .selected_workspace_path()
                                 .is_some_and(|path| path == project_path)
                         {
-                            waku.right_panel_working_tree = entries;
+                            insulator.right_panel_working_tree = entries;
                             cx.notify();
                         }
                     })
@@ -4817,7 +4868,7 @@ impl Waku {
         cx.notify();
 
         let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn({
@@ -4842,48 +4893,48 @@ impl Waku {
                     }
                 })
                 .await;
-            waku.update(cx, |waku, cx| {
-                let still_current = waku.state.selected_session == Some(session_id)
-                    && waku.right_panel_diff_generation == generation
-                    && waku.right_panel_diff_source == source
-                    && waku
+            insulator.update(cx, |insulator, cx| {
+                let still_current = insulator.state.selected_session == Some(session_id)
+                    && insulator.right_panel_diff_generation == generation
+                    && insulator.right_panel_diff_source == source
+                    && insulator
                         .selected_workspace_path()
                         .is_some_and(|path| path == project_path);
                 if !still_current {
                     return;
                 }
 
-                waku.right_panel_diff_loading = false;
+                insulator.right_panel_diff_loading = false;
                 match result {
                     Ok(snapshot) => {
-                        waku.right_panel_diff_selection.clear();
+                        insulator.right_panel_diff_selection.clear();
                         let directories = review_diff_directory_paths(&snapshot.files);
                         if had_snapshot {
-                            waku.right_panel_diff_expanded_paths
+                            insulator.right_panel_diff_expanded_paths
                                 .retain(|path| directories.contains(path));
-                            waku.right_panel_diff_expanded_paths
+                            insulator.right_panel_diff_expanded_paths
                                 .extend(directories.difference(&previous_directories).cloned());
                         } else {
-                            waku.right_panel_diff_expanded_paths = directories;
+                            insulator.right_panel_diff_expanded_paths = directories;
                         }
-                        waku.right_panel_diff_selected_file = selected_path
+                        insulator.right_panel_diff_selected_file = selected_path
                             .as_deref()
                             .and_then(|path| {
                                 snapshot.files.iter().position(|file| file.path == path)
                             })
                             .or_else(|| (!snapshot.files.is_empty()).then_some(0));
                         let line_count = snapshot.lines.len();
-                        waku.right_panel_diff_snapshot = Some(Arc::new(snapshot));
-                        waku.right_panel_diff_error = None;
-                        waku.right_panel_diff_list_state.reset(line_count);
-                        waku.sync_right_panel_diff_tree_rows(cx);
+                        insulator.right_panel_diff_snapshot = Some(Arc::new(snapshot));
+                        insulator.right_panel_diff_error = None;
+                        insulator.right_panel_diff_list_state.reset(line_count);
+                        insulator.sync_right_panel_diff_tree_rows(cx);
                     }
                     Err(error) => {
                         let message = error.to_string();
-                        if waku.right_panel_diff_snapshot.is_some() {
-                            waku.show_toast(tr!("diff.refresh_failed", error = message));
+                        if insulator.right_panel_diff_snapshot.is_some() {
+                            insulator.show_toast(tr!("diff.refresh_failed", error = message));
                         } else {
-                            waku.right_panel_diff_error = Some(message);
+                            insulator.right_panel_diff_error = Some(message);
                         }
                     }
                 }
@@ -5075,110 +5126,217 @@ impl Waku {
         }
         let selection = self.file_editor_selection.as_ref().filter(|selection| selection.path == path);
         match selection {
-            Some(selection) => format!("{prompt}\n\n@{path}\n[Selected lines {}-{}]\n```\n{}\n```", selection.start_line, selection.end_line, selection.text.trim_end()),
-            None => format!("{prompt}\n\n@{path}"),
+            Some(selection) if !selection.snippets.is_empty() => {
+                let mut out = format!("{prompt}\n\n@{path}");
+                for snippet in &selection.snippets {
+                    let line_label = if snippet.start_line == snippet.end_line {
+                        format!("[Selected line {}]", snippet.start_line)
+                    } else {
+                        format!("[Selected lines {}-{}]", snippet.start_line, snippet.end_line)
+                    };
+                    out.push_str(&format!("\n{line_label}\n```\n{}\n```", snippet.text.trim_end()));
+                }
+                out
+            }
+            _ => format!("{prompt}\n\n@{path}"),
         }
     }
 
-    pub(super) fn clear_file_editor_selection(&mut self) {
-        self.file_editor_selection = None;
+    pub(super) fn clear_file_editor_selection(&mut self, cx: Option<&mut Context<Self>>) {
+        let path = self
+            .file_editor_selection
+            .take()
+            .map(|s| s.path)
+            .or_else(|| self.active_main_file_tab.clone());
+        if let Some(path) = path {
+            if let Some(cx) = cx {
+                if let Some(editor) = self.right_panel_file_editors.get(&path) {
+                    editor.state.update(cx, |input, cx| {
+                        input.clear_selection(cx);
+                    });
+                }
+                cx.notify();
+            }
+        }
     }
 
-    pub(super) fn render_file_editor_selection_pill(&self, cx: &mut Context<Self>) -> Option<Stateful<Div>> {
-        let selection = self.file_editor_selection.as_ref().filter(|selection| {
-            self.active_main_file_tab.as_deref() == Some(selection.path.as_str())
-        })?;
-        let theme = Theme::current(cx);
-        let clear_waku = cx.entity().downgrade();
+    pub(super) fn remove_file_editor_snippet(&mut self, index: usize, cx: &mut Context<Self>) {
+        let Some(mut selection) = self.file_editor_selection.take() else {
+            return;
+        };
+        let removed_range = if index < selection.snippets.len() {
+            Some(selection.snippets.remove(index).byte_range)
+        } else {
+            None
+        };
+        let path = selection.path.clone();
+        if selection.snippets.is_empty() {
+            self.file_editor_selection = None;
+            if let Some(editor) = self.right_panel_file_editors.get(&path) {
+                editor.state.update(cx, |input, cx| {
+                    input.clear_selection(cx);
+                });
+            }
+        } else {
+            let ranges = selection
+                .snippets
+                .iter()
+                .map(|s| s.byte_range.clone())
+                .collect::<Vec<_>>();
+            if let Some(editor) = self.right_panel_file_editors.get(&path) {
+                editor.state.update(cx, |input, cx| {
+                    if let Some(removed) = removed_range {
+                        let cur = input.selected_range();
+                        if cur.start < removed.end && cur.end > removed.start {
+                            let end = cur.end;
+                            input.select_range(end..end, cx);
+                        }
+                    }
+                    input.set_extra_selection_ranges(ranges, cx);
+                });
+            }
+            self.file_editor_selection = Some(selection);
+        }
+        cx.notify();
+    }
 
+    pub(super) fn render_file_editor_selection_pills(&self, cx: &mut Context<Self>) -> Vec<Stateful<Div>> {
+        let Some(selection) = self.file_editor_selection.as_ref().filter(|selection| {
+            self.active_main_file_tab.as_deref() == Some(selection.path.as_str())
+        }) else {
+            return Vec::new();
+        };
+        let theme = Theme::current(cx);
         let filename = Path::new(&selection.path)
             .file_name()
             .and_then(|n| n.to_str())
             .unwrap_or(&selection.path)
             .to_owned();
 
-        let lines_label = if selection.start_line == selection.end_line {
-            format!("Line {}", selection.start_line)
-        } else {
-            format!("Lines {}–{}", selection.start_line, selection.end_line)
-        };
+        selection
+            .snippets
+            .iter()
+            .enumerate()
+            .map(|(index, snippet)| {
+                let remove_insulator = cx.entity().downgrade();
+                let lines_label = if snippet.start_line == snippet.end_line {
+                    format!("Line {}", snippet.start_line)
+                } else {
+                    format!("Lines {}–{}", snippet.start_line, snippet.end_line)
+                };
+                let tooltip_label = format!("{} ({})", selection.path, lines_label);
 
-        let tooltip_label = format!("{} ({})", selection.path, lines_label);
-
-        Some(
-            div()
-                .id("file-editor-selection-pill")
-                .h(px(24.0))
-                .pl(px(7.0))
-                .pr(px(4.0))
-                .rounded(px(6.0))
-                .border_1()
-                .border_color(theme.border)
-                .bg(theme.raised)
-                .hover(|e| e.bg(theme.overlay).border_color(theme.border_strong))
-                .flex()
-                .items_center()
-                .gap(px(6.0))
-                .cursor_default()
-                .tooltip(move |window, cx| {
-                    Tooltip::new(tooltip_label.clone()).build(window, cx)
-                })
-                .child(file_icon(file_icon_for_path(&selection.path), 12.0))
-                .child(
-                    div()
-                        .max_w(px(180.0))
-                        .truncate()
-                        .text_size(sp(12.0))
-                        .font_weight(FontWeight::MEDIUM)
-                        .text_color(theme.text)
-                        .child(filename),
-                )
-                .child(
-                    div()
-                        .px(px(4.0))
-                        .py(px(1.0))
-                        .rounded(px(4.0))
-                        .bg(theme.overlay)
-                        .text_size(sp(11.0))
-                        .text_color(theme.text_secondary)
-                        .child(lines_label),
-                )
-                .child(
-                    div()
-                        .id("clear-file-selection-button")
-                        .size(px(16.0))
-                        .rounded(px(3.0))
-                        .flex()
-                        .items_center()
-                        .justify_center()
-                        .cursor_pointer()
-                        .hover(|e| e.bg(theme.overlay_strong))
-                        .tooltip(|window, cx| Tooltip::new("Remove selection").build(window, cx))
-                        .on_mouse_down(MouseButton::Left, |_, _, cx| {
-                            cx.stop_propagation();
-                        })
-                        .on_click(move |_, _, cx| {
-                            cx.stop_propagation();
-                            let _ = clear_waku.update(cx, |this, cx| {
-                                this.clear_file_editor_selection();
-                                cx.notify();
-                            });
-                        })
-                        .child(icon("icons/x.svg", 9.0, theme.text_tertiary)),
-                ),
-        )
+                div()
+                    .id(("file-editor-selection-pill", index))
+                    .h(px(24.0))
+                    .pl(px(7.0))
+                    .pr(px(4.0))
+                    .rounded(px(6.0))
+                    .border_1()
+                    .border_color(theme.border)
+                    .bg(theme.raised)
+                    .hover(|e| e.bg(theme.overlay).border_color(theme.border_strong))
+                    .flex()
+                    .flex_none()
+                    .items_center()
+                    .gap(px(6.0))
+                    .cursor_default()
+                    .tooltip(move |window, cx| {
+                        Tooltip::new(tooltip_label.clone()).build(window, cx)
+                    })
+                    .child(file_icon(file_icon_for_path(&selection.path), 12.0))
+                    .child(
+                        div()
+                            .max_w(px(180.0))
+                            .truncate()
+                            .text_size(sp(12.0))
+                            .font_weight(FontWeight::MEDIUM)
+                            .text_color(theme.text)
+                            .child(filename.clone()),
+                    )
+                    .child(
+                        div()
+                            .px(px(4.0))
+                            .py(px(1.0))
+                            .rounded(px(4.0))
+                            .bg(theme.overlay)
+                            .text_size(sp(11.0))
+                            .text_color(theme.text_secondary)
+                            .child(lines_label),
+                    )
+                    .child(
+                        div()
+                            .id(("clear-file-selection-button", index))
+                            .size(px(16.0))
+                            .rounded(px(3.0))
+                            .flex()
+                            .items_center()
+                            .justify_center()
+                            .cursor_pointer()
+                            .hover(|e| e.bg(theme.overlay_strong))
+                            .tooltip(|window, cx| Tooltip::new("Remove selection").build(window, cx))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                let _ = remove_insulator.update(cx, |this, cx| {
+                                    this.remove_file_editor_snippet(index, cx);
+                                });
+                            })
+                            .child(icon("icons/x.svg", 9.0, theme.text_tertiary)),
+                    )
+            })
+            .collect()
     }
 
     pub(super) fn render_file_editor_selection_badge(&self, cx: &mut Context<Self>) -> Option<Div> {
-        let pill = self.render_file_editor_selection_pill(cx)?;
+        let pills = self.render_file_editor_selection_pills(cx);
+        if pills.is_empty() {
+            return None;
+        }
+        let theme = Theme::current(cx);
+        let clear_all_button = if pills.len() > 1 {
+            let clear_insulator = cx.entity().downgrade();
+            Some(
+                div()
+                    .id("clear-all-file-selections-button")
+                    .h(px(24.0))
+                    .px(px(6.0))
+                    .rounded(px(4.0))
+                    .text_size(sp(11.0))
+                    .text_color(theme.text_secondary)
+                    .hover(|e| e.bg(theme.overlay).text_color(theme.text))
+                    .cursor_pointer()
+                    .flex()
+                    .items_center()
+                    .justify_center()
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                        cx.stop_propagation();
+                    })
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        let _ = clear_insulator.update(cx, |this, cx| {
+                            this.clear_file_editor_selection(Some(cx));
+                        });
+                    })
+                    .child("Clear all"),
+            )
+        } else {
+            None
+        };
+
         Some(
             div()
                 .px(px(14.0))
                 .pt(px(2.0))
                 .pb(px(6.0))
                 .flex()
+                .flex_wrap()
                 .items_center()
-                .child(pill),
+                .gap(px(6.0))
+                .children(pills)
+                .children(clear_all_button),
         )
     }
 
@@ -5214,7 +5372,7 @@ impl Waku {
                     }))
                     .child(self.render_composer_card(window, cx))
             } else {
-                let selection_pill = self.render_file_editor_selection_pill(cx);
+                let selection_pills = self.render_file_editor_selection_pills(cx);
                 div()
                     .id("file-editor-floating-input-collapsed")
                     .w_full()
@@ -5251,7 +5409,7 @@ impl Waku {
                                 provider_color(&theme, provider),
                             )),
                     )
-                    .children(selection_pill)
+                    .children(selection_pills)
                     .child(
                         div()
                             .flex_1()

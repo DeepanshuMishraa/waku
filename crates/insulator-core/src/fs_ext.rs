@@ -1,4 +1,4 @@
-//! Cross-platform stand-ins for the POSIX filesystem calls Waku relies on.
+//! Cross-platform stand-ins for the POSIX filesystem calls Insulator relies on.
 //!
 //! Provider isolation directories, the Computer Use install root, and the
 //! bundle copies that feed it are all written in POSIX terms. Windows has no
@@ -11,7 +11,7 @@ use std::path::Path;
 /// Create `path` and any missing parents so only the current user can reach
 /// it.
 ///
-/// Windows has no mode bits: the locations Waku creates here live under the
+/// Windows has no mode bits: the locations Insulator creates here live under the
 /// user's own profile (`%LOCALAPPDATA%`, `%TEMP%`), which already inherits an
 /// ACL granting the owner and administrators alone.
 pub(crate) fn create_private_dir_all(path: &Path) -> io::Result<()> {

@@ -80,7 +80,7 @@ mod tests {
         let lookups = attempts.clone();
 
         refresh.start(
-            "waku-title-test",
+            "insulator-title-test",
             vec![Duration::ZERO; 4],
             events,
             move || match lookups.fetch_add(1, Ordering::AcqRel) {
@@ -102,7 +102,7 @@ mod tests {
 
         // Resolved is final: a later turn must not re-announce the same title.
         refresh.start(
-            "waku-title-test",
+            "insulator-title-test",
             vec![Duration::ZERO],
             {
                 let (events, _) = crate::driver::test_event_channel();
@@ -125,7 +125,7 @@ mod tests {
         for _ in 0..2 {
             let lookups = attempts.clone();
             refresh.start(
-                "waku-title-test",
+                "insulator-title-test",
                 vec![Duration::ZERO, Duration::ZERO],
                 events.clone(),
                 move || {

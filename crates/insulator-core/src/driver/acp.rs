@@ -1,7 +1,7 @@
 //! Agent Client Protocol transport backed by the official Rust SDK.
 //!
 //! The SDK owns JSON-RPC framing, request IDs, response routing, cancellation,
-//! unknown-method errors, stdio lifetime, and protocol type validation. Waku
+//! unknown-method errors, stdio lifetime, and protocol type validation. Insulator
 //! only adapts typed ACP messages to its provider-neutral [`DriverEvent`]s.
 
 use std::collections::HashMap;
@@ -162,7 +162,7 @@ impl AcpDriver {
         let thread_events = events.clone();
 
         thread::Builder::new()
-            .name(format!("waku-{}-acp", provider.id()))
+            .name(format!("insulator-{}-acp", provider.id()))
             .spawn(move || {
                 if let Err(error) = crate::command_env::unblock_sigchld_for_current_thread() {
                     let _ = thread_events.send(DriverEvent::Error(format!(
@@ -479,7 +479,7 @@ async fn run_sdk_connection(
             let mut client_capabilities = ClientCapabilities::new().terminal(false);
             if provider == ProviderKind::Cursor {
                 // Cursor only exposes its parameterized model controls to
-                // clients that opt in. Waku applies the returned config option
+                // clients that opt in. Insulator applies the returned config option
                 // ids rather than assuming Cursor's private ids stay stable.
                 let mut meta = Map::new();
                 meta.insert("parameterizedModelPicker".to_owned(), Value::Bool(true));
@@ -757,7 +757,7 @@ fn desired_access_mode(
 
 /// Which session config option carries reasoning effort. ACP leaves the id to
 /// the agent: Kimi Code exposes it as its `thinking` level, while the other
-/// agents Waku drives keep it on `mode`. Grok does not use this path: its
+/// agents Insulator drives keep it on `mode`. Grok does not use this path: its
 /// effort rides on `session/set_model` as `_meta.reasoningEffort`.
 fn reasoning_effort_config_id(provider: ProviderKind) -> &'static str {
     match provider {
@@ -1173,7 +1173,7 @@ fn send_prompt(
     let wire_offset = (provider == ProviderKind::Kimi)
         .then(|| crate::kimi_session::wire_offset(native_session_id));
     let extension_id =
-        (provider == ProviderKind::Grok).then(|| format!("waku-{}", uuid::Uuid::new_v4()));
+        (provider == ProviderKind::Grok).then(|| format!("insulator-{}", uuid::Uuid::new_v4()));
     let mut request = PromptRequest::new(
         session_id.clone(),
         vec![ContentBlock::Text(TextContent::new(text))],
@@ -1259,7 +1259,7 @@ fn start_grok_title_refresh(
     let grok_title_home = grok_title_home.map(ToOwned::to_owned);
     let native_session_id = native_session_id.to_owned();
     title_refresh.start(
-        "waku-grok-title",
+        "insulator-grok-title",
         vec![
             Duration::ZERO,
             Duration::from_millis(250),
@@ -1769,7 +1769,7 @@ fn handle_session_update(
                 });
             }
         }
-        // `user_message_chunk` is Waku's own prompt echoed back. Other typed
+        // `user_message_chunk` is Insulator's own prompt echoed back. Other typed
         // updates currently have no transcript representation.
         _ => {}
     }
@@ -2272,7 +2272,7 @@ mod tests {
         let request_id = RequestId::Str("sdk-request".into());
         requests.lock().insert(
             request_id.clone(),
-            Some("waku-prompt".into()),
+            Some("insulator-prompt".into()),
             "grok-session".into(),
         );
         let (events, event_rx) = crate::driver::test_event_channel();
@@ -2281,7 +2281,7 @@ mod tests {
             finish_xai_prompt_complete(
                 &json!({
                     "sessionId": "grok-session",
-                    "promptId": "waku-prompt",
+                    "promptId": "insulator-prompt",
                     "stopReason": "end_turn"
                 }),
                 &requests,
@@ -2349,7 +2349,7 @@ mod tests {
         let updates = [
             json!({"sessionUpdate":"agent_thought_chunk","content":{"type":"text","text":"thinking"}}),
             json!({"sessionUpdate":"tool_call","toolCallId":"call_1","title":"read","kind":"read","status":"pending","rawInput":{}}),
-            json!({"sessionUpdate":"tool_call_update","toolCallId":"call_1","status":"completed","title":"fixture.txt","content":[{"type":"content","content":{"type":"text","text":"waku probe fixture"}}]}),
+            json!({"sessionUpdate":"tool_call_update","toolCallId":"call_1","status":"completed","title":"fixture.txt","content":[{"type":"content","content":{"type":"text","text":"insulator probe fixture"}}]}),
             json!({"sessionUpdate":"agent_message_chunk","content":{"type":"text","text":"OK"}}),
             json!({"sessionUpdate":"usage_update","used":9677,"size":500000}),
         ];
@@ -2371,7 +2371,7 @@ mod tests {
         assert!(matches!(&seen[2], DriverEvent::RichActivity(item)
                 if item.complete
                     && item.title == "fixture.txt"
-                    && item.output.as_deref().is_some_and(|output| output.contains("waku probe fixture"))));
+                    && item.output.as_deref().is_some_and(|output| output.contains("insulator probe fixture"))));
         assert!(matches!(&seen[3], DriverEvent::TextDelta(text) if text == "OK"));
         assert!(matches!(
             &seen[4],

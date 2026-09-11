@@ -56,7 +56,7 @@ impl From<MessageAttachment> for ComposerAttachment {
     }
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn selected_composer_draft_key(
         &self,
     ) -> Option<crate::persistence::ComposerDraftKey> {
@@ -185,19 +185,19 @@ impl Waku {
     pub(super) fn schedule_composer_draft_save(&mut self, cx: &mut Context<Self>) {
         self.composer_draft_save_generation = self.composer_draft_save_generation.saturating_add(1);
         let generation = self.composer_draft_save_generation;
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             cx.background_executor()
                 .timer(COMPOSER_DRAFT_SAVE_DELAY)
                 .await;
-            let Some((store, drafts)) = waku
-                .update(cx, |waku, cx| {
-                    if waku.composer_draft_save_generation != generation {
+            let Some((store, drafts)) = insulator
+                .update(cx, |insulator, cx| {
+                    if insulator.composer_draft_save_generation != generation {
                         return None;
                     }
-                    waku.capture_current_composer_draft(cx);
+                    insulator.capture_current_composer_draft(cx);
                     Some((
-                        waku.composer_draft_store.clone(),
-                        waku.composer_drafts.clone(),
+                        insulator.composer_draft_store.clone(),
+                        insulator.composer_drafts.clone(),
                     ))
                 })
                 .ok()
@@ -210,8 +210,8 @@ impl Waku {
                 .spawn(async move { store.save(drafts, generation) })
                 .await;
             if let Err(error) = result {
-                let _ = waku.update(cx, |waku, cx| {
-                    waku.show_toast(tr!("errors.save_local_state", error = error));
+                let _ = insulator.update(cx, |insulator, cx| {
+                    insulator.show_toast(tr!("errors.save_local_state", error = error));
                     cx.notify();
                 });
             }

@@ -23,7 +23,7 @@ pub(super) fn composer_submit_action(
     }
 }
 
-impl Waku {
+impl Insulator {
     // ── Permission ─────────────────────────────────────────────────────────
 
     pub(super) fn render_permission(&self, cx: &mut Context<Self>) -> Option<Div> {
@@ -837,6 +837,7 @@ impl Waku {
         let probes = self.probes.clone();
         let disabled_providers = self.state.disabled_providers.clone();
         let pending_discoveries = self.provider_model_discoveries_pending.clone();
+        let recents = self.state.recent_models.clone();
         let favorites = self.state.favorite_models.clone();
         let weak = cx.entity().downgrade();
         let search = self.model_search.clone();
@@ -875,7 +876,7 @@ impl Waku {
                             } else {
                                 provider
                             };
-                        this.model_picker_tab = ModelPickerTab::Provider(provider);
+                        this.model_picker_tab = ModelPickerTab::Recents;
                         // Opening re-runs the tab's catalog discovery so models
                         // authored since launch appear without a restart; the
                         // other rails refresh when selected, not all at once.
@@ -924,6 +925,7 @@ impl Waku {
         let available_models = Rc::new(if handle.is_open() {
             visible_picker_models(
                 &probes,
+                &recents,
                 &favorites,
                 &disabled_providers,
                 locked_provider,
@@ -983,6 +985,38 @@ impl Waku {
                     .bg(theme.canvas)
                     .border_r_1()
                     .border_color(theme.border);
+
+                let recents_selected = selected_tab == ModelPickerTab::Recents && !searching;
+                let recents_weak = weak.clone();
+                sidebar = sidebar.child(
+                    div()
+                        .id("model-tab-recents")
+                        .w(px(38.0))
+                        .h(px(38.0))
+                        .rounded(px(7.0))
+                        .flex()
+                        .items_center()
+                        .justify_center()
+                        .cursor_default()
+                        .when(recents_selected, |element| {
+                            element.bg(theme.overlay_strong)
+                        })
+                        .hover(|element| element.bg(theme.overlay))
+                        .child(icon(
+                            "icons/history.svg",
+                            17.0,
+                            if recents_selected {
+                                theme.text
+                            } else {
+                                theme.text_tertiary
+                            },
+                        ))
+                        .on_click(move |_, _, cx| {
+                            let _ = recents_weak.update(cx, |this, cx| {
+                                this.select_model_picker_tab(ModelPickerTab::Recents, cx);
+                            });
+                        }),
+                );
 
                 let favorites_selected = selected_tab == ModelPickerTab::Favorites && !searching;
                 let favorite_weak = weak.clone();
@@ -1108,6 +1142,8 @@ impl Waku {
                 if available_models.is_empty() {
                     let label = if searching {
                         tr!("models.none_found")
+                    } else if selected_tab == ModelPickerTab::Recents {
+                        tr!("models.recent_hint")
                     } else if selected_tab == ModelPickerTab::Favorites {
                         tr!("models.favorite_hint")
                     } else if matches!(
@@ -1273,7 +1309,7 @@ impl Waku {
                     .flex()
                     // The filter field keeps focus and the selected row is only
                     // drawn, never focused — the same split Zed's picker uses.
-                    // These arrive as actions bound to `WakuMenu > TextInput`,
+                    // These arrive as actions bound to `InsulatorMenu > TextInput`,
                     // which is the only way to claim a key out from under a
                     // focused text field.
                     .on_action(move |_: &SelectNextEntry, _, cx| {
@@ -1396,6 +1432,7 @@ impl Waku {
             .map(|session| session.provider);
         let index = visible_picker_models(
             &self.probes,
+            &self.state.recent_models,
             &self.state.favorite_models,
             &self.state.disabled_providers,
             locked_provider,
@@ -1916,7 +1953,7 @@ impl Waku {
         let paths = paths.to_vec();
         let daemon = self.daemon.clone();
         let draft_owner = self.selected_composer_draft_key();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
@@ -1944,14 +1981,14 @@ impl Waku {
                     Ok::<_, anyhow::Error>(stored)
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| match result {
+            let _ = insulator.update(cx, |insulator, cx| match result {
                 Ok(stored) => {
-                    if waku.selected_composer_draft_key() != draft_owner {
+                    if insulator.selected_composer_draft_key() != draft_owner {
                         return;
                     }
                     let mut changed = false;
                     for (attachment, preview_image, is_image) in stored {
-                        changed |= waku.stage_daemon_attachment(
+                        changed |= insulator.stage_daemon_attachment(
                             attachment.path,
                             attachment.name,
                             attachment.is_dir,
@@ -1961,12 +1998,12 @@ impl Waku {
                         );
                     }
                     if changed {
-                        waku.schedule_composer_draft_save(cx);
+                        insulator.schedule_composer_draft_save(cx);
                         cx.notify();
                     }
                 }
                 Err(error) => {
-                    waku.show_toast(error.to_string());
+                    insulator.show_toast(error.to_string());
                     cx.notify();
                 }
             });
@@ -2007,7 +2044,7 @@ impl Waku {
     }
 
     /// Stage the clipboard's primary image/file representation. On-disk paths
-    /// reuse drop handling immediately; raw image bytes are copied into Waku's
+    /// reuse drop handling immediately; raw image bytes are copied into Insulator's
     /// durable blob store on the background executor before their chip appears.
     pub(super) fn stage_pasted_attachments(
         &mut self,
@@ -2032,7 +2069,7 @@ impl Waku {
 
         let daemon = self.daemon.clone();
         let draft_owner = self.selected_composer_draft_key();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let stored = cx
                 .background_executor()
                 .spawn(async move {
@@ -2073,14 +2110,14 @@ impl Waku {
                         .collect::<Result<Vec<_>, _>>()
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| match stored {
+            let _ = insulator.update(cx, |insulator, cx| match stored {
                 Ok(stored) => {
-                    if waku.selected_composer_draft_key() != draft_owner {
+                    if insulator.selected_composer_draft_key() != draft_owner {
                         return;
                     }
                     let mut staged = false;
                     for (path, name, reference, preview_image) in stored {
-                        staged |= waku.stage_daemon_attachment(
+                        staged |= insulator.stage_daemon_attachment(
                             path,
                             name,
                             false,
@@ -2090,12 +2127,12 @@ impl Waku {
                         );
                     }
                     if staged {
-                        waku.schedule_composer_draft_save(cx);
+                        insulator.schedule_composer_draft_save(cx);
                         cx.notify();
                     }
                 }
                 Err(error) => {
-                    waku.show_toast(tr!("errors.store_pasted_image", error = error));
+                    insulator.show_toast(tr!("errors.store_pasted_image", error = error));
                     cx.notify();
                 }
             });
@@ -2142,7 +2179,7 @@ impl Waku {
             .collect::<Vec<_>>();
         let prompt_with_file_context = self.file_editor_selection_prompt(prompt);
         let submission = merged_submission(&prompt_with_file_context, &mentions)?;
-        self.clear_file_editor_selection();
+        self.clear_file_editor_selection(Some(cx));
         let display_content = (!attachments.is_empty()).then(|| prompt.trim().to_owned());
         self.discard_current_composer_draft(cx);
         Some(ComposerSubmission {
@@ -2169,7 +2206,7 @@ impl Waku {
         self.composer.update(cx, |input, cx| input.clear(cx));
         // Submission notifications already hold this entity mutably. Dispatch
         // after that effect returns so the window action can safely re-enter
-        // Waku and move focus into the Resume picker.
+        // Insulator and move focus into the Resume picker.
         cx.defer(|cx| cx.dispatch_action(&OpenResumePicker));
         true
     }
@@ -3779,7 +3816,7 @@ pub(super) fn visible_picker_tabs(
     disabled_providers: &[ProviderKind],
     locked_provider: Option<ProviderKind>,
 ) -> Vec<ModelPickerTab> {
-    let mut tabs = vec![ModelPickerTab::Favorites];
+    let mut tabs = vec![ModelPickerTab::Recents, ModelPickerTab::Favorites];
     tabs.extend(ProviderKind::ALL.into_iter().filter_map(|kind| {
         let drawn = picker_rail_shows_provider(probes, disabled_providers, locked_provider, kind);
         let allowed = locked_provider.is_none() || locked_provider == Some(kind);
@@ -3799,10 +3836,10 @@ fn model_picker_empty_state(
     theme: &Theme,
     focus: &FocusHandle,
     popover: ContextMenuHandle,
-    waku: WeakEntity<Waku>,
+    insulator: WeakEntity<Insulator>,
 ) -> AnyElement {
     let click_popover = popover.clone();
-    let click_waku = waku.clone();
+    let click_insulator = insulator.clone();
     div()
         .w(px(320.0))
         .rounded(px(13.0))
@@ -3866,11 +3903,11 @@ fn model_picker_empty_state(
                 .child(icon("icons/settings.svg", 11.0, theme.text_tertiary))
                 .child(tr!("models.open_provider_settings"))
                 .on_click(move |_, window, cx| {
-                    open_provider_settings_from_picker(&click_waku, &click_popover, window, cx);
+                    open_provider_settings_from_picker(&click_insulator, &click_popover, window, cx);
                 })
                 .on_key_down(move |event: &KeyDownEvent, window, cx| {
                     if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                        open_provider_settings_from_picker(&waku, &popover, window, cx);
+                        open_provider_settings_from_picker(&insulator, &popover, window, cx);
                         cx.stop_propagation();
                     }
                 }),
@@ -3883,13 +3920,13 @@ fn model_picker_empty_state(
 /// picker returns focus to the composer as it closes, which would otherwise
 /// pull focus straight back out of the settings view.
 fn open_provider_settings_from_picker(
-    waku: &WeakEntity<Waku>,
+    insulator: &WeakEntity<Insulator>,
     popover: &ContextMenuHandle,
     window: &mut Window,
     cx: &mut App,
 ) {
     popover.close(window, cx);
-    let _ = waku.update(cx, |this, cx| {
+    let _ = insulator.update(cx, |this, cx| {
         this.open_settings_action(&OpenSettings, window, cx);
         this.open_settings_page(SettingsPage::Providers, cx);
     });
@@ -3900,7 +3937,7 @@ fn open_provider_settings_from_picker(
 /// Installed on this machine and not switched off in the Providers settings.
 /// Both of those are settings-level facts the user has already decided, so the
 /// tab is absent rather than dimmed — the rail offers what could be picked,
-/// not a catalog of everything Waku can speak to. A session locked to a
+/// not a catalog of everything Insulator can speak to. A session locked to a
 /// provider switched off afterwards keeps its own tab, since the picker is
 /// that session's only route to another model.
 pub(super) fn picker_rail_shows_provider(
@@ -3950,6 +3987,7 @@ pub(super) fn picker_has_no_providers(
 /// always means the same row in both.
 pub(super) fn visible_picker_models(
     probes: &[ProviderProbe],
+    recents: &[FavoriteModel],
     favorites: &[FavoriteModel],
     disabled_providers: &[ProviderKind],
     locked_provider: Option<ProviderKind>,
@@ -3969,7 +4007,7 @@ pub(super) fn visible_picker_models(
         })
         .filter(|(kind, _)| locked_provider.is_none() || locked_provider == Some(*kind))
         // Switched-off providers keep serving the session already locked to
-        // them, but offer nothing to new work — including favorites.
+        // them, but offer nothing to new work — including favorites and recents.
         .filter(|(kind, _)| !disabled_providers.contains(kind) || locked_provider == Some(*kind))
         .filter(|(kind, model)| {
             if searching {
@@ -3986,6 +4024,9 @@ pub(super) fn visible_picker_models(
                     .all(|token| searchable.contains(token));
             }
             match selected_tab {
+                ModelPickerTab::Recents => recents
+                    .iter()
+                    .any(|recent| recent.provider == *kind && recent.model == model.id),
                 ModelPickerTab::Favorites => favorites
                     .iter()
                     .any(|favorite| favorite.provider == *kind && favorite.model == model.id),
@@ -3993,6 +4034,32 @@ pub(super) fn visible_picker_models(
             }
         })
         .collect::<Vec<_>>();
+
+    if !searching && selected_tab == ModelPickerTab::Recents {
+        for recent in recents {
+            let provider_allowed = (locked_provider.is_none()
+                || locked_provider == Some(recent.provider))
+                && (!disabled_providers.contains(&recent.provider)
+                    || locked_provider == Some(recent.provider));
+            let provider_installed =
+                probes.iter().any(|p| p.provider == recent.provider && p.installed);
+            if provider_allowed && provider_installed {
+                if !models
+                    .iter()
+                    .any(|(kind, model)| *kind == recent.provider && model.id == recent.model)
+                {
+                    models.push((recent.provider, ProviderModel::new(&recent.model, &recent.model)));
+                }
+            }
+        }
+        models.sort_by_key(|(kind, model)| {
+            recents
+                .iter()
+                .position(|recent| recent.provider == *kind && recent.model == model.id)
+                .unwrap_or(usize::MAX)
+        });
+    }
+
     if !searching && selected_tab == ModelPickerTab::Favorites {
         models.sort_by_key(|(kind, model)| {
             favorites

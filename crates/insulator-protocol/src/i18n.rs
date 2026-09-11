@@ -2,8 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
-/// The language preference Waku persists. `System` resolves to one of the
-/// locales Waku deliberately ships today.
+/// The language preference Insulator persists. `System` resolves to one of the
+/// locales Insulator deliberately ships today.
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "kebab-case")]
 pub enum AppLanguage {

@@ -3,10 +3,10 @@ set -eu
 
 profile="${1:-debug}"
 cargo_target_dir="${CARGO_TARGET_DIR:-target}"
-debug_identity_cache=".waku-cache/codesign/debug-identity"
+debug_identity_cache=".insulator-cache/codesign/debug-identity"
 codesign_identity_from_environment=0
-if [ -n "${WAKU_CODESIGN_IDENTITY:-}" ]; then
-  codesign_identity="$WAKU_CODESIGN_IDENTITY"
+if [ -n "${INSULATOR_CODESIGN_IDENTITY:-}" ]; then
+  codesign_identity="$INSULATOR_CODESIGN_IDENTITY"
   codesign_identity_from_environment=1
 else
   if [ "$profile" = "debug" ]; then
@@ -59,7 +59,7 @@ if [ "$profile" = "debug" ] && [ "$codesign_identity_from_environment" = "0" ] &
   printf '%s\n' "$codesign_identity" > "$debug_identity_cache"
 fi
 debug_adhoc_requirement="=designated => identifier \"$bundle_identifier\""
-if [ "${WAKU_SKIP_CARGO_BUILD:-0}" != "1" ]; then
+if [ "${INSULATOR_SKIP_CARGO_BUILD:-0}" != "1" ]; then
   if [ "$profile" = "release" ]; then
     cargo build --release --package insulator --bin insulator --bin insulator_js_repl --package insulator-daemon --bin insulator-daemon
   else
@@ -85,16 +85,16 @@ helper_fingerprint="$({
   printf '%s\n' "standalone-service-v2" "$helper_name" "$bundle_identifier.computer-use" "$codesign_identity" "$(uname -m)-apple-macos13.0"
   xcrun swiftc -version
 } | shasum -a 256 | awk '{ print $1 }')"
-helper_cache_root=".waku-cache/computer-use/$profile"
+helper_cache_root=".insulator-cache/computer-use/$profile"
 helper_cache_entry="$helper_cache_root/$helper_fingerprint"
 cached_helper_bundle="$helper_cache_entry/$helper_name.app"
 
 # Keep compiled helpers outside target so `cargo clean` does not force an
 # unnecessary Swift rebuild. The fingerprint includes the signing identity so
 # switching certificates can never reuse a helper signed as different code.
-# The cached app is copied into Waku's standard Helpers directory as the
-# canonical packaged service. Waku refreshes a stable standalone runtime copy
-# from it so Screen Recording is attributed to the helper rather than Waku.
+# The cached app is copied into Insulator's standard Helpers directory as the
+# canonical packaged service. Insulator refreshes a stable standalone runtime copy
+# from it so Screen Recording is attributed to the helper rather than Insulator.
 
 if [ ! -d "$cached_helper_bundle" ]; then
   helper_cache_staging="$helper_cache_root/.staging-$helper_fingerprint-$$"
@@ -105,7 +105,7 @@ if [ ! -d "$cached_helper_bundle" ]; then
   cp resources/computer-use/Info.plist "$cached_helper_contents/Info.plist"
   cp "$menu_bar_cursor_resource" "$overlay_cursor_resource" "$cached_helper_contents/Resources/"
   printf '%s\n' "$helper_fingerprint" > "$cached_helper_contents/Resources/.insulator-helper-fingerprint"
-  printf '%s\n' "$helper_fingerprint" > "$cached_helper_contents/Resources/.waku-helper-fingerprint"
+  printf '%s\n' "$helper_fingerprint" > "$cached_helper_contents/Resources/.insulator-helper-fingerprint"
   plutil -replace CFBundleDisplayName -string "$helper_name" "$cached_helper_contents/Info.plist"
   plutil -replace CFBundleExecutable -string "$helper_name" "$cached_helper_contents/Info.plist"
   plutil -replace CFBundleIdentifier -string "$bundle_identifier.computer-use" "$cached_helper_contents/Info.plist"
@@ -134,7 +134,7 @@ fi
 # `cargo clean` cannot evict it. Bump the version and checksum together.
 sparkle_version="2.9.4"
 sparkle_sha256="ce89daf967db1e1893ed3ebd67575ed82d3902563e3191ca92aaec9164fbdef9"
-sparkle_cache_root=".waku-cache/sparkle"
+sparkle_cache_root=".insulator-cache/sparkle"
 sparkle_cache_entry="$sparkle_cache_root/$sparkle_version"
 sparkle_framework_source="$sparkle_cache_entry/Sparkle.framework"
 
@@ -168,7 +168,7 @@ frameworks_directory="$contents/Frameworks"
 sparkle_framework="$frameworks_directory/Sparkle.framework"
 mkdir -p "$frameworks_directory"
 cp -R "$sparkle_framework_source" "$sparkle_framework"
-# Waku is not sandboxed, so Sparkle's XPC services never run; drop them along
+# Insulator is not sandboxed, so Sparkle's XPC services never run; drop them along
 # with the header and module folders so the shipped framework carries no dev
 # artifacts and no unsigned nested code.
 for sparkle_extra in XPCServices Headers PrivateHeaders Modules; do

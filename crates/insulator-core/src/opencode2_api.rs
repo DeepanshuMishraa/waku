@@ -1001,7 +1001,7 @@ pub(crate) fn command(
 /// Lists undelivered inbox entries.
 ///
 /// The entries are left as raw JSON because the union also carries synthetic,
-/// compaction and move payloads Waku has no use for; callers filter on `type`
+/// compaction and move payloads Insulator has no use for; callers filter on `type`
 /// and decode only what they recognize.
 pub(crate) fn list_inbox(endpoint: &Endpoint, session: &str) -> Result<Vec<Value>> {
     let path = format!("/api/session/{}/inbox", encode_path_segment(session));
@@ -1093,7 +1093,7 @@ pub(crate) fn list_permissions(
 /// Answers one permission request.
 ///
 /// `always` is rejected here, not upstream: it writes a persistent allow rule
-/// into the user's own OpenCode permission config, which is a decision Waku
+/// into the user's own OpenCode permission config, which is a decision Insulator
 /// has no mandate to make on the user's behalf from a transcript button.
 pub(crate) fn reply_permission(
     endpoint: &Endpoint,
@@ -1554,8 +1554,8 @@ mod tests {
     #[test]
     fn session_list_uses_a_flat_directory_filter() {
         assert_eq!(
-            session_list_query(Some("/Users/e/dev/waku"), None, Order::Desc, 50, None),
-            "?limit=50&directory=%2FUsers%2Fe%2Fdev%2Fwaku&order=desc"
+            session_list_query(Some("/Users/e/dev/insulator"), None, Order::Desc, 50, None),
+            "?limit=50&directory=%2FUsers%2Fe%2Fdev%2Finsulator&order=desc"
         );
     }
 
@@ -1575,8 +1575,8 @@ mod tests {
     #[test]
     fn catalogue_routes_scope_with_deep_object_brackets() {
         assert_eq!(
-            location_query(Some("/Users/e/dev/waku")),
-            "?location%5Bdirectory%5D=%2FUsers%2Fe%2Fdev%2Fwaku"
+            location_query(Some("/Users/e/dev/insulator")),
+            "?location%5Bdirectory%5D=%2FUsers%2Fe%2Fdev%2Finsulator"
         );
         assert_eq!(location_query(None), "");
     }
@@ -1730,10 +1730,10 @@ mod tests {
             "tokens": { "input": 29493.0, "output": 181.0, "reasoning": 0.0, "cache": { "read": 63488.0, "write": 0.0 } },
             "time": { "created": 1785990946513.0, "updated": 1785991003042.0 },
             "title": "Running ls command",
-            "location": { "directory": "/Users/egoist/dev/waku" },
+            "location": { "directory": "/Users/egoist/dev/insulator" },
         }))
         .unwrap();
-        assert_eq!(session.location.directory, "/Users/egoist/dev/waku");
+        assert_eq!(session.location.directory, "/Users/egoist/dev/insulator");
         assert!(session.outcome.is_none());
         assert!(session.parent_id.is_none());
     }

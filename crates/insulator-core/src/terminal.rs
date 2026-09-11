@@ -98,7 +98,7 @@ mod platform {
             let reader_pty = pty.clone();
             let reader_stopped = stopped.clone();
             let reader = std::thread::Builder::new()
-                .name("waku-daemon-terminal-output".into())
+                .name("insulator-daemon-terminal-output".into())
                 .spawn(move || {
                     let mut buffer = [0_u8; 32 * 1024];
                     while !reader_stopped.load(Ordering::Acquire) {

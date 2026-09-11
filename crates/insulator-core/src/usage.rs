@@ -139,7 +139,7 @@ pub fn fetch_codex_plan_usage() -> anyhow::Result<PlanUsage> {
     let mut headers = vec![
         format!("Authorization: Bearer {access_token}"),
         "Accept: application/json".to_owned(),
-        "User-Agent: waku".to_owned(),
+        "User-Agent: insulator".to_owned(),
     ];
     if let Some(account_id) = auth.pointer("/tokens/account_id").and_then(Value::as_str) {
         headers.push(format!("ChatGPT-Account-Id: {account_id}"));
@@ -173,7 +173,7 @@ pub fn fetch_opencode_go_plan_usage() -> anyhow::Result<Option<PlanUsage>> {
         &[
             format!("Authorization: Bearer {api_key}"),
             "Accept: application/json".to_owned(),
-            "User-Agent: waku".to_owned(),
+            "User-Agent: insulator".to_owned(),
         ],
     )?;
     match status {
@@ -321,7 +321,7 @@ fn grok_billing_over_stdio(child: &mut std::process::Child) -> anyhow::Result<Va
         .ok_or_else(|| anyhow!(tr!("usage_error.grok_stdout_unavailable")))?;
     let (lines_tx, lines) = crossbeam_channel::unbounded::<Value>();
     std::thread::Builder::new()
-        .name("waku-grok-usage-probe".into())
+        .name("insulator-grok-usage-probe".into())
         .spawn(move || {
             for line in BufReader::new(stdout).lines().map_while(Result::ok) {
                 if let Ok(value) = serde_json::from_str::<Value>(&line)

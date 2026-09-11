@@ -23,7 +23,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 }
 
 fn generated_output() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/waku-client/src/generated")
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../packages/insulator-client/src/generated")
 }
 
 fn export_to(output: &Path) -> Result<(), Box<dyn std::error::Error>> {
@@ -40,7 +40,7 @@ fn export_to(output: &Path) -> Result<(), Box<dyn std::error::Error>> {
     fs::write(
         output.join("constants.ts"),
         format!(
-            "// Generated from waku-protocol. Do not edit.\n\
+            "// Generated from insulator-protocol. Do not edit.\n\
              export const PROTOCOL_VERSION = {PROTOCOL_VERSION} as const;\n\
              export const MAX_WIRE_MESSAGE_BYTES = {MAX_WIRE_MESSAGE_BYTES} as const;\n"
         ),
@@ -74,7 +74,7 @@ fn strip_trailing_whitespace(root: &Path) -> std::io::Result<()> {
 
 fn check_generated(expected: &Path) -> Result<(), Box<dyn std::error::Error>> {
     let temporary = std::env::temp_dir().join(format!(
-        "waku-protocol-bindings-{}",
+        "insulator-protocol-bindings-{}",
         uuid::Uuid::new_v4().simple()
     ));
     export_to(&temporary)?;

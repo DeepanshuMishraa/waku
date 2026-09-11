@@ -4,7 +4,7 @@
 //! and delete management.
 //!
 //! Discovery is filesystem work and lives on the background executor
-//! ([`Waku::ensure_skills_catalog`]); frames read only the cached catalog.
+//! ([`Insulator::ensure_skills_catalog`]); frames read only the cached catalog.
 //! Mutations are one-shot user actions — each a single rename, write, or
 //! trash call — so they run synchronously in their click handlers and then
 //! invalidate the catalog.
@@ -54,7 +54,7 @@ pub fn init(cx: &mut App) {
 }
 
 /// One row of the virtualized skills list. Equality drives the prefix splice
-/// in [`Waku::sync_skills_rows`]: a changed row — catalog identity, enabled
+/// in [`Insulator::sync_skills_rows`]: a changed row — catalog identity, enabled
 /// state, or selection — re-measures from that point on.
 #[derive(Clone, Debug, PartialEq)]
 pub(super) enum SkillsRow {
@@ -69,7 +69,7 @@ pub(super) enum SkillsRow {
     },
 }
 
-impl Waku {
+impl Insulator {
     // ── Catalog ────────────────────────────────────────────────────────────
 
     /// Start a background library scan unless a current-enough catalog (or an

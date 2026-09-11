@@ -1,4 +1,4 @@
-//! Desktop proxy for the provider runtime owned by `waku-daemon`.
+//! Desktop proxy for the provider runtime owned by `insulator-daemon`.
 
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -44,7 +44,7 @@ pub(crate) fn start_remote(
     };
     let supports_steer = match client.request(session_id, runtime_id, command) {
         Ok(insulator_client::ResponsePayload::Started { supports_steer }) => supports_steer,
-        Ok(_) => anyhow::bail!("Waku daemon returned an invalid start response"),
+        Ok(_) => anyhow::bail!("Insulator daemon returned an invalid start response"),
         Err(error) => return Err(error),
     };
     connect_remote(
@@ -96,7 +96,7 @@ fn connect_remote(
     let forwarding_events = events.clone();
     let thread_initial_client = initial_client.clone();
     let spawn = std::thread::Builder::new()
-        .name(format!("waku-daemon-session-{session_id}"))
+        .name(format!("insulator-daemon-session-{session_id}"))
         .spawn(move || {
             let mut client = thread_initial_client;
             let mut remote_events = client.subscribe(session_id, runtime_id);
@@ -123,7 +123,7 @@ fn connect_remote(
                             let event = match insulator_client::event_from_wire(sequenced.event) {
                                 Ok(event) => event,
                                 Err(error) => DriverEvent::Error(format!(
-                                    "Waku daemon sent an invalid event: {error}"
+                                    "Insulator daemon sent an invalid event: {error}"
                                 )),
                             };
                             let process_exited = matches!(&event, DriverEvent::ProcessExited);
@@ -182,7 +182,7 @@ fn connect_remote(
                     }
                     Ok(_) => {
                         let _ = forwarding_events.send(DriverEvent::Error(
-                            "Waku daemon returned an invalid runtime attachment response".into(),
+                            "Insulator daemon returned an invalid runtime attachment response".into(),
                         ));
                         break;
                     }
@@ -226,7 +226,7 @@ impl RemoteDriverControl {
         let client = self.client.lock().clone();
         if let Err(error) = client.notify(self.session_id, self.runtime_id, command) {
             let _ = self.events.send(DriverEvent::Error(format!(
-                "Waku daemon command failed: {error}"
+                "Insulator daemon command failed: {error}"
             )));
         }
     }
@@ -350,7 +350,7 @@ impl DriverControl for RemoteDriverControl {
                 .map(serde_json::from_value)
                 .transpose()
                 .map_err(Into::into),
-            _ => anyhow::bail!("Waku daemon returned an invalid rollback response"),
+            _ => anyhow::bail!("Insulator daemon returned an invalid rollback response"),
         }
     }
 
@@ -364,7 +364,7 @@ impl DriverControl for RemoteDriverControl {
             insulator_client::ResponsePayload::Cursor {
                 cursor: Some(cursor),
             } => serde_json::from_value(cursor).map_err(Into::into),
-            _ => anyhow::bail!("Waku daemon returned an invalid fork response"),
+            _ => anyhow::bail!("Insulator daemon returned an invalid fork response"),
         }
     }
 

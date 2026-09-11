@@ -28,7 +28,6 @@ macro_rules! tr_cow {
     };
 }
 
-mod analytics;
 mod audio;
 mod app;
 mod assets;
@@ -57,10 +56,10 @@ use gpui::{
     WindowBackgroundAppearance, WindowBounds, WindowOptions, actions, point, px, size,
 };
 
-use crate::app::Waku;
+use crate::app::Insulator;
 use crate::identity::{APP_ID, APP_NAME};
 actions!(
-    waku,
+    insulator,
     [
         Quit,
         About,
@@ -175,11 +174,11 @@ fn restored_window_placement(cx: &App) -> (WindowBounds, Option<gpui::DisplayId>
     (window_bounds, display_id)
 }
 
-trait WakuApplicationExt {
+trait InsulatorApplicationExt {
     fn with_main_window_reopen(self) -> Self;
 }
 
-impl WakuApplicationExt for Application {
+impl InsulatorApplicationExt for Application {
     fn with_main_window_reopen(self) -> Self {
         self.on_reopen(|cx| {
             if let Some(window) = cx.windows().into_iter().next() {
@@ -195,7 +194,7 @@ impl WakuApplicationExt for Application {
 
 pub fn run() {
     let daemon = crate::daemon::start_process()
-        .unwrap_or_else(|error| panic!("failed to start Waku daemon: {error:#}"));
+        .unwrap_or_else(|error| panic!("failed to start Insulator daemon: {error:#}"));
     gpui_platform::application()
         .with_assets(crate::assets::Assets)
         .with_main_window_reopen()
@@ -269,11 +268,11 @@ pub fn run() {
                 // the editor without moving focus to the bar.
                 KeyBinding::new("secondary-f", OpenFind, Some("Insulator")),
                 // The text input's macOS-style Ctrl-F caret binding is more
-                // specific than Waku's root context. Reassert the platform
+                // specific than Insulator's root context. Reassert the platform
                 // primary shortcut for inputs inside this window so Ctrl-F
                 // remains find-in-page on Linux/Windows while Cmd-F keeps the
                 // native behavior on macOS.
-                KeyBinding::new("secondary-f", OpenFind, Some("Waku > TextInput")),
+                KeyBinding::new("secondary-f", OpenFind, Some("Insulator > TextInput")),
                 KeyBinding::new("secondary-alt-f", OpenFindReplace, Some("Insulator")),
                 KeyBinding::new("secondary-g", FindNext, Some("Insulator")),
                 KeyBinding::new("secondary-shift-g", FindPrevious, Some("Insulator")),
@@ -336,7 +335,7 @@ pub fn run() {
                             // Windows creates the window without `WS_CAPTION`
                             // either way; asking for the transparent titlebar
                             // is what extends the client area over the frame
-                            // so Waku's own header can host the caption
+                            // so Insulator's own header can host the caption
                             // buttons and drag region.
                             appears_transparent: cfg!(any(
                                 target_os = "macos",
@@ -345,7 +344,7 @@ pub fn run() {
                             traffic_light_position: cfg!(target_os = "macos")
                                 .then(|| point(px(16.0), px(17.0))),
                         }),
-                        // Waku moves its custom macOS titlebar explicitly. Keep
+                        // Insulator moves its custom macOS titlebar explicitly. Keep
                         // the NSWindow movable so native controls and Window-menu
                         // tiling remain enabled.
                         is_movable: true,
@@ -358,7 +357,7 @@ pub fn run() {
                         app_id: Some(APP_ID.to_owned()),
                         // GPUI defaults to compositor/server decorations. If a
                         // Wayland compositor declines them, it reports the
-                        // client fallback and Waku renders that frame itself.
+                        // client fallback and Insulator renders that frame itself.
                         #[cfg(target_os = "linux")]
                         icon: crate::platform::linux_app_icon(),
                         window_bounds: Some(window_bounds),
@@ -368,13 +367,13 @@ pub fn run() {
                     },
                     move |window, cx| {
                         crate::platform::configure_main_window_close_behavior(window, cx);
-                        let waku = Waku::new(window, cx, daemon);
-                        let composer_focus = waku.read(cx).composer_focus(cx);
+                        let insulator = Insulator::new(window, cx, daemon);
+                        let composer_focus = insulator.read(cx).composer_focus(cx);
                         window.focus(&composer_focus, cx);
-                        waku
+                        insulator
                     },
                 )
-                .expect("failed to open Waku window");
+                .expect("failed to open Insulator window");
 
             let window_handle = window;
             let async_cx = cx.to_async();
@@ -384,8 +383,8 @@ pub fn run() {
                 let window_handle = window_handle;
                 executor
                     .spawn(async move {
-                        let _ = window_handle.update(&mut cx, |waku, window, cx| {
-                            waku.cycle_tabs_or_tasks(reverse, window, cx);
+                        let _ = window_handle.update(&mut cx, |insulator, window, cx| {
+                            insulator.cycle_task_switcher(reverse, window, cx);
                         });
                     })
                     .detach();
@@ -399,8 +398,8 @@ pub fn run() {
                         return;
                     };
                     window
-                        .update(cx, |waku, window, cx| {
-                            waku.open_task_from_notification(session_id, cx);
+                        .update(cx, |insulator, window, cx| {
+                            insulator.open_task_from_notification(session_id, cx);
                             window.activate_window();
                             cx.activate(true);
                         })
@@ -410,9 +409,9 @@ pub fn run() {
             });
 
             window
-                .update(cx, |waku, window, cx| {
+                .update(cx, |insulator, window, cx| {
                     let theme = crate::theme::Theme::current(cx);
-                    let (window_style, color_theme, background_image_path) = waku.window_style_config();
+                    let (window_style, color_theme, background_image_path) = insulator.window_style_config();
                     crate::platform::configure_sidebar_material(
                         window,
                         theme.is_dark,

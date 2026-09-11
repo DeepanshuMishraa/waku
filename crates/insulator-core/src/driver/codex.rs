@@ -81,7 +81,7 @@ enum PendingBackgroundRpc {
     Stop(BackgroundWorkKey),
 }
 
-/// Waku-originated `thread/goal/*` requests awaiting their responses, plus
+/// Insulator-originated `thread/goal/*` requests awaiting their responses, plus
 /// whether this Codex build answered the initial probe with "method not
 /// found" — older app-servers have no goal API and should stay quiet.
 #[derive(Default)]
@@ -155,7 +155,7 @@ impl CodexComputerUseConfig {
     }
 }
 
-/// Register Waku's long-lived QuickJS MCP server and keep the raw native helper
+/// Register Insulator's long-lived QuickJS MCP server and keep the raw native helper
 /// private behind its built-in `sky` object. Codex sees only the compact
 /// `js` / `js_reset` execution surface.
 fn configure_computer_use_command(command: &mut Command, config: Option<&CodexComputerUseConfig>) {
@@ -171,9 +171,9 @@ fn configure_computer_use_command(command: &mut Command, config: Option<&CodexCo
             .arg(DISABLE_EXTERNAL_COMPUTER_USE_SKILL)
             .arg("-c")
             .arg(DISABLE_CODEX_NODE_REPL)
-            .env("WAKU_COMPUTER_USE_SERVER", &config.server_path)
+            .env("INSULATOR_COMPUTER_USE_SERVER", &config.server_path)
             .env(
-                "WAKU_COMPUTER_USE_PROCESS_DIRECTORY",
+                "INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY",
                 &config.process_directory,
             )
             .arg("-c")
@@ -182,12 +182,12 @@ fn configure_computer_use_command(command: &mut Command, config: Option<&CodexCo
             .arg("mcp_servers.insulator_js_repl.args=[]")
             .arg("-c")
             .arg(format!(
-                "mcp_servers.insulator_js_repl.env.WAKU_COMPUTER_USE_SERVER={}",
+                "mcp_servers.insulator_js_repl.env.INSULATOR_COMPUTER_USE_SERVER={}",
                 config.server
             ))
             .arg("-c")
             .arg(format!(
-                "mcp_servers.insulator_js_repl.env.WAKU_COMPUTER_USE_PROCESS_DIRECTORY={}",
+                "mcp_servers.insulator_js_repl.env.INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY={}",
                 config.process_directory_config
             ));
     }
@@ -283,7 +283,7 @@ impl CodexDriver {
         let writer_events = events.clone();
         let cwd_string = cwd.display().to_string();
         thread::Builder::new()
-            .name("waku-codex-writer".into())
+            .name("insulator-codex-writer".into())
             .spawn(move || {
                 let mut stdin = stdin;
                 let initialize = json!({
@@ -317,14 +317,14 @@ impl CodexDriver {
                 }
 
                 if let Some(computer_use_skill_root) = computer_use_skill_root {
-                    // Register Waku's bundled skill through Codex's discoverable-skill
+                    // Register Insulator's bundled skill through Codex's discoverable-skill
                     // mechanism. Keep the skill out of developerInstructions so it is
                     // loaded and displayed like Codex's own bundled skills.
                     if write_json_line(
                         &mut stdin,
                         &json!({
                             "method": "skills/extraRoots/set",
-                            "id": "waku-computer-use-skill",
+                            "id": "insulator-computer-use-skill",
                             "params": {
                                 "extraRoots": [computer_use_skill_root.display().to_string()]
                             }
@@ -692,7 +692,7 @@ impl CodexDriver {
         let reader_commands = commands.clone();
         let reader_events = events.clone();
         let reader_thread = thread::Builder::new()
-            .name("waku-codex-reader".into())
+            .name("insulator-codex-reader".into())
             .spawn(move || {
                 let mut stream_state = CodexStreamState::default();
                 for line in BufReader::new(stdout).lines() {
@@ -738,7 +738,7 @@ impl CodexDriver {
         let stderr_last_error = last_visible_stderr.clone();
         let stderr_events = events.clone();
         let stderr_thread = thread::Builder::new()
-            .name("waku-codex-stderr".into())
+            .name("insulator-codex-stderr".into())
             .spawn(move || {
                 for line in BufReader::new(stderr).lines().map_while(Result::ok) {
                     if is_visible_stderr_notice(&line) {
@@ -750,7 +750,7 @@ impl CodexDriver {
             })?;
 
         thread::Builder::new()
-            .name("waku-codex-process".into())
+            .name("insulator-codex-process".into())
             .spawn(move || {
                 let status = child.wait();
                 let _ = reader_thread.join();
@@ -817,7 +817,7 @@ fn turn_start_params(
         "approvalPolicy": approval_policy,
         "approvalsReviewer": approvals_reviewer,
         "sandboxPolicy": codex_sandbox_policy(sandbox),
-        // Some current models default reasoning summaries to `none`. Waku has
+        // Some current models default reasoning summaries to `none`. Insulator has
         // a native reasoning disclosure, so explicitly request readable text.
         "summary": "auto"
     })
@@ -1336,8 +1336,8 @@ fn handle_codex_message(
     stream_state: &mut CodexStreamState,
 ) {
     // JSON-RPC IDs are scoped to each peer, so an app-server request may use
-    // the same numeric ID as one of Waku's earlier requests. Only messages
-    // without a method are responses to Waku-originated requests.
+    // the same numeric ID as one of Insulator's earlier requests. Only messages
+    // without a method are responses to Insulator-originated requests.
     let is_response = value.get("method").is_none();
     let pending_goal = is_response
         .then(|| value.get("id").and_then(Value::as_u64))
@@ -2190,7 +2190,7 @@ mod tests {
     fn fork_releases_its_writer_before_a_new_driver_sends_a_message() {
         use std::os::unix::fs::PermissionsExt as _;
 
-        let directory = std::env::temp_dir().join(format!("waku-codex-fork-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-codex-fork-{}", Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
         let binary = directory.join("codex");
         fs::write(&binary, include_str!("fixtures/codex_fork.sh")).unwrap();
@@ -2278,7 +2278,7 @@ mod tests {
     #[ignore = "requires an installed, authenticated codex"]
     fn codex_fork_preserves_history_and_both_sessions_against_real_cli() {
         let binary = crate::command_env::find_executable("codex").expect("codex is not installed");
-        let cwd = std::env::temp_dir().join(format!("waku-codex-live-fork-{}", Uuid::new_v4()));
+        let cwd = std::env::temp_dir().join(format!("insulator-codex-live-fork-{}", Uuid::new_v4()));
         fs::create_dir_all(&cwd).unwrap();
         let start = |cursor| {
             let (events, received) = crate::driver::test_event_channel();
@@ -2662,16 +2662,16 @@ mod tests {
         assert!(
             disabled
                 .get_envs()
-                .all(|(name, _)| { !name.to_string_lossy().starts_with("WAKU_COMPUTER_USE_") })
+                .all(|(name, _)| { !name.to_string_lossy().starts_with("INSULATOR_COMPUTER_USE_") })
         );
 
         let config = CodexComputerUseConfig {
-            server_path: PathBuf::from("/tmp/waku-computer-use-server"),
-            server: toml_string("/tmp/waku-computer-use-server"),
-            repl: toml_string("/tmp/waku"),
-            skill_root: PathBuf::from("/tmp/waku-computer-use-skill"),
-            process_directory: PathBuf::from("/tmp/waku-computer-use-processes"),
-            process_directory_config: toml_string("/tmp/waku-computer-use-processes"),
+            server_path: PathBuf::from("/tmp/insulator-computer-use-server"),
+            server: toml_string("/tmp/insulator-computer-use-server"),
+            repl: toml_string("/tmp/insulator"),
+            skill_root: PathBuf::from("/tmp/insulator-computer-use-skill"),
+            process_directory: PathBuf::from("/tmp/insulator-computer-use-processes"),
+            process_directory_config: toml_string("/tmp/insulator-computer-use-processes"),
         };
         let mut enabled = Command::new("/usr/bin/true");
         configure_computer_use_command(&mut enabled, Some(&config));
@@ -2680,7 +2680,7 @@ mod tests {
             .map(|argument| argument.to_string_lossy().into_owned())
             .collect::<Vec<_>>();
         // The raw helper must never be registered as a Codex MCP server: the
-        // Waku REPL owns it and exposes only `sky` inside JavaScript.
+        // Insulator REPL owns it and exposes only `sky` inside JavaScript.
         assert!(
             !enabled_arguments
                 .iter()
@@ -2719,14 +2719,14 @@ mod tests {
         assert!(
             enabled
                 .get_envs()
-                .any(|(name, _)| { name.to_string_lossy() == "WAKU_COMPUTER_USE_SERVER" })
+                .any(|(name, _)| { name.to_string_lossy() == "INSULATOR_COMPUTER_USE_SERVER" })
         );
     }
 
     #[test]
     fn computer_use_process_registry_accepts_only_pid_files() {
         let directory = std::env::temp_dir().join(format!(
-            "waku-computer-use-process-test-{}",
+            "insulator-computer-use-process-test-{}",
             Uuid::new_v4().simple()
         ));
         fs::create_dir_all(directory.join("456")).unwrap();
@@ -3169,7 +3169,7 @@ mod tests {
     fn mcp_tool_title_prefers_the_human_facing_argument() {
         let titled = json!({
             "type": "mcpToolCall",
-            "server": "waku_js_repl",
+            "server": "insulator_js_repl",
             "tool": "js",
             "arguments": {
                 "title": "Inspect Helium browser",
@@ -3178,7 +3178,7 @@ mod tests {
         });
         let untitled = json!({
             "type": "mcpToolCall",
-            "server": "waku_js_repl",
+            "server": "insulator_js_repl",
             "tool": "js",
             "arguments": { "code": "sky.list_apps()" }
         });
@@ -3194,7 +3194,7 @@ mod tests {
             "type": "mcpToolCall",
             "server": "filesystem",
             "tool": "read_file",
-            "arguments": {"path": "/tmp/waku/src/model.rs"},
+            "arguments": {"path": "/tmp/insulator/src/model.rs"},
             "status": "inProgress"
         });
 
@@ -3212,7 +3212,7 @@ mod tests {
         assert_eq!(activity.kind, ActivityKind::FileRead);
         assert_eq!(
             activity.display_target.as_deref(),
-            Some("/tmp/waku/src/model.rs")
+            Some("/tmp/insulator/src/model.rs")
         );
     }
 
@@ -3222,30 +3222,30 @@ mod tests {
             (
                 json!({
                     "type": "read",
-                    "command": "sed -n '12,20p' crates/waku-core/src/driver/codex.rs",
+                    "command": "sed -n '12,20p' crates/insulator-core/src/driver/codex.rs",
                     "name": "codex.rs",
-                    "path": "/tmp/waku/crates/waku-core/src/driver/codex.rs"
+                    "path": "/tmp/insulator/crates/insulator-core/src/driver/codex.rs"
                 }),
                 ActivityKind::FileRead,
                 tr!("activity.read_file"),
-                "/tmp/waku/crates/waku-core/src/driver/codex.rs",
+                "/tmp/insulator/crates/insulator-core/src/driver/codex.rs",
             ),
             (
                 json!({
                     "type": "listFiles",
-                    "command": "rg --files crates/waku-core/src",
-                    "path": "crates/waku-core/src"
+                    "command": "rg --files crates/insulator-core/src",
+                    "path": "crates/insulator-core/src"
                 }),
                 ActivityKind::FileList,
                 tr!("activity.list_files"),
-                "crates/waku-core/src",
+                "crates/insulator-core/src",
             ),
             (
                 json!({
                     "type": "search",
-                    "command": "rg commandActions crates/waku-core/src",
+                    "command": "rg commandActions crates/insulator-core/src",
                     "query": "commandActions",
-                    "path": "crates/waku-core/src"
+                    "path": "crates/insulator-core/src"
                 }),
                 ActivityKind::FileSearch,
                 tr!("activity.search_files"),
@@ -3256,7 +3256,7 @@ mod tests {
                 "id": "command-1",
                 "type": "commandExecution",
                 "command": action["command"],
-                "cwd": "/tmp/waku",
+                "cwd": "/tmp/insulator",
                 "commandActions": [action],
                 "status": "completed"
             });
@@ -3293,14 +3293,14 @@ mod tests {
                     "type": "read",
                     "command": "cat src/main.rs",
                     "name": "main.rs",
-                    "path": "/tmp/waku/src/main.rs"
+                    "path": "/tmp/insulator/src/main.rs"
                 }
             ]),
         ] {
             let item = json!({
                 "type": "commandExecution",
                 "command": "inspect files",
-                "cwd": "/tmp/waku",
+                "cwd": "/tmp/insulator",
                 "commandActions": command_actions
             });
 

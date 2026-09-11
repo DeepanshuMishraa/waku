@@ -7,9 +7,9 @@
 //! layout; package-manager-owned builds continue to defer to their manager.
 //!
 //! Debug builds stay dormant so the dev watcher's app never offers to replace
-//! itself with a production build. `WAKU_PREVIEW_UPDATE=1` fakes only the
+//! itself with a production build. `INSULATOR_PREVIEW_UPDATE=1` fakes only the
 //! automatic sidebar result while retaining the real Sparkle flow for the
-//! Check for Updates menu; `WAKU_FORCE_UPDATER=1` exercises everything for
+//! Check for Updates menu; `INSULATOR_FORCE_UPDATER=1` exercises everything for
 //! real from a debug bundle.
 
 use gpui::Global;
@@ -19,7 +19,7 @@ pub struct UpdaterState(pub Option<Updater>);
 
 impl Global for UpdaterState {}
 
-/// The compact state rendered by Waku. Update details remain owned by
+/// The compact state rendered by Insulator. Update details remain owned by
 /// Sparkle and never enter a frame path.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 pub enum UpdateStatus {
@@ -83,7 +83,7 @@ mod macos {
 
     struct UserDriverIvars {
         /// Explicit checks and the one-time automatic-check permission prompt
-        /// use Sparkle's own windows. Scheduled checks stay inside Waku.
+        /// use Sparkle's own windows. Scheduled checks stay inside Insulator.
         standard_driver: Retained<AnyObject>,
         standard_presentation: Cell<bool>,
         standard_update_check: Cell<Option<isize>>,
@@ -96,7 +96,7 @@ mod macos {
 
     define_class!(
         #[unsafe(super(NSObject))]
-        #[name = "WakuSparkleUserDriver"]
+        #[name = "InsulatorSparkleUserDriver"]
         #[thread_kind = MainThreadOnly]
         #[ivars = UserDriverIvars]
         struct UserDriver;
@@ -586,8 +586,8 @@ mod macos {
         /// running outside a bundle with an embedded framework.
         pub fn init() -> Option<Self> {
             let preview = cfg!(debug_assertions)
-                && std::env::var_os("WAKU_PREVIEW_UPDATE").is_some_and(|value| value == "1");
-            let forced = std::env::var_os("WAKU_FORCE_UPDATER").is_some_and(|value| value == "1");
+                && std::env::var_os("INSULATOR_PREVIEW_UPDATE").is_some_and(|value| value == "1");
+            let forced = std::env::var_os("INSULATOR_FORCE_UPDATER").is_some_and(|value| value == "1");
             if cfg!(debug_assertions) && !forced && !preview {
                 return None;
             }
@@ -607,7 +607,7 @@ mod macos {
                         .to_string_lossy()
                         .into_owned()
                 };
-                eprintln!("Waku updater: failed to load Sparkle: {reason}");
+                eprintln!("Insulator updater: failed to load Sparkle: {reason}");
                 return None;
             }
 
@@ -656,7 +656,7 @@ mod macos {
                 ]
             };
             if !started {
-                eprintln!("Waku updater: Sparkle rejected its updater configuration");
+                eprintln!("Insulator updater: Sparkle rejected its updater configuration");
                 return None;
             }
 
@@ -767,7 +767,7 @@ mod macos {
     }
 
     /// The embedded framework's dylib next to the running executable
-    /// (Contents/MacOS/Waku → Contents/Frameworks/Sparkle.framework/Sparkle).
+    /// (Contents/MacOS/Insulator → Contents/Frameworks/Sparkle.framework/Sparkle).
     fn sparkle_library_path() -> Option<std::path::PathBuf> {
         let executable = std::env::current_exe().ok()?;
         let contents = executable.parent()?.parent()?;
@@ -786,7 +786,7 @@ mod macos {
                 .map(std::path::PathBuf::from)
                 .unwrap_or_else(|| std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("target"));
             let library = target_dir
-                .join("debug/Waku Debug.app/Contents/Frameworks/Sparkle.framework/Sparkle");
+                .join("debug/Insulator Debug.app/Contents/Frameworks/Sparkle.framework/Sparkle");
             if !library.exists() {
                 return;
             }
@@ -877,7 +877,7 @@ mod feed {
         compare_versions(candidate, current) == std::cmp::Ordering::Greater
     }
 
-    /// Compare dotted release numbers field by field. Waku's versions are
+    /// Compare dotted release numbers field by field. Insulator's versions are
     /// plain `major.minor.patch`; anything after a `-` or `+` is build
     /// metadata and is not ordered.
     fn compare_versions(left: &str, right: &str) -> std::cmp::Ordering {
@@ -915,12 +915,12 @@ mod feed {
     <item>
       <title>0.1.4</title>
       <sparkle:shortVersionString>0.1.4</sparkle:shortVersionString>
-      <enclosure url="https://releases.insulator.sh/Waku-0.1.4-x86_64-Setup.exe" length="1024" type="application/octet-stream" sparkle:edSignature="oldsig" />
+      <enclosure url="https://releases.insulator.sh/Insulator-0.1.4-x86_64-Setup.exe" length="1024" type="application/octet-stream" sparkle:edSignature="oldsig" />
     </item>
     <item>
       <title>0.2.0</title>
       <sparkle:shortVersionString>0.2.0</sparkle:shortVersionString>
-      <enclosure url="https://releases.insulator.sh/Waku-0.2.0-x86_64-Setup.exe" length="2048" type="application/octet-stream" sparkle:edSignature="newsig" />
+      <enclosure url="https://releases.insulator.sh/Insulator-0.2.0-x86_64-Setup.exe" length="2048" type="application/octet-stream" sparkle:edSignature="newsig" />
     </item>
   </channel>
 </rss>"#;
@@ -932,7 +932,7 @@ mod feed {
             assert_eq!(item.version, "0.2.0");
             assert_eq!(item.signature, "newsig");
             assert_eq!(item.length, Some(2048));
-            assert!(item.url.ends_with("Waku-0.2.0-x86_64-Setup.exe"));
+            assert!(item.url.ends_with("Insulator-0.2.0-x86_64-Setup.exe"));
         }
 
         #[test]
@@ -1000,7 +1000,7 @@ mod windows {
 
     /// Read out of `resources/Info.plist` by the build script, so macOS and
     /// Windows cannot end up trusting different keys.
-    const PUBLIC_ED_KEY: &str = env!("WAKU_SPARKLE_PUBLIC_ED_KEY");
+    const PUBLIC_ED_KEY: &str = env!("INSULATOR_SPARKLE_PUBLIC_ED_KEY");
 
     /// Windows 10 1803 and later ship curl in System32. The absolute path
     /// keeps a shadowed `curl` on `PATH` out of the update path; the download
@@ -1037,12 +1037,12 @@ mod windows {
         pub fn init() -> Option<Self> {
             // A debug build must never offer to replace the watcher's app
             // with a production install.
-            let forced = std::env::var_os("WAKU_FORCE_UPDATER").is_some_and(|value| value == "1");
+            let forced = std::env::var_os("INSULATOR_FORCE_UPDATER").is_some_and(|value| value == "1");
             if cfg!(debug_assertions) && !forced {
                 return None;
             }
             if verifying_key().is_none() {
-                eprintln!("Waku updater: SUPublicEDKey is not a valid ed25519 key");
+                eprintln!("Insulator updater: SUPublicEDKey is not a valid ed25519 key");
                 return None;
             }
 
@@ -1118,7 +1118,7 @@ mod windows {
             };
             let events = self.events.clone();
             let spawned = std::thread::Builder::new()
-                .name("waku-updater-check".into())
+                .name("insulator-updater-check".into())
                 .spawn(move || {
                     let outcome = fetch_and_stage();
                     // Read once the work is done, so a request that arrived
@@ -1143,7 +1143,7 @@ mod windows {
                             if report {
                                 let _ = events.try_send(UpdaterEvent::Failed(error.to_string()));
                             } else {
-                                eprintln!("Waku updater: {error}");
+                                eprintln!("Insulator updater: {error}");
                             }
                         }
                     }
@@ -1216,7 +1216,7 @@ mod windows {
             let path = self.preference_path.clone();
             // A settings toggle must not wait on the filesystem.
             let _ = std::thread::Builder::new()
-                .name("waku-updater-preference".into())
+                .name("insulator-updater-preference".into())
                 .spawn(move || write_automatic_preference(&path, enabled));
             if enabled {
                 self.start_check(false);
@@ -1258,13 +1258,13 @@ mod windows {
             .ok_or_else(|| anyhow::anyhow!("update signature is malformed"))?;
 
         let directory = std::env::temp_dir().join(format!(
-            "waku-update-{}-{}",
+            "insulator-update-{}-{}",
             item.version,
             std::process::id()
         ));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory)?;
-        let installer = directory.join("Waku-Setup.exe");
+        let installer = directory.join("Insulator-Setup.exe");
 
         curl(&["-fsSL", "--max-time", "600", "-o"], &installer, &item.url)?;
 
@@ -1396,7 +1396,7 @@ mod windows {
         fn a_signature_from_the_release_script_verifies_here() {
             const PUBLIC: &str = "7gZ3dbx+MPQD4vc2dk7olL9QU66JIjpJ1iqNNafU2lQ=";
             const SIGNATURE: &str = "eBIPKGvQSxFIVNwOzNjzHYs/AGiYFIe3pGulv0TeocoMN0+0l28OJZrlJ2ZuQnNBfif10VW3virGo+7GP3TwCw==";
-            const PAYLOAD: &[u8] = b"Waku-0.0.0-x86_64-Setup.exe contents";
+            const PAYLOAD: &[u8] = b"Insulator-0.0.0-x86_64-Setup.exe contents";
 
             let decode = |value: &str| {
                 base64::engine::general_purpose::STANDARD
@@ -1422,7 +1422,7 @@ mod windows {
         #[test]
         fn an_absent_preference_file_leaves_automatic_checks_on() {
             let directory = std::env::temp_dir()
-                .join(format!("waku-updater-preference-{}", std::process::id()));
+                .join(format!("insulator-updater-preference-{}", std::process::id()));
             let _ = std::fs::remove_dir_all(&directory);
             let path = directory.join("updater.json");
 

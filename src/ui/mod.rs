@@ -621,6 +621,7 @@ mod tests {
             "icons/alert.svg",
             "icons/lock.svg",
             "icons/lock-open.svg",
+            "icons/history.svg",
             "icons/star.svg",
             "icons/star-filled.svg",
             "icons/sparkle.svg",

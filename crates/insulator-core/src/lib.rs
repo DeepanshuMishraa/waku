@@ -1,10 +1,10 @@
 #![recursion_limit = "256"]
 
-//! Waku's daemon-side core.
+//! Insulator's daemon-side core.
 //!
 //! Provider, database, filesystem, and Git implementations live here, behind
-//! the transport-neutral contract in `waku-protocol`. Client applications
-//! intentionally depend on `waku-client` instead of this crate.
+//! the transport-neutral contract in `insulator-protocol`. Client applications
+//! intentionally depend on `insulator-client` instead of this crate.
 
 rust_i18n::i18n!("../../locales", fallback = "en");
 

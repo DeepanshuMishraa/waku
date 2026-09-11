@@ -39,7 +39,7 @@ impl ComputerUseRuntime {
         let server_path = computer_use::mcp_server_command()?;
         let repl_path = computer_use::js_repl_server_path()?;
         let skill_path = computer_use::skill_root_path()?
-            .join("waku-computer-use")
+            .join("insulator-computer-use")
             .join("SKILL.md");
         let process_directory = create_process_directory()?;
         let preview_monitor =
@@ -83,7 +83,7 @@ impl ComputerUsePreviewMonitor {
         let running = Arc::new(AtomicBool::new(true));
         let thread_running = running.clone();
         thread::Builder::new()
-            .name("waku-computer-use-preview".into())
+            .name("insulator-computer-use-preview".into())
             .spawn(move || {
                 let mut seen = HashMap::<PathBuf, (SystemTime, u64)>::new();
                 while thread_running.load(Ordering::Acquire) {
@@ -131,7 +131,7 @@ impl Drop for ComputerUsePreviewMonitor {
 
 pub(super) fn create_process_directory() -> anyhow::Result<PathBuf> {
     let directory = std::env::temp_dir()
-        .join("waku-computer-use")
+        .join("insulator-computer-use")
         .join(Uuid::new_v4().simple().to_string());
     fs::create_dir_all(&directory).with_context(|| {
         format!(

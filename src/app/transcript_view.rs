@@ -17,7 +17,7 @@ const ACTIVITY_DIFF_GUTTER_WIDTH: f32 = 52.0;
 #[derive(Clone, Debug)]
 struct ConversationNavigationRailSnapshot {
     visible: bool,
-    /// Shared with the `Waku` cache: the turns only change when the row-kinds
+    /// Shared with the `Insulator` cache: the turns only change when the row-kinds
     /// fingerprint moves, so the per-frame equality check here is a pointer
     /// comparison rather than a walk over every turn's snippets.
     turns: Rc<Vec<TranscriptNavigationTurn>>,
@@ -52,7 +52,7 @@ impl Default for ConversationNavigationRailSnapshot {
 }
 
 pub(super) struct ConversationNavigationRail {
-    waku: Option<WeakEntity<Waku>>,
+    insulator: Option<WeakEntity<Insulator>>,
     snapshot: ConversationNavigationRailSnapshot,
     turn_list_state: ListState,
     turn_indexes: HashMap<Uuid, usize>,
@@ -70,7 +70,7 @@ impl ConversationNavigationRail {
             .with_uniform_item_height(px(NAVIGATION_RAIL_TURN_HEIGHT));
         turn_list_state.set_scroll_handler(|_, window, _| window.refresh());
         Self {
-            waku: None,
+            insulator: None,
             snapshot: ConversationNavigationRailSnapshot::default(),
             turn_list_state,
             turn_indexes: HashMap::new(),
@@ -83,8 +83,8 @@ impl ConversationNavigationRail {
         }
     }
 
-    pub(super) fn set_waku(&mut self, waku: WeakEntity<Waku>) {
-        self.waku = Some(waku);
+    pub(super) fn set_insulator(&mut self, insulator: WeakEntity<Insulator>) {
+        self.insulator = Some(insulator);
     }
 
     fn set_snapshot(
@@ -150,7 +150,7 @@ impl ConversationNavigationRail {
     }
 }
 
-impl Waku {
+impl Insulator {
     // ── Transcript ─────────────────────────────────────────────────────────
 
     pub(super) fn transcript_control_focus(
@@ -813,15 +813,15 @@ impl ConversationNavigationRail {
     }
 
     fn activate_turn(&self, message_id: Uuid, cx: &mut Context<Self>) {
-        if let Some(waku) = &self.waku {
-            let _ = waku.update(cx, |waku, cx| {
-                waku.scroll_to_navigation_turn(message_id, cx)
+        if let Some(insulator) = &self.insulator {
+            let _ = insulator.update(cx, |insulator, cx| {
+                insulator.scroll_to_navigation_turn(message_id, cx)
             });
         }
     }
 }
 
-impl Waku {
+impl Insulator {
     fn scroll_to_navigation_turn(&mut self, message_id: Uuid, cx: &mut Context<Self>) {
         let row_index = self
             .navigation_turns()
@@ -1217,7 +1217,7 @@ impl Waku {
         let theme = Theme::current(cx);
         let palette = MarkdownPalette::from_theme(&theme);
         let composer = self.composer.clone();
-        let waku = cx.entity().downgrade();
+        let insulator = cx.entity().downgrade();
         // Both from the cache `sync_transcript_rows` refreshed at the top of
         // this frame. Recomputing the row list here would rebuild the whole
         // transcript's row kinds — several allocations proportional to the
@@ -1338,7 +1338,7 @@ impl Waku {
                             markdown: view,
                             ctx: &ctx,
                             menu,
-                            waku,
+                            insulator,
                             composer,
                         },
                         cx,
@@ -2347,7 +2347,7 @@ impl Waku {
                         let copied = self
                             .copied_activity_feedback
                             .contains_key(&(id, section_kind));
-                        let copy_waku = cx.entity().downgrade();
+                        let copy_insulator = cx.entity().downgrade();
                         let copy_tooltip = SharedString::from(if copied {
                             tr!("common.copied")
                         } else {
@@ -2394,7 +2394,7 @@ impl Waku {
                                                 cx.write_to_clipboard(ClipboardItem::new_string(
                                                     copy_content.clone(),
                                                 ));
-                                                let _ = copy_waku.update(cx, |this, cx| {
+                                                let _ = copy_insulator.update(cx, |this, cx| {
                                                     this.show_activity_section_copied(
                                                         id,
                                                         section_kind,
@@ -2742,7 +2742,7 @@ fn activity_scroll_follow_state(
     }
 }
 
-/// Pure window arithmetic behind [`Waku::live_reasoning_window_start`]:
+/// Pure window arithmetic behind [`Insulator::live_reasoning_window_start`]:
 /// given the cached start and the current content, the byte offset the
 /// window should render from. Every returned offset is a character boundary
 /// of `content`, so callers may slice with it directly.
@@ -2772,7 +2772,7 @@ fn live_reasoning_window_anchor(cached: usize, content: &str) -> usize {
         .unwrap_or(cut)
 }
 
-impl Waku {
+impl Insulator {
     /// Byte offset the live reasoning peek renders from, slid forward as the
     /// thought grows. The peek pins a 400 px viewport to the tail, but
     /// markdown cost is O(rendered source) per pulse tick regardless of block

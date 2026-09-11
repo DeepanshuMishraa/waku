@@ -2,7 +2,7 @@
 //!
 //! ACP agents own their storage migrations and visible-history projection. A
 //! one-shot `session/list` or `session/load` therefore stays more accurate than
-//! reading their private stores, while typed updates let Waku discard private
+//! reading their private stores, while typed updates let Insulator discard private
 //! reasoning and provider-only tool records by construction.
 
 use std::collections::HashSet;
@@ -40,7 +40,7 @@ const ACP_REQUEST_TIMEOUT: Duration = Duration::from_secs(20);
 /// workspace scan; actual session loading still receives the selected cwd.
 pub(crate) fn catalog_working_directory() -> anyhow::Result<PathBuf> {
     let directory = std::env::temp_dir().join(format!(
-        "waku-provider-session-catalog-{}",
+        "insulator-provider-session-catalog-{}",
         std::process::id()
     ));
     fs::create_dir_all(&directory).with_context(|| {
@@ -104,7 +104,7 @@ pub fn list_provider_sessions(
             .collect()
     };
 
-    let request = Client.builder().name("waku-session-catalog").connect_with(
+    let request = Client.builder().name("insulator-session-catalog").connect_with(
         agent,
         async move |connection: ConnectionTo<Agent>| {
             let initialize = connection
@@ -203,7 +203,7 @@ pub fn provider_session_history(
 
     let request = Client
         .builder()
-        .name("waku-session-import")
+        .name("insulator-session-import")
         .on_receive_notification(
             async move |notification: SessionNotification, _connection| {
                 if let Ok(update) = serde_json::to_value(notification.update) {

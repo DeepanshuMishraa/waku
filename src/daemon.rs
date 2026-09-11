@@ -1,4 +1,4 @@
-//! Desktop ownership of the Waku daemon process.
+//! Desktop ownership of the Insulator daemon process.
 
 use std::path::PathBuf;
 
@@ -65,7 +65,7 @@ pub fn local_hostname() -> Option<String> {
 
 fn daemon_executable_path() -> anyhow::Result<PathBuf> {
     if let Some(path) = std::env::var_os("INSULATOR_DAEMON_PATH")
-        .or_else(|| std::env::var_os("WAKU_DAEMON_PATH"))
+        .or_else(|| std::env::var_os("INSULATOR_DAEMON_PATH"))
         .filter(|path| !path.is_empty())
     {
         return Ok(path.into());
@@ -73,7 +73,7 @@ fn daemon_executable_path() -> anyhow::Result<PathBuf> {
     let candidates = [
         format!("insulator-debug-daemon{}", std::env::consts::EXE_SUFFIX),
         format!("insulator-daemon{}", std::env::consts::EXE_SUFFIX),
-        format!("waku-daemon{}", std::env::consts::EXE_SUFFIX),
+        format!("insulator-daemon{}", std::env::consts::EXE_SUFFIX),
     ];
     let current = std::env::current_exe().context("could not locate the app executable")?;
 

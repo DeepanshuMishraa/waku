@@ -10,13 +10,13 @@ use insulator_protocol::{DAEMON_TOKEN_ENV, DaemonReady, PROTOCOL_VERSION};
 fn main() -> anyhow::Result<()> {
     let arguments = Arguments::parse(std::env::args().skip(1))?;
     let token =
-        std::env::var(DAEMON_TOKEN_ENV).context("Waku daemon authentication token is missing")?;
+        std::env::var(DAEMON_TOKEN_ENV).context("Insulator daemon authentication token is missing")?;
     // The bearer capability belongs only to this server process. Remove it
     // before any provider or workspace subprocess can inherit the daemon's
     // environment.
     unsafe { std::env::remove_var(DAEMON_TOKEN_ENV) };
     let listener = TcpListener::bind(&arguments.bind)
-        .with_context(|| format!("could not bind Waku daemon to {}", arguments.bind))?;
+        .with_context(|| format!("could not bind Insulator daemon to {}", arguments.bind))?;
     let address = listener.local_addr()?;
     ensure_bind_allowed(address, arguments.allow_non_loopback)?;
     let ready = DaemonReady {
@@ -31,7 +31,7 @@ fn main() -> anyhow::Result<()> {
     if let Some(parent_pid) = arguments.parent_pid {
         let monitor_shutdown = shutdown.clone();
         std::thread::Builder::new()
-            .name("waku-daemon-parent".into())
+            .name("insulator-daemon-parent".into())
             .spawn(move || {
                 while !monitor_shutdown.load(Ordering::Acquire) {
                     if !process_is_alive(parent_pid) {
@@ -53,7 +53,7 @@ fn main() -> anyhow::Result<()> {
     insulator_core::serve(
         listener,
         token,
-        Arc::new(insulator_core::daemon::WakuBackend::new(settings, task_store)?),
+        Arc::new(insulator_core::daemon::InsulatorBackend::new(settings, task_store)?),
         shutdown,
         insulator_core::ServerOptions {
             allowed_origins: arguments.allowed_origins.into_iter().collect(),

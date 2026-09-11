@@ -2,7 +2,7 @@
 //!
 //! Codex allocates ordinary projectless chats beneath a per-user root using
 //! `<root>/<local date>/<prompt slug>`, with numeric collision suffixes and a
-//! random fallback. Waku mirrors that layout beneath `~/.insulator/projects` so
+//! random fallback. Insulator mirrors that layout beneath `~/.insulator/projects` so
 //! generated workspaces do not sit beside configuration documents.
 
 use std::fs;
@@ -107,7 +107,7 @@ pub fn create_workspace(prompt: Option<&str>) -> io::Result<Workspace> {
 
 /// Move one old dated workspace from `~/.insulator/<date>/<slug>` into
 /// `~/.insulator/projects/<date>/<slug>` without copying its contents through the
-/// client. The oldest layout used `~/.insulator` itself; that path contains Waku's
+/// client. The oldest layout used `~/.insulator` itself; that path contains Insulator's
 /// configuration now, so it receives a fresh private workspace instead of
 /// moving the configuration directory.
 pub fn migrate_workspace(path: &Path) -> io::Result<Workspace> {
@@ -306,7 +306,7 @@ mod tests {
     use super::*;
 
     fn test_root() -> PathBuf {
-        std::env::temp_dir().join(format!("waku-projectless-{}", Uuid::new_v4()))
+        std::env::temp_dir().join(format!("insulator-projectless-{}", Uuid::new_v4()))
     }
 
     #[test]

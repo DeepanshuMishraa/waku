@@ -18,7 +18,7 @@ private let maximumPreviewHeight = 480
 private let previewFramesPerSecond: Int32 = 15
 private let helperDisplayName =
     (Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String)
-    ?? "Waku Computer Use"
+    ?? "Insulator Computer Use"
 
 struct Permissions: Codable {
     let screenRecording: Bool
@@ -133,7 +133,7 @@ private final class ComputerUseStatusItem {
         guard item == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
         item.length = 54
-        item.button?.toolTip = "Waku Computer Use"
+        item.button?.toolTip = "Insulator Computer Use"
         self.item = item
     }
 
@@ -162,7 +162,7 @@ private final class ComputerUseStatusItem {
         item.length = image.size.width
         item.button?.image = image
         let menu = NSMenu()
-        let title = NSMenuItem(title: "Waku Computer Use", action: nil, keyEquivalent: "")
+        let title = NSMenuItem(title: "Insulator Computer Use", action: nil, keyEquivalent: "")
         title.isEnabled = false
         menu.addItem(title)
         menu.addItem(.separator())
@@ -525,11 +525,11 @@ enum HelperError: LocalizedError {
         switch self {
         case .invalidRequest(let message): message
         case .ipc(let message): "Computer Use connection failed: \(message)"
-        case .missingPermission(let permission): "\(helperDisplayName) needs \(permission) access. Open Waku Settings > Computer Use to grant it."
-        case .unauthorizedClient(let reason): "Computer Use rejected a request that did not come from a trusted Waku app: \(reason)"
+        case .missingPermission(let permission): "\(helperDisplayName) needs \(permission) access. Open Insulator Settings > Computer Use to grant it."
+        case .unauthorizedClient(let reason): "Computer Use rejected a request that did not come from a trusted Insulator app: \(reason)"
         case .targetUnavailable: "The app has no available window. Retry get_app_state, or call list_apps() to confirm the app identifier."
         case .targetIdentityChanged: "The selected app window changed. Call get_app_state again before interacting."
-        case .targetBlocked: "Waku does not allow computer control of that app."
+        case .targetBlocked: "Insulator does not allow computer control of that app."
         case .unsupportedAction(let action): "Unsupported computer-use action: \(action)"
         case .eventCreationFailed: "macOS could not create an input event."
         case .captureFailed: "macOS could not capture the selected app window."
@@ -538,7 +538,7 @@ enum HelperError: LocalizedError {
 }
 
 @main
-struct WakuComputerUse {
+struct InsulatorComputerUse {
     static func main() async {
         if CommandLine.arguments.contains("status-agent") {
             serveStatusAgent()
@@ -858,7 +858,7 @@ struct WakuComputerUse {
                     result = [
                         "protocolVersion": "2025-06-18",
                         "capabilities": ["tools": ["listChanged": false]],
-                        "serverInfo": ["name": "Waku Computer Use", "version": "1.0.0"],
+                        "serverInfo": ["name": "Insulator Computer Use", "version": "1.0.0"],
                     ]
                 case "tools/list":
                     result = ["tools": mcpTools()]
@@ -901,7 +901,7 @@ struct WakuComputerUse {
             "--bridge-pid",
             String(getpid()),
         ]
-        if let processDirectory = ProcessInfo.processInfo.environment["WAKU_COMPUTER_USE_PROCESS_DIRECTORY"],
+        if let processDirectory = ProcessInfo.processInfo.environment["INSULATOR_COMPUTER_USE_PROCESS_DIRECTORY"],
            !processDirectory.isEmpty {
             childArguments.append(contentsOf: ["--process-directory", processDirectory])
         }
@@ -1415,7 +1415,7 @@ private func readExactly(_ count: Int, from input: FileHandle) throws -> Data? {
             if data.isEmpty {
                 return nil
             }
-            throw HelperError.ipc("the Waku connection closed mid-message")
+            throw HelperError.ipc("the Insulator connection closed mid-message")
         }
         data.append(chunk)
     }
@@ -1446,7 +1446,7 @@ private final class UnixListener {
 
     init() throws {
         let directory = FileManager.default.temporaryDirectory
-            .appendingPathComponent("waku-computer-use", isDirectory: true)
+            .appendingPathComponent("insulator-computer-use", isDirectory: true)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         path = directory.appendingPathComponent(UUID().uuidString).path
         descriptor = Darwin.socket(AF_UNIX, SOCK_STREAM, 0)
@@ -1570,7 +1570,7 @@ private func connectedChannel(at path: String) throws -> (FileHandle, pid_t) {
         var peerPID: pid_t = 0
         var peerPIDSize = socklen_t(MemoryLayout.size(ofValue: peerPID))
         guard getsockopt(descriptor, SOL_LOCAL, LOCAL_PEERPID, &peerPID, &peerPIDSize) == 0 else {
-            throw HelperError.ipc("could not identify the Waku process")
+            throw HelperError.ipc("could not identify the Insulator process")
         }
         return (FileHandle(fileDescriptor: descriptor, closeOnDealloc: true), peerPID)
     } catch {
@@ -2882,7 +2882,7 @@ private func signingInformation(pid: pid_t) -> [String: Any]? {
 private func isBlocked(bundleId: String) -> Bool {
     let bundle = bundleId.lowercased()
     if [
-        // "sh.waku",
+        // "sh.insulator",
         // "com.openai.codex",
         // "com.openai.sky.",
         "com.1password.",
@@ -3057,7 +3057,7 @@ private final class WindowCaptureSession {
         )
         configuration.showsCursor = false
         configuration.capturesAudio = false
-        outputQueue = DispatchQueue(label: "sh.waku.computer-use.capture.\(window.windowID)")
+        outputQueue = DispatchQueue(label: "sh.insulator.computer-use.capture.\(window.windowID)")
         stream = SCStream(filter: filter, configuration: configuration, delegate: output)
         try stream.addStreamOutput(output, type: .screen, sampleHandlerQueue: outputQueue)
     }
@@ -3728,7 +3728,7 @@ private func mouseEvent(type: CGEventType, at point: CGPoint, button: CGMouseBut
 
 private func post(_ event: CGEvent, to processID: pid_t) {
     // Computer Use must never activate the controlled app or post pointer
-    // input to a global event tap. PID-targeted delivery is what lets Waku
+    // input to a global event tap. PID-targeted delivery is what lets Insulator
     // operate another app without stealing the user's focus.
     event.timestamp = CGEventTimestamp(mach_absolute_time())
     event.postToPid(processID)

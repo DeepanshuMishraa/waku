@@ -20,7 +20,7 @@
 
 /// Destination for a link whose URL is still streaming. The renderer styles it
 /// like a link but must not make it clickable.
-pub const PENDING_LINK_URL: &str = "waku:pending-link";
+pub const PENDING_LINK_URL: &str = "insulator:pending-link";
 
 /// Zero-width space appended to defuse a would-be setext underline.
 const ZERO_WIDTH_SPACE: char = '\u{200B}';

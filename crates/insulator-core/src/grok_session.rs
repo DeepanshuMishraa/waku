@@ -265,7 +265,7 @@ fn truncate_at_turn(
     if cutoff.is_none() {
         turns = values.iter().filter(|value| is_prompt(value)).count();
         if turns < retained_turns {
-            bail!("Grok has only {turns} native turns, but Waku needs {retained_turns}");
+            bail!("Grok has only {turns} native turns, but Insulator needs {retained_turns}");
         }
     }
     Ok(values[..cutoff.unwrap_or(values.len())].to_vec())
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn reads_groks_generated_title_from_native_metadata() {
-        let root = std::env::temp_dir().join(format!("waku-grok-title-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-grok-title-{}", Uuid::new_v4()));
         let session_id = Uuid::new_v4().to_string();
         let session = root
             .join("sessions")

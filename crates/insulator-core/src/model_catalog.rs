@@ -244,7 +244,7 @@ fn parse_claude_models(value: &Value) -> Vec<ProviderModel> {
                     .filter(|effort| !effort.is_empty())
                     .map(|effort| ProviderModelOption::new(effort, reasoning_effort_label(effort)))
                     .collect();
-                // `ultracode` is Waku's orchestration effort. Claude accepts
+                // `ultracode` is Insulator's orchestration effort. Claude accepts
                 // it wherever the provider metadata says xhigh is supported.
                 if model
                     .reasoning_efforts
@@ -820,16 +820,16 @@ fn discover_pi_models(binary: &Path, dialect: PiDialect) -> Vec<ProviderModel> {
         }
     });
 
-    let models_request = json!({"id": "waku-models", "type": "get_available_models"});
+    let models_request = json!({"id": "insulator-models", "type": "get_available_models"});
     let result = if write_json_line(&mut stdin, &models_request).is_ok()
-        && let Some(models) = recv_pi_rpc_response(&rx, "waku-models", PI_RPC_TIMEOUT)
+        && let Some(models) = recv_pi_rpc_response(&rx, "insulator-models", PI_RPC_TIMEOUT)
     {
         // The catalog is useful even when an older Pi cannot report its
         // current state. State only marks the default model and thinking
         // level, so ask for it after the required model response.
-        let state_request = json!({"id": "waku-state", "type": "get_state"});
+        let state_request = json!({"id": "insulator-state", "type": "get_state"});
         let state = if write_json_line(&mut stdin, &state_request).is_ok() {
-            recv_pi_rpc_response(&rx, "waku-state", PI_RPC_TIMEOUT).unwrap_or(Value::Null)
+            recv_pi_rpc_response(&rx, "insulator-state", PI_RPC_TIMEOUT).unwrap_or(Value::Null)
         } else {
             Value::Null
         };
@@ -1135,7 +1135,7 @@ fn reasoning_effort_label(effort: &str) -> String {
 /// Attaches a model's OpenCode "variants" as its reasoning-effort ladder.
 ///
 /// Both OpenCode majors express reasoning effort as a per-model variant whose
-/// id is drawn from the same vocabulary Waku already labels
+/// id is drawn from the same vocabulary Insulator already labels
 /// (`none`/`minimal`/`low`/`medium`/`high`/`xhigh`/`max`, plus provider-specific
 /// ones such as `thinking`), and the chosen id is sent verbatim — as the v1
 /// message body's `variant` and as v2's `ModelRef::variant`. Models with no
@@ -1347,7 +1347,7 @@ mod tests {
         use std::os::unix::fs::PermissionsExt as _;
 
         let path = std::env::temp_dir().join(format!(
-            "waku-{name}-{}-model-discovery.sh",
+            "insulator-{name}-{}-model-discovery.sh",
             std::process::id()
         ));
         std::fs::write(&path, contents).unwrap();
@@ -1360,7 +1360,7 @@ mod tests {
     #[test]
     fn model_cache_round_trips_and_rejects_empty_or_invalid_files() {
         let directory =
-            std::env::temp_dir().join(format!("waku-model-cache-test-{}", std::process::id()));
+            std::env::temp_dir().join(format!("insulator-model-cache-test-{}", std::process::id()));
         let path = directory.join("codex.json");
         let models = vec![
             ProviderModel::new("gpt-5.6-sol", "GPT-5.6-Sol")
@@ -1469,7 +1469,7 @@ mod tests {
             "claude",
             r#"#!/bin/sh
 read -r request
-printf '%s\n' '{"type":"control_response","response":{"request_id":"waku-initialize-catalog","response":{"models":[{"value":"cc-switch-model","resolvedModel":"cc-switch-model","displayName":"CC Switch Model"}]}}}'
+printf '%s\n' '{"type":"control_response","response":{"request_id":"insulator-initialize-catalog","response":{"models":[{"value":"cc-switch-model","resolvedModel":"cc-switch-model","displayName":"CC Switch Model"}]}}}'
 "#,
         );
 
@@ -1490,7 +1490,7 @@ printf '%s\n' '{"type":"control_response","response":{"request_id":"waku-initial
     }
 
     /// The exact shape `opencode models --verbose` prints, trimmed to the
-    /// fields Waku reads. `variants` is the reasoning-effort ladder and is the
+    /// fields Insulator reads. `variants` is the reasoning-effort ladder and is the
     /// only reason to parse the verbose form at all.
     #[test]
     fn opencode_verbose_models_expose_their_variants_as_reasoning_efforts() {
@@ -1875,7 +1875,7 @@ opencode/big-pickle
     #[test]
     fn parses_pi_models_and_model_specific_thinking_levels() {
         let state = json!({
-            "id": "waku-state",
+            "id": "insulator-state",
             "type": "response",
             "success": true,
             "data": {
@@ -1884,7 +1884,7 @@ opencode/big-pickle
             }
         });
         let response = json!({
-            "id": "waku-models",
+            "id": "insulator-models",
             "type": "response",
             "success": true,
             "data": {"models": [
@@ -1935,11 +1935,11 @@ for argument in "$@"; do
 done
 while IFS= read -r request; do
   case "$request" in
-    *waku-models*)
-      printf '%s\n' '{"id":"waku-models","type":"response","success":true,"data":{"models":[{"provider":"extension-provider","id":"extension-model","name":"Extension Model","reasoning":false}]}}'
+    *insulator-models*)
+      printf '%s\n' '{"id":"insulator-models","type":"response","success":true,"data":{"models":[{"provider":"extension-provider","id":"extension-model","name":"Extension Model","reasoning":false}]}}'
       ;;
-    *waku-state*)
-      printf '%s\n' '{"id":"waku-state","type":"response","success":true,"data":{"model":{"provider":"extension-provider","id":"extension-model"},"thinkingLevel":"medium"}}'
+    *insulator-state*)
+      printf '%s\n' '{"id":"insulator-state","type":"response","success":true,"data":{"model":{"provider":"extension-provider","id":"extension-model"},"thinkingLevel":"medium"}}'
       ;;
   esac
 done

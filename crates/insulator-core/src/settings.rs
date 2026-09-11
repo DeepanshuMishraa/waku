@@ -31,7 +31,7 @@ impl DaemonSettingsStore {
                 Err(error) => {
                     let backup = quarantine_corrupt_settings(&path)?;
                     eprintln!(
-                        "Waku daemon moved invalid settings to {}: {error}",
+                        "Insulator daemon moved invalid settings to {}: {error}",
                         backup.display()
                     );
                     (DaemonSettings::default(), true)
@@ -112,10 +112,10 @@ mod tests {
 
     #[test]
     fn legacy_combined_settings_keep_only_daemon_fields() {
-        let path = std::env::temp_dir().join(format!("waku-settings-{}.json", Uuid::new_v4()));
+        let path = std::env::temp_dir().join(format!("insulator-settings-{}.json", Uuid::new_v4()));
         fs::write(
             &path,
-            r#"{"theme":"dark","analytics_enabled":false,"computer_use_enabled":true,"future":42}"#,
+            r#"{"theme":"dark","computer_use_enabled":true,"future":42}"#,
         )
         .unwrap();
 
@@ -128,14 +128,13 @@ mod tests {
 
         let value: Value = serde_json::from_slice(&fs::read(&path).unwrap()).unwrap();
         assert!(value.get("theme").is_none());
-        assert!(value.get("analytics_enabled").is_none());
         assert_eq!(value["future"], 42);
         fs::remove_file(path).ok();
     }
 
     #[test]
     fn imports_daemon_fields_from_a_debug_combined_settings_file() {
-        let directory = std::env::temp_dir().join(format!("waku-settings-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-settings-{}", Uuid::new_v4()));
         let path = directory.join("home/settings.json");
         let legacy = directory.join("checkout/temp/settings.json");
         fs::create_dir_all(legacy.parent().unwrap()).unwrap();
@@ -157,7 +156,7 @@ mod tests {
 
     #[test]
     fn corrupt_current_settings_are_quarantined_and_replaced() {
-        let directory = std::env::temp_dir().join(format!("waku-settings-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-settings-{}", Uuid::new_v4()));
         let path = directory.join("settings.json");
         fs::create_dir_all(&directory).unwrap();
         fs::write(&path, b"{ definitely not json").unwrap();

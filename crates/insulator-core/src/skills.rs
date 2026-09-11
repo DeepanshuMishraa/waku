@@ -405,7 +405,7 @@ mod tests {
     use super::*;
 
     fn temp_root(tag: &str) -> PathBuf {
-        let root = std::env::temp_dir().join(format!("waku-skills-{tag}-{}", std::process::id()));
+        let root = std::env::temp_dir().join(format!("insulator-skills-{tag}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(&root).unwrap();
         root
@@ -600,7 +600,7 @@ mod tests {
 
     #[test]
     fn every_ecosystem_root_is_listed() {
-        let project_root = std::env::temp_dir().join("waku-skills-project");
+        let project_root = std::env::temp_dir().join("insulator-skills-project");
         let projects = vec![("insulator".to_owned(), project_root.clone())];
         let locations = skill_locations(&projects);
         for expected in [

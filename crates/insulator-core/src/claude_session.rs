@@ -57,7 +57,7 @@ pub fn list_provider_sessions(limit: usize) -> anyhow::Result<Vec<ProviderSessio
 
 /// Import the visible text of one Claude Code conversation. The native JSONL
 /// remains the source of truth and the returned cursor continues that exact
-/// conversation on the next Waku prompt.
+/// conversation on the next Insulator prompt.
 pub fn provider_session_history(
     session_id: &str,
     turn_limit: usize,
@@ -494,8 +494,8 @@ fn list_provider_sessions_in(
     }
     // `history.jsonl` is Claude's interactive CLI index. Headless `-p` and
     // Agent SDK runs still have transcripts under `projects/` but are absent
-    // from this index, which naturally keeps Waku-created sessions out of the
-    // terminal resume picker even after their Waku task has been deleted.
+    // from this index, which naturally keeps Insulator-created sessions out of the
+    // terminal resume picker even after their Insulator task has been deleted.
     let history_path = projects_directory
         .parent()
         .map(|directory| directory.join("history.jsonl"));
@@ -861,7 +861,7 @@ fn fork_session_at_in(
     output.push(json!({
         "type": "custom-title",
         "sessionId": forked_session_id,
-        "customTitle": if title.trim().is_empty() { "Waku rewind" } else { title.trim() },
+        "customTitle": if title.trim().is_empty() { "Insulator rewind" } else { title.trim() },
         "uuid": Uuid::new_v4().to_string(),
         "timestamp": now,
     }));
@@ -906,7 +906,7 @@ mod tests {
     const ASSISTANT_THREE: &str = "88888888-8888-4888-8888-888888888888";
 
     fn fixture() -> (PathBuf, PathBuf) {
-        let root = std::env::temp_dir().join(format!("waku-claude-session-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-claude-session-{}", Uuid::new_v4()));
         let project = root.join("projects").join("-tmp-project");
         let workspace = root.join("workspace");
         fs::create_dir_all(&project).unwrap();

@@ -1,4 +1,4 @@
-//! Waku's tooltip surface.
+//! Insulator's tooltip surface.
 //!
 //! GPUI already owns tooltip *behaviour* — hover timing, placement, dismissal —
 //! through `InteractiveElement::tooltip`, which asks only for a view to render.

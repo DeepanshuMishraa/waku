@@ -28,7 +28,7 @@ const HEALTH_PROBE_TIMEOUT: Duration = Duration::from_secs(1);
 ///
 /// ACP `session/list` is project-scoped: OpenCode resolves the request `cwd`,
 /// or the process cwd without one, to a project and lists only that project's
-/// sessions, so a catalog launched from Waku's isolated temp directory saw
+/// sessions, so a catalog launched from Insulator's isolated temp directory saw
 /// nothing but the "global" project. The server's `/experimental/session`
 /// route is the one cross-project listing OpenCode exposes, and each entry
 /// carries the directory the session was started in.
@@ -135,7 +135,7 @@ pub(crate) fn fork_session_removing_turns_on_server(
 fn retained_turn_count(total_turns: usize, turns_to_remove: usize) -> anyhow::Result<usize> {
     total_turns.checked_sub(turns_to_remove).ok_or_else(|| {
         anyhow!(
-            "OpenCode has only {total_turns} native turns, but Waku needs to remove {turns_to_remove}"
+            "OpenCode has only {total_turns} native turns, but Insulator needs to remove {turns_to_remove}"
         )
     })
 }
@@ -183,7 +183,7 @@ fn fork_session_with_message_ids(
 fn fork_message_id(message_ids: &[String], retained_turns: usize) -> anyhow::Result<Option<&str>> {
     if retained_turns > message_ids.len() {
         bail!(
-            "OpenCode has only {} native turns, but Waku needs {retained_turns}",
+            "OpenCode has only {} native turns, but Insulator needs {retained_turns}",
             message_ids.len()
         );
     }
@@ -449,15 +449,15 @@ mod tests {
 
     #[test]
     fn global_session_list_maps_root_sessions_across_projects() {
-        let catalog_root = std::env::temp_dir().join("waku-opencode-session-catalog");
-        let waku_directory = catalog_root.join("dev").join("insulator");
+        let catalog_root = std::env::temp_dir().join("insulator-opencode-session-catalog");
+        let insulator_directory = catalog_root.join("dev").join("insulator");
         let response = json!([
             {
-                "id": "ses_waku",
-                "title": "Review and merge Waku PR #113",
-                "directory": waku_directory,
+                "id": "ses_insulator",
+                "title": "Review and merge Insulator PR #113",
+                "directory": insulator_directory,
                 "time": { "created": 1_787_000_000_123_u64, "updated": 1_787_000_100_999_u64 },
-                "project": { "id": "prj_waku", "worktree": waku_directory }
+                "project": { "id": "prj_insulator", "worktree": insulator_directory }
             },
             {
                 "id": " ses_untitled ",
@@ -476,11 +476,11 @@ mod tests {
         assert_eq!(
             sessions[0].cursor,
             ProviderResumeCursor::OpenCode {
-                session_id: "ses_waku".into()
+                session_id: "ses_insulator".into()
             }
         );
-        assert_eq!(sessions[0].title, "Review and merge Waku PR #113");
-        assert_eq!(sessions[0].cwd, waku_directory);
+        assert_eq!(sessions[0].title, "Review and merge Insulator PR #113");
+        assert_eq!(sessions[0].cwd, insulator_directory);
         assert_eq!(sessions[0].created_at, 1_787_000_000);
         assert_eq!(sessions[0].updated_at, 1_787_000_100);
         assert_eq!(sessions[1].title, "OpenCode session ses_unti");
@@ -513,16 +513,16 @@ mod tests {
     }
 
     /// Exercises the same cold-session path used when an edited message is
-    /// submitted after Waku has relaunched. The source session is supplied by
+    /// submitted after Insulator has relaunched. The source session is supplied by
     /// the caller so this never creates provider traffic; it only forks the
     /// already-completed native transcript and removes the test fork again.
     #[test]
-    #[ignore = "requires an installed opencode and WAKU_OPENCODE_TEST_SESSION_ID"]
+    #[ignore = "requires an installed opencode and INSULATOR_OPENCODE_TEST_SESSION_ID"]
     fn forks_away_a_real_single_turn_session() {
         let binary =
             crate::command_env::find_executable("opencode").expect("opencode is not installed");
-        let session_id = std::env::var("WAKU_OPENCODE_TEST_SESSION_ID")
-            .expect("set WAKU_OPENCODE_TEST_SESSION_ID to a completed one-turn session");
+        let session_id = std::env::var("INSULATOR_OPENCODE_TEST_SESSION_ID")
+            .expect("set INSULATOR_OPENCODE_TEST_SESSION_ID to a completed one-turn session");
         let cwd = std::env::current_dir().expect("the test working directory should exist");
         let server = OpenCodeServer::start(&binary, &cwd).expect("the server should start");
         let ProviderResumeCursor::OpenCode {

@@ -102,7 +102,7 @@ fn discover_codex(binary: &Path, project_root: &Path) -> Option<Vec<SlashCommand
     {
         let mut commands = Vec::new();
         // Codex does not publish a TUI command registry, but it does publish
-        // the effective feature set backing the native commands Waku bridges.
+        // the effective feature set backing the native commands Insulator bridges.
         // Availability therefore comes from the installed CLI/config rather
         // than from an unconditional Codex list in the composer.
         let feature_request = json!({
@@ -168,7 +168,7 @@ fn discover_opencode2(binary: &Path, project_root: &Path) -> Option<Vec<SlashCom
 fn discover_pi(binary: &Path, project_root: &Path) -> Option<Vec<SlashCommand>> {
     // Catalog reads neither run an agent turn nor need the runtime driver's
     // full-access flag.
-    let request = json!({"id": "waku-command-catalog", "type": "get_commands"});
+    let request = json!({"id": "insulator-command-catalog", "type": "get_commands"});
     let input = format!("{request}\n");
     let value = probe_json_lines(
         binary,
@@ -177,7 +177,7 @@ fn discover_pi(binary: &Path, project_root: &Path) -> Option<Vec<SlashCommand>> 
         input.as_bytes(),
         CLI_PROBE_TIMEOUT,
         |value| {
-            value.get("id").and_then(Value::as_str) == Some("waku-command-catalog")
+            value.get("id").and_then(Value::as_str) == Some("insulator-command-catalog")
                 && value.get("success").and_then(Value::as_bool) == Some(true)
         },
         &[("PI_SKIP_VERSION_CHECK", "1")],
@@ -648,7 +648,7 @@ mod tests {
         let commands = parse_claude_commands(&json!({
             "type": "control_response",
             "response": {
-                "request_id": "waku-command-catalog",
+                "request_id": "insulator-command-catalog",
                 "response": {"commands": [
                     {"name": "compact", "description": "Compact context", "argumentHint": "[focus]"},
                     {"name": "  ", "description": "ignored"}
@@ -802,7 +802,7 @@ mod tests {
         let binary =
             crate::command_env::find_executable("opencode").expect("opencode is not installed");
         let root =
-            std::env::temp_dir().join(format!("waku-command-catalog-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("insulator-command-catalog-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let server = crate::opencode_pool::acquire(&binary, &root).unwrap();
         let before = server.request("GET", "/session", None).unwrap();
@@ -826,16 +826,16 @@ mod tests {
         let binary =
             crate::command_env::find_executable("opencode2").expect("opencode2 is not installed");
         let root =
-            std::env::temp_dir().join(format!("waku-command-catalog-{}", uuid::Uuid::new_v4()));
+            std::env::temp_dir().join(format!("insulator-command-catalog-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(root.join(".opencode/commands")).unwrap();
         std::fs::write(
-            root.join(".opencode/commands/waku-catalog-smoke.md"),
+            root.join(".opencode/commands/insulator-catalog-smoke.md"),
             "---\ndescription: Catalog test\n---\nReply OK",
         )
         .unwrap();
         let root = std::fs::canonicalize(root).unwrap();
         let commands = discover(ProviderKind::OpenCode2, &binary, &root).unwrap();
-        for name in ["init", "review", "waku-catalog-smoke"] {
+        for name in ["init", "review", "insulator-catalog-smoke"] {
             assert!(
                 commands
                     .iter()

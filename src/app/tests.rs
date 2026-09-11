@@ -78,7 +78,7 @@ fn attach_changed_files(session: &mut AgentSession, files: Vec<CheckpointFile>) 
     let turn = session.turns.last_mut().expect("the test has a turn");
     turn.checkpoint = Some(Checkpoint {
         turn_count: turn.turn_count,
-        git_ref: format!("refs/waku/test-turn-{}", turn.turn_count),
+        git_ref: format!("refs/insulator/test-turn-{}", turn.turn_count),
         status: CheckpointStatus::Ready,
         files,
         additions: 0,
@@ -400,7 +400,7 @@ fn task_notification_tags_route_to_the_corresponding_task() {
     let tag = task_notification_tag(session_id);
 
     assert_eq!(task_id_from_notification_tag(&tag), Some(session_id));
-    assert_eq!(task_id_from_notification_tag("waku-task:not-a-uuid"), None);
+    assert_eq!(task_id_from_notification_tag("insulator-task:not-a-uuid"), None);
     assert_eq!(task_id_from_notification_tag(&session_id.to_string()), None);
 }
 
@@ -1952,6 +1952,16 @@ fn switched_off_providers_leave_the_picker_except_for_their_locked_session() {
         probe(ProviderKind::Claude, "claude-sonnet-5"),
         probe(ProviderKind::Codex, "gpt-5.6-sol"),
     ];
+    let recents = [
+        FavoriteModel {
+            provider: ProviderKind::Codex,
+            model: "gpt-5.6-sol".into(),
+        },
+        FavoriteModel {
+            provider: ProviderKind::Claude,
+            model: "claude-sonnet-5".into(),
+        },
+    ];
     let favorites = [FavoriteModel {
         provider: ProviderKind::Claude,
         model: "claude-sonnet-5".into(),
@@ -1961,6 +1971,7 @@ fn switched_off_providers_leave_the_picker_except_for_their_locked_session() {
     // Provider tab and favorites both stop offering the switched-off provider.
     let models = visible_picker_models(
         &probes,
+        &recents,
         &favorites,
         &disabled,
         None,
@@ -1970,6 +1981,7 @@ fn switched_off_providers_leave_the_picker_except_for_their_locked_session() {
     assert!(models.is_empty());
     let models = visible_picker_models(
         &probes,
+        &recents,
         &favorites,
         &disabled,
         None,
@@ -1979,6 +1991,7 @@ fn switched_off_providers_leave_the_picker_except_for_their_locked_session() {
     assert!(models.is_empty());
     let models = visible_picker_models(
         &probes,
+        &recents,
         &favorites,
         &disabled,
         None,
@@ -1990,6 +2003,7 @@ fn switched_off_providers_leave_the_picker_except_for_their_locked_session() {
     // Search cannot resurface it either.
     let models = visible_picker_models(
         &probes,
+        &recents,
         &favorites,
         &disabled,
         None,
@@ -2001,6 +2015,7 @@ fn switched_off_providers_leave_the_picker_except_for_their_locked_session() {
     // A session already locked to the provider keeps its models.
     let models = visible_picker_models(
         &probes,
+        &recents,
         &favorites,
         &disabled,
         Some(ProviderKind::Claude),
@@ -2025,7 +2040,7 @@ fn model_picker_subtitle_deduplicates_the_provider_name() {
 }
 
 #[test]
-fn tab_cycle_walks_favorites_then_usable_providers_in_rail_order() {
+fn tab_cycle_walks_recents_then_favorites_then_usable_providers_in_rail_order() {
     use super::ModelPickerTab;
     use super::composer::visible_picker_tabs;
     use crate::model::{ProviderModel, ProviderProbe};
@@ -2043,10 +2058,11 @@ fn tab_cycle_walks_favorites_then_usable_providers_in_rail_order() {
         probe(ProviderKind::Cursor, false),
     ];
 
-    // Uninstalled providers never join the cycle; favorites leads.
+    // Uninstalled providers never join the cycle; recents and favorites lead.
     assert_eq!(
         visible_picker_tabs(&probes, &[], None),
         vec![
+            ModelPickerTab::Recents,
             ModelPickerTab::Favorites,
             ModelPickerTab::Provider(ProviderKind::Claude),
             ModelPickerTab::Provider(ProviderKind::Codex),
@@ -2057,20 +2073,104 @@ fn tab_cycle_walks_favorites_then_usable_providers_in_rail_order() {
     assert_eq!(
         visible_picker_tabs(&probes, &[ProviderKind::Claude], None),
         vec![
+            ModelPickerTab::Recents,
             ModelPickerTab::Favorites,
             ModelPickerTab::Provider(ProviderKind::Codex),
         ]
     );
 
-    // A locked session cycles between favorites and its own provider only,
+    // A locked session cycles between recents, favorites, and its own provider only,
     // even when that provider was switched off after the session started.
     assert_eq!(
         visible_picker_tabs(&probes, &[ProviderKind::Claude], Some(ProviderKind::Claude)),
         vec![
+            ModelPickerTab::Recents,
             ModelPickerTab::Favorites,
             ModelPickerTab::Provider(ProviderKind::Claude),
         ]
     );
+}
+
+#[test]
+fn model_picker_recents_tab_preserves_mru_order_and_filters_disabled() {
+    use super::ModelPickerTab;
+    use super::composer::visible_picker_models;
+    use crate::model::{FavoriteModel, ProviderModel, ProviderProbe};
+
+    let probe = |provider: ProviderKind, models: &[&str]| ProviderProbe {
+        provider,
+        installed: true,
+        path: Some(std::path::PathBuf::from(format!("/bin/{}", provider.id()))),
+        models: models
+            .iter()
+            .map(|m| ProviderModel::new(*m, *m))
+            .collect(),
+        agent_presets: Vec::new(),
+    };
+    let probes = [
+        probe(ProviderKind::Claude, &["claude-sonnet-4", "claude-sonnet-5"]),
+        probe(ProviderKind::Codex, &["gpt-5.6-sol", "gpt-4o"]),
+    ];
+    let recents = [
+        FavoriteModel {
+            provider: ProviderKind::Codex,
+            model: "gpt-5.6-sol".into(),
+        },
+        FavoriteModel {
+            provider: ProviderKind::Claude,
+            model: "claude-sonnet-5".into(),
+        },
+        FavoriteModel {
+            provider: ProviderKind::Claude,
+            model: "claude-sonnet-4".into(),
+        },
+    ];
+
+    // All recents shown in MRU order
+    let models = visible_picker_models(
+        &probes,
+        &recents,
+        &[],
+        &[],
+        None,
+        ModelPickerTab::Recents,
+        "",
+    );
+    assert_eq!(models.len(), 3);
+    assert_eq!(models[0].0, ProviderKind::Codex);
+    assert_eq!(models[0].1.id, "gpt-5.6-sol");
+    assert_eq!(models[1].0, ProviderKind::Claude);
+    assert_eq!(models[1].1.id, "claude-sonnet-5");
+    assert_eq!(models[2].0, ProviderKind::Claude);
+    assert_eq!(models[2].1.id, "claude-sonnet-4");
+
+    // Disabled provider Claude drops from recents for new work
+    let models = visible_picker_models(
+        &probes,
+        &recents,
+        &[],
+        &[ProviderKind::Claude],
+        None,
+        ModelPickerTab::Recents,
+        "",
+    );
+    assert_eq!(models.len(), 1);
+    assert_eq!(models[0].0, ProviderKind::Codex);
+    assert_eq!(models[0].1.id, "gpt-5.6-sol");
+
+    // Locked to Claude keeps Claude models in recents
+    let models = visible_picker_models(
+        &probes,
+        &recents,
+        &[],
+        &[ProviderKind::Claude],
+        Some(ProviderKind::Claude),
+        ModelPickerTab::Recents,
+        "",
+    );
+    assert_eq!(models.len(), 2);
+    assert_eq!(models[0].1.id, "claude-sonnet-5");
+    assert_eq!(models[1].1.id, "claude-sonnet-4");
 }
 
 #[test]
@@ -2301,4 +2401,81 @@ fn tab_cycling_forward_and_backward_preserves_order() {
     assert_eq!(bwd(0), 2);
     assert_eq!(bwd(2), 1);
     assert_eq!(bwd(1), 0);
+}
+
+#[test]
+fn test_normalize_snippets_sorting_and_merging() {
+    use super::{FileEditorSnippet, normalize_snippets};
+
+    let content = "line 1\nline 2\nline 3\nline 4\nline 5\nline 6\nline 7\n";
+    let s5 = FileEditorSnippet::from_range(28..35, content);
+    let s2 = FileEditorSnippet::from_range(7..14, content);
+    let mut snippets = vec![s5, s2];
+
+    normalize_snippets(&mut snippets, content);
+    assert_eq!(snippets.len(), 2);
+    assert_eq!(snippets[0].start_line, 2);
+    assert_eq!(snippets[0].end_line, 2);
+    assert_eq!(snippets[0].text, "line 2\n");
+    assert_eq!(snippets[1].start_line, 5);
+    assert_eq!(snippets[1].end_line, 5);
+    assert_eq!(snippets[1].text, "line 5\n");
+
+    let s_a = FileEditorSnippet::from_range(7..21, content);
+    let s_b = FileEditorSnippet::from_range(14..28, content);
+    let mut overlapping = vec![s_a, s_b];
+    normalize_snippets(&mut overlapping, content);
+    assert_eq!(overlapping.len(), 1);
+    assert_eq!(overlapping[0].start_line, 2);
+    assert_eq!(overlapping[0].end_line, 4);
+    assert_eq!(overlapping[0].byte_range, 7..28);
+    assert_eq!(overlapping[0].text, "line 2\nline 3\nline 4\n");
+
+    let s_touch1 = FileEditorSnippet::from_range(7..14, content);
+    let s_touch2 = FileEditorSnippet::from_range(14..21, content);
+    let mut touching = vec![s_touch1, s_touch2];
+    normalize_snippets(&mut touching, content);
+    assert_eq!(touching.len(), 1);
+    assert_eq!(touching[0].start_line, 2);
+    assert_eq!(touching[0].end_line, 3);
+    assert_eq!(touching[0].byte_range, 7..21);
+}
+
+#[test]
+fn test_multi_selection_prompt_formatting() {
+    use super::{FileEditorSelection, FileEditorSnippet};
+
+    let content = "fn first() {\n    1\n}\n\nfn second() {\n    2\n}\n";
+    let first_end = content.find("\n\n").unwrap();
+    let second_start = content.find("fn second").unwrap();
+    let s1 = FileEditorSnippet::from_range(0..first_end, content);
+    let s2 = FileEditorSnippet::from_range(second_start..content.len() - 1, content);
+    let selection = FileEditorSelection {
+        path: "src/lib.rs".to_string(),
+        snippets: vec![s1, s2],
+    };
+
+    let mut out = format!("Refactor these\n\n@{}", selection.path);
+    for snippet in &selection.snippets {
+        let line_label = if snippet.start_line == snippet.end_line {
+            format!("[Selected line {}]", snippet.start_line)
+        } else {
+            format!("[Selected lines {}-{}]", snippet.start_line, snippet.end_line)
+        };
+        out.push_str(&format!("\n{line_label}\n```\n{}\n```", snippet.text.trim_end()));
+    }
+
+    let expected = "\
+Refactor these\n\
+\n\
+@src/lib.rs\n\
+[Selected lines 1-3]\n\
+```\n\
+fn first() {\n    1\n}\n\
+```\n\
+[Selected lines 5-7]\n\
+```\n\
+fn second() {\n    2\n}\n\
+```";
+    assert_eq!(out, expected);
 }

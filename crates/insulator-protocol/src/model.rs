@@ -114,7 +114,7 @@ impl ProviderKind {
     /// Kimi Code and Fx are deliberately absent from this list and from
     /// [`Self::supports_conversation_fork`]. Kimi's ACP `session/fork` copies a
     /// whole session and takes no turn count, while Fx exposes no turn-aware
-    /// fork or truncation method. Neither can reproduce Waku's "drop the last N
+    /// fork or truncation method. Neither can reproduce Insulator's "drop the last N
     /// turns" semantics without corrupting history.
     pub fn supports_conversation_rollback(self) -> bool {
         matches!(
@@ -604,7 +604,7 @@ pub struct Project {
 
 /// Filesystem context a task runs in.
 ///
-/// Drafts may carry [`Self::NewWorktree`] until their first prompt. Waku then
+/// Drafts may carry [`Self::NewWorktree`] until their first prompt. Insulator then
 /// creates the Git worktree and replaces it with [`Self::Worktree`] before any
 /// checkpoint or provider process can observe the task.
 #[derive(Clone, Debug, Default, Deserialize, Eq, PartialEq, Serialize, TS)]
@@ -782,7 +782,7 @@ impl ChatStatus {
 pub struct QueuedMessage {
     pub id: Uuid,
     pub content: String,
-    /// The text typed before Waku appended provider-facing attachment
+    /// The text typed before Insulator appended provider-facing attachment
     /// mentions. `None` is the legacy/plain-message representation.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub display_content: Option<String>,
@@ -942,7 +942,7 @@ impl ProviderSessionSummary {
 }
 
 /// The displayable portion of a provider-native conversation imported into a
-/// Waku task. Provider history remains authoritative; unsupported native
+/// Insulator task. Provider history remains authoritative; unsupported native
 /// items such as private reasoning or provider-only control records are
 /// intentionally absent.
 #[derive(Clone, Debug, Default, Deserialize, Serialize, TS)]
@@ -1011,7 +1011,7 @@ pub struct AgentSession {
     /// A title explicitly chosen by the user. [`Self::DEFAULT_TITLE`] means
     /// no explicit title has been set, so [`Self::auto_title`] may be shown.
     pub title: String,
-    /// Best-effort title Waku generates from the first completed user and
+    /// Best-effort title Insulator generates from the first completed user and
     /// assistant exchange.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub auto_title: Option<String>,
@@ -1930,10 +1930,10 @@ pub enum DriverEvent {
         provider_cursor: Option<ProviderResumeCursor>,
     },
     /// The provider-owned agent composition this session actually runs. A
-    /// fresh Harness session may resolve its deployment default when Waku did
+    /// fresh Harness session may resolve its deployment default when Insulator did
     /// not name one explicitly, so the driver reports the resolved value.
     AgentPresetSelected(Option<String>),
-    /// A provider-owned session name retained for wire compatibility. Waku's
+    /// A provider-owned session name retained for wire compatibility. Insulator's
     /// response-aware title generator does not use these native names.
     AutoTitleUpdated(Option<String>),
     /// The slash commands the live process itself reports — Claude's
@@ -3600,7 +3600,7 @@ mod tests {
 
     #[test]
     fn attachment_messages_keep_transport_and_visible_content_separate() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         let attachment = MessageAttachment {
             path: PathBuf::from("/tmp/reference.png"),
@@ -3608,7 +3608,7 @@ mod tests {
             name: "reference.png".to_owned(),
             is_dir: false,
             is_image: true,
-            blob_reference: Some("waku-blob:ab/reference.png".to_owned()),
+            blob_reference: Some("insulator-blob:ab/reference.png".to_owned()),
         };
 
         session.begin_turn_with_presentation(
@@ -3685,8 +3685,8 @@ mod tests {
         let cases = [
             (
                 ActivityKind::FileRead,
-                serde_json::json!({"input": {"file_path": "/tmp/waku/src/app.rs"}}),
-                "/tmp/waku/src/app.rs",
+                serde_json::json!({"input": {"file_path": "/tmp/insulator/src/app.rs"}}),
+                "/tmp/insulator/src/app.rs",
             ),
             (
                 ActivityKind::FileSearch,
@@ -3695,8 +3695,8 @@ mod tests {
             ),
             (
                 ActivityKind::FileList,
-                serde_json::json!({"arguments": {"directory": "/tmp/waku/src"}}),
-                "/tmp/waku/src",
+                serde_json::json!({"arguments": {"directory": "/tmp/insulator/src"}}),
+                "/tmp/insulator/src",
             ),
             (
                 ActivityKind::Command,
@@ -3705,13 +3705,13 @@ mod tests {
             ),
             (
                 ActivityKind::Search,
-                serde_json::json!({"action": {"queries": ["Waku GPUI"]}}),
-                "Waku GPUI",
+                serde_json::json!({"action": {"queries": ["Insulator GPUI"]}}),
+                "Insulator GPUI",
             ),
             (
                 ActivityKind::FileRead,
-                serde_json::json!("/tmp/waku/README.md"),
-                "/tmp/waku/README.md",
+                serde_json::json!("/tmp/insulator/README.md"),
+                "/tmp/insulator/README.md",
             ),
         ];
 
@@ -4096,7 +4096,7 @@ mod tests {
         let legacy = Project::from_path(root.clone());
         let legacy_dated = Project::from_path(root.join("2026-08-08/new-chat"));
         let project = Project::from_path(root.join("projects/2026-08-08/new-chat"));
-        let ordinary = Project::from_path(home.join("dev/waku"));
+        let ordinary = Project::from_path(home.join("dev/insulator"));
 
         assert!(legacy.is_projectless());
         assert!(legacy_dated.is_projectless());
@@ -4106,7 +4106,7 @@ mod tests {
 
     #[test]
     fn prompt_generates_a_short_session_title() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.set_title_from_prompt("build a really polished local agent interface for rust");
         assert_eq!(
@@ -4122,7 +4122,7 @@ mod tests {
 
     #[test]
     fn provider_title_replaces_prompt_fallback_but_not_an_explicit_title() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::OpenCode);
         session.set_title_from_prompt("investigate the broken provider event");
 
@@ -4138,7 +4138,7 @@ mod tests {
 
     #[test]
     fn model_selection_keeps_started_sessions_on_their_provider() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         assert!(session.can_choose_model(ProviderKind::Claude));
@@ -4150,7 +4150,7 @@ mod tests {
 
     #[test]
     fn model_selection_waits_for_the_active_turn_to_finish() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.push_message(MessageRole::User, "first turn");
 
@@ -4270,7 +4270,7 @@ mod tests {
 
     #[test]
     fn prompt_title_truncation_is_unicode_safe() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Claude);
         let prompt = "界".repeat(70);
         session.set_title_from_prompt(&prompt);
@@ -4281,7 +4281,7 @@ mod tests {
 
     #[test]
     fn a_failed_preparation_unwinds_the_turn_it_eagerly_began() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         // A first prompt: the unwind restores the default title because the
@@ -4320,7 +4320,7 @@ mod tests {
 
     #[test]
     fn turn_truncation_removes_owned_messages_and_blocks() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         let first_turn = session.begin_turn("first");
@@ -4359,7 +4359,7 @@ mod tests {
 
     #[test]
     fn response_fork_is_a_distinct_idle_session_through_the_selected_turn() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         let first_turn = session.begin_turn("first");
@@ -4400,7 +4400,7 @@ mod tests {
 
     #[test]
     fn queued_follow_ups_stay_with_the_source_session_not_the_fork() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         session.begin_turn("first");
@@ -4426,7 +4426,7 @@ mod tests {
 
     #[test]
     fn follow_up_queue_round_trips_through_serde() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session
             .queued_messages
@@ -4468,7 +4468,7 @@ mod tests {
 
     #[test]
     fn busy_statuses_cover_connecting_working_and_waiting() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         for status in [
             SessionStatus::Connecting,
@@ -4507,7 +4507,7 @@ mod tests {
 
     #[test]
     fn native_rollback_count_ignores_turns_that_never_reached_the_provider() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
         session.begin_turn("first");
@@ -4526,7 +4526,7 @@ mod tests {
 
     #[test]
     fn legacy_empty_search_titles_are_repaired() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.transcript_blocks.push(TranscriptBlock {
             after_message: 0,
@@ -4584,7 +4584,7 @@ mod tests {
 
     #[test]
     fn adjacent_legacy_work_blocks_merge_during_session_migration() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.transcript_blocks.extend([
             TranscriptBlock {
@@ -4628,7 +4628,7 @@ mod tests {
 
     #[test]
     fn legacy_file_edit_details_are_promoted_to_arguments_and_metadata() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::OpenCode);
         session.transcript_blocks.push(TranscriptBlock {
             after_message: 0,
@@ -4639,7 +4639,7 @@ mod tests {
                 "edit",
                 Some(
                     serde_json::json!({
-                        "filePath": "/tmp/waku/README.md",
+                        "filePath": "/tmp/insulator/README.md",
                         "oldString": "old",
                         "newString": "new\nmore"
                     })
@@ -4654,17 +4654,17 @@ mod tests {
         let activities = &session.transcript_blocks[0].activities;
         assert!(activities[0].detail.is_none());
         assert!(activities[0].arguments.is_some());
-        assert_eq!(activities[0].file_changes[0].path, "/tmp/waku/README.md");
+        assert_eq!(activities[0].file_changes[0].path, "/tmp/insulator/README.md");
         assert_eq!(activities[0].file_changes[0].additions, Some(2));
         assert_eq!(activities[0].file_changes[0].deletions, Some(1));
     }
 
     #[test]
     fn legacy_file_tools_are_reclassified_and_gain_cached_targets() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::OpenCode);
         let mut cached = ActivityItem::new(None, ActivityKind::FileRead, "read", None, true);
-        cached.display_target = Some("/tmp/waku/src/persisted.rs".into());
+        cached.display_target = Some("/tmp/insulator/src/persisted.rs".into());
         session.transcript_blocks.push(TranscriptBlock {
             after_message: 0,
             turn_id: None,
@@ -4673,7 +4673,7 @@ mod tests {
                     None,
                     ActivityKind::Search,
                     "read",
-                    Some(r#"{"filePath":"/tmp/waku/src/model.rs"}"#.into()),
+                    Some(r#"{"filePath":"/tmp/insulator/src/model.rs"}"#.into()),
                     true,
                 ),
                 ActivityItem::new(
@@ -4693,13 +4693,13 @@ mod tests {
         assert_eq!(activities[0].kind, ActivityKind::FileRead);
         assert_eq!(
             activities[0].display_target.as_deref(),
-            Some("/tmp/waku/src/model.rs")
+            Some("/tmp/insulator/src/model.rs")
         );
         assert_eq!(activities[1].kind, ActivityKind::FileSearch);
         assert_eq!(activities[1].display_target.as_deref(), Some("src/**/*.rs"));
         assert_eq!(
             activities[2].display_target.as_deref(),
-            Some("/tmp/waku/src/persisted.rs")
+            Some("/tmp/insulator/src/persisted.rs")
         );
         assert!(
             activities[..2]
@@ -4715,7 +4715,7 @@ mod tests {
 
     #[test]
     fn legacy_codex_citation_markers_are_removed() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.messages.push(Message::new(
             MessageRole::Assistant,
@@ -4729,13 +4729,13 @@ mod tests {
 
     #[test]
     fn legacy_checkpoint_totals_are_backfilled_from_the_file_summary() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.begin_turn("Build it");
         session.finish_active_turn(TurnStatus::Completed);
         let mut serialized = serde_json::to_value(Checkpoint {
             turn_count: 1,
-            git_ref: "refs/waku/test".into(),
+            git_ref: "refs/insulator/test".into(),
             status: CheckpointStatus::Ready,
             files: vec![
                 CheckpointFile {
@@ -4826,7 +4826,7 @@ mod tests {
 
     #[test]
     fn list_projection_never_copies_session_detail() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
         session.title = "Visible title".into();
         session.model = Some("gpt-5".into());

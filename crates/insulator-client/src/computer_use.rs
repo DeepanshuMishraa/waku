@@ -20,5 +20,5 @@ pub fn helper_display_name() -> String {
                 .map(|name| name.to_string_lossy().into_owned())
         })
         .map(|app_name| format!("{app_name} Computer Use"))
-        .unwrap_or_else(|| "Waku Computer Use".into())
+        .unwrap_or_else(|| "Insulator Computer Use".into())
 }

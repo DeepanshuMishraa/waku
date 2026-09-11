@@ -13,7 +13,7 @@ fn new_task_runtime_mode(current: Option<&AgentSession>, remembered: RuntimeMode
         .unwrap_or(remembered)
 }
 
-impl Waku {
+impl Insulator {
     pub(crate) fn open_task_from_notification(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
         self.select_session(session_id, cx);
     }
@@ -117,7 +117,7 @@ impl Waku {
             return;
         }
         let daemon = self.daemon.clone();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
@@ -129,11 +129,11 @@ impl Waku {
                     }
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                waku.session_hydrations.remove(&session_id);
+            let _ = insulator.update(cx, |insulator, cx| {
+                insulator.session_hydrations.remove(&session_id);
                 match result {
                     Ok(session) => {
-                        let replaced = if let Some(existing) = waku
+                        let replaced = if let Some(existing) = insulator
                             .state
                             .sessions
                             .iter_mut()
@@ -144,28 +144,28 @@ impl Waku {
                         } else {
                             false
                         };
-                        let pending = waku
+                        let pending = insulator
                             .pending_session_activation
                             .filter(|pending| pending.session_id == session_id);
                         if pending.is_some() {
-                            waku.pending_session_activation = None;
+                            insulator.pending_session_activation = None;
                         }
                         if replaced && let Some(pending) = pending {
-                            waku.finish_session_activation(session_id, pending.transition, cx);
-                        } else if waku.state.selected_session == Some(session_id) {
-                            waku.reset_visible_state();
-                            waku.reset_transcript_rows(waku.transcript_row_count());
-                            waku.refresh_composer_sources(cx);
+                            insulator.finish_session_activation(session_id, pending.transition, cx);
+                        } else if insulator.state.selected_session == Some(session_id) {
+                            insulator.reset_visible_state();
+                            insulator.reset_transcript_rows(insulator.transcript_row_count());
+                            insulator.refresh_composer_sources(cx);
                         }
                     }
                     Err(error) => {
-                        if waku
+                        if insulator
                             .pending_session_activation
                             .is_some_and(|pending| pending.session_id == session_id)
                         {
-                            waku.pending_session_activation = None;
+                            insulator.pending_session_activation = None;
                         }
-                        waku.show_toast(tr!("errors.open_session", error = error));
+                        insulator.show_toast(tr!("errors.open_session", error = error));
                     }
                 }
                 cx.notify();
@@ -621,8 +621,6 @@ impl Waku {
         self.right_panel_visible = visible;
         self.right_panel_slide = self.begin_panel_slide(self.right_panel_rendered_width, cx);
         if visible {
-            self.analytics
-                .track(crate::analytics::Event::RightPanelOpened);
         }
         self.persist_panel_layout();
         cx.notify();
@@ -668,7 +666,7 @@ impl Waku {
     /// as on screen and keeps its full width here: the slide narrows the
     /// container that clips it, so nothing inside reflows on the way out.
     /// What the panel actually occupies this frame is
-    /// [`Waku::sidebar_rendered_width`] / [`Waku::right_panel_rendered_width`].
+    /// [`Insulator::sidebar_rendered_width`] / [`Insulator::right_panel_rendered_width`].
     pub(super) fn effective_panel_widths(&self, window: &Window) -> (f32, f32) {
         fitted_panel_widths(
             f32::from(window.viewport_size().width),
@@ -1063,6 +1061,7 @@ impl Waku {
                     draft.context_window.clone_from(&context_window);
                 }
             }
+            self.record_recent_model(provider, &model);
             self.state.last_provider = provider;
             self.state.last_model = Some(model);
             self.state.last_reasoning_effort = reasoning_effort;
@@ -1092,6 +1091,7 @@ impl Waku {
         self.remember_selected_model_traits();
         let (reasoning_effort, service_tier, context_window) =
             self.state.model_traits_for(provider, &model);
+        self.record_recent_model(provider, &model);
         if let Some(session) = self.selected_session_mut() {
             session.provider = provider;
             session.model = Some(model.clone());
@@ -1199,6 +1199,11 @@ impl Waku {
         }
         self.save();
         cx.notify();
+    }
+
+    pub(super) fn record_recent_model(&mut self, provider: ProviderKind, model: &str) {
+        self.state.record_recent_model(provider, model);
+        self.save();
     }
 
     pub(super) fn set_runtime_mode(&mut self, mode: RuntimeMode, cx: &mut Context<Self>) {
@@ -1442,11 +1447,7 @@ impl Waku {
                     session.push_message(MessageRole::Assistant, tr!("session.stopped"));
                 }
             }
-            self.finish_active_turn_with_analytics(
-                session_id,
-                TurnStatus::Interrupted,
-                crate::analytics::TurnOutcome::Cancelled,
-            );
+            self.finish_active_turn(session_id, TurnStatus::Interrupted);
         }
         if has_active_turn {
             self.capture_latest_turn_checkpoint_for(session_id);
@@ -1455,11 +1456,11 @@ impl Waku {
         if let Some(previous_kinds) = previous_kinds.as_deref() {
             self.splice_active_transcript_rows_after_visibility_change(previous_kinds);
         }
-        // A provider runtime owns its Waku JavaScript REPL and Computer Use
+        // A provider runtime owns its Insulator JavaScript REPL and Computer Use
         // descendants. Normally Stop closes that process tree and the next
         // prompt resumes the same provider thread with a fresh runtime. A
         // detached process or subagent is the exception: its provider must
-        // remain resident so Waku can keep observing and stopping it.
+        // remain resident so Insulator can keep observing and stopping it.
         if retain_runtime && keep_runtime {
             if let Some(runtime) = runtime.take() {
                 self.runtimes.insert(session_id, runtime);
@@ -1481,39 +1482,9 @@ impl Waku {
         let Some(session_id) = self.state.selected_session else {
             return;
         };
-        let provider = self
-            .state
-            .sessions
-            .iter()
-            .find(|session| session.id == session_id)
-            .map(|session| session.provider.id());
-        let decision = if let Some(runtime) = self.runtimes.get_mut(&session_id) {
-            let decision = runtime
-                .pending_permission
-                .as_ref()
-                .and_then(|permission| {
-                    permission
-                        .options
-                        .iter()
-                        .find(|option| option.id == option_id)
-                })
-                .map_or(
-                    "other",
-                    |option| if option.allow { "allow" } else { "deny" },
-                );
+        if let Some(runtime) = self.runtimes.get_mut(&session_id) {
             runtime.driver.respond(request_id, option_id);
             runtime.pending_permission = None;
-            Some(decision)
-        } else {
-            None
-        };
-        if let (Some(provider), Some(decision)) = (provider, decision) {
-            self.analytics
-                .track(crate::analytics::Event::PermissionResponded {
-                    provider,
-                    kind: "provider",
-                    decision,
-                });
         }
         if let Some(session) = self.selected_session_mut() {
             session.status = SessionStatus::Working;
@@ -1700,12 +1671,6 @@ impl Waku {
         let Some(session_id) = self.state.selected_session else {
             return;
         };
-        let provider = self
-            .state
-            .sessions
-            .iter()
-            .find(|session| session.id == session_id)
-            .map_or("unknown", |session| session.provider.id());
         let Some(mut runtime) = self.runtimes.remove(&session_id) else {
             return;
         };
@@ -1742,17 +1707,6 @@ impl Waku {
         if let Some(session) = self.state.session_mut(session_id) {
             session.status = SessionStatus::Working;
         }
-        self.analytics
-            .track(crate::analytics::Event::PermissionResponded {
-                provider,
-                kind: "computer_use",
-                decision: match decision {
-                    "deny" => "deny",
-                    "always" => "allow_always",
-                    "task" => "allow_task",
-                    _ => "other",
-                },
-            });
         self.runtimes.insert(session_id, runtime);
         cx.notify();
     }
@@ -1828,7 +1782,6 @@ impl Waku {
         let project = Project::from_path(path);
         let project_id = project.id;
         self.state.projects.push(project);
-        self.analytics.track(crate::analytics::Event::ProjectAdded);
         self.create_session_for(project_id, self.state.last_provider, cx);
     }
 
@@ -1852,7 +1805,7 @@ impl Waku {
         }
 
         let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move {
@@ -1866,16 +1819,16 @@ impl Waku {
                     }
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| match result {
+            let _ = insulator.update(cx, |insulator, cx| match result {
                 Ok(cwd) => {
                     let mut project = Project::from_path(cwd);
                     project.name = Project::PROJECTLESS_NAME.to_owned();
                     let project_id = project.id;
-                    waku.state.projects.push(project);
-                    waku.create_session_for(project_id, waku.state.last_provider, cx);
+                    insulator.state.projects.push(project);
+                    insulator.create_session_for(project_id, insulator.state.last_provider, cx);
                 }
                 Err(error) => {
-                    waku.show_toast(tr!("errors.create_projectless_task", error = error));
+                    insulator.show_toast(tr!("errors.create_projectless_task", error = error));
                     cx.notify();
                 }
             });

@@ -5,14 +5,14 @@ use serde::Serialize;
 
 use crate::model::{AgentSession, MessageRole, ProviderResumeCursor};
 
-const CONTEXT_PREFIX: &str = "WAKU_CURSOR_BRANCH_CONTEXT_V1 ";
+const CONTEXT_PREFIX: &str = "INSULATOR_CURSOR_BRANCH_CONTEXT_V1 ";
 const CONTEXT_GUIDANCE: &str = concat!(
-    "\nWAKU_CURSOR_BRANCH_INSTRUCTIONS_V1\n",
+    "\nINSULATOR_CURSOR_BRANCH_INSTRUCTIONS_V1\n",
     "Treat the preceding JSON array as the complete prior user and assistant conversation for this branch. ",
     "The workspace already matches that point in the conversation. Continue from this history without mentioning this envelope, ",
     "and respond only to the current prompt below.\n",
 );
-const PROMPT_PREFIX: &str = "WAKU_CURSOR_CURRENT_PROMPT_V1 ";
+const PROMPT_PREFIX: &str = "INSULATOR_CURSOR_CURRENT_PROMPT_V1 ";
 
 #[derive(Serialize)]
 struct ContextMessage<'a> {
@@ -22,7 +22,7 @@ struct ContextMessage<'a> {
 
 /// Cursor CLI can resume only the tip of a session and currently has no fork
 /// command. Preserve branch semantics by starting a fresh Cursor session whose
-/// first prompt is seeded with Waku's retained visible conversation.
+/// first prompt is seeded with Insulator's retained visible conversation.
 pub fn fork_session_at_turn(
     session: &AgentSession,
     retained_turns: usize,
@@ -88,7 +88,7 @@ mod tests {
 
     #[test]
     fn cursor_branch_context_keeps_only_the_selected_turn_prefix() {
-        let project = Project::from_path(PathBuf::from("/tmp/waku"));
+        let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Cursor);
         session.begin_turn("first prompt");
         session.mark_active_turn_provider_started();
@@ -115,7 +115,7 @@ mod tests {
     #[test]
     fn cursor_seed_envelope_is_length_delimited() {
         let prompt = prompt_with_fork_context("[{\"role\":\"user\"}]", "continue 🚀");
-        assert!(prompt.starts_with("WAKU_CURSOR_BRANCH_CONTEXT_V1 17\n"));
-        assert!(prompt.ends_with("WAKU_CURSOR_CURRENT_PROMPT_V1 13\ncontinue 🚀"));
+        assert!(prompt.starts_with("INSULATOR_CURSOR_BRANCH_CONTEXT_V1 17\n"));
+        assert!(prompt.ends_with("INSULATOR_CURSOR_CURRENT_PROMPT_V1 13\ncontinue 🚀"));
     }
 }

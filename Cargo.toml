@@ -32,8 +32,8 @@ dirs = "6.0"
 # rendering), which lets GPUI composite menus and tooltips above native child
 # views — the browser surface's WKWebView. Drop back to upstream once the PR
 # merges.
-gpui = { git = "https://github.com/egoist/zed", branch = "waku-webview" }
-gpui_platform = { git = "https://github.com/egoist/zed", branch = "waku-webview", features = [
+gpui = { git = "https://github.com/egoist/zed", branch = "insulator-webview" }
+gpui_platform = { git = "https://github.com/egoist/zed", branch = "insulator-webview", features = [
     "font-kit",
     "wayland",
     "x11",
@@ -56,7 +56,6 @@ ratex-types = "=0.1.14"
 ratex-svg = { version = "=0.1.14", features = ["embed-fonts"] }
 regex = "1"
 rust-i18n = "4"
-rust-umami = "0.1.1"
 smol = "2"
 ropey = "=2.0.0-beta.1"
 futures-lite = "2"
@@ -71,7 +70,7 @@ tokio = { version = "1", features = ["rt"] }
 # happens instead of coalescing into the display link's next one — a panel
 # resize drew once per mouse-move event rather than once per displayed frame.
 [dev-dependencies]
-gpui = { git = "https://github.com/egoist/zed", branch = "waku-webview", features = [
+gpui = { git = "https://github.com/egoist/zed", branch = "insulator-webview", features = [
     "test-support",
 ] }
 
@@ -164,7 +163,7 @@ embed-resource = "3.0"
 [target.'cfg(target_os = "windows")'.dependencies]
 raw-window-handle = "0.6"
 # The browser surface. WebView2 is evergreen on Windows 10 and in-box on 11.
-# Waku drives it through `webview2-com` rather than wry because it needs the
+# Insulator drives it through `webview2-com` rather than wry because it needs the
 # *composition* controller, which renders into a DirectComposition visual
 # instead of a child HWND — see `browser::host` for why, and note that only
 # the environment can create one, so it cannot be reached from wry's
@@ -180,7 +179,7 @@ windows = { version = "0.61", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 windows-core = "0.61"
-# GPUI does not read the Windows animation preference, so Waku asks
+# GPUI does not read the Windows animation preference, so Insulator asks
 # `SystemParametersInfoW` itself. Same major version as the one already in the
 # graph through GPUI.
 windows-sys = { version = "0.61", features = [

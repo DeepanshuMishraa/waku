@@ -26,14 +26,14 @@ const LOGIN_SHELL_ENV_TIMEOUT: Duration = Duration::from_secs(5);
 #[cfg(unix)]
 const INTERACTIVE_SHELL_ENV_TIMEOUT: Duration = Duration::from_secs(3);
 #[cfg(unix)]
-const SHELL_ENV_COMMAND: &str = "/usr/bin/env -0 > \"$WAKU_SHELL_ENV_CAPTURE_FILE\"";
+const SHELL_ENV_COMMAND: &str = "/usr/bin/env -0 > \"$INSULATOR_SHELL_ENV_CAPTURE_FILE\"";
 
 type ShellEnvironment = Vec<(OsString, OsString)>;
 
 static LOGIN_SHELL_ENVIRONMENT: OnceLock<RwLock<Option<ShellEnvironment>>> = OnceLock::new();
 static SHELL_ENV_CAPTURE_ID: AtomicU64 = AtomicU64::new(0);
 
-/// Build a command with the environment a terminal-launched Waku normally
+/// Build a command with the environment a terminal-launched Insulator normally
 /// inherits. Apps opened through LaunchServices do not receive variables
 /// exported by the user's shell, including the PATH needed by script-based
 /// CLIs whose shebang uses `/usr/bin/env` (for example, an npm-installed Codex
@@ -50,7 +50,7 @@ pub fn command(program: impl AsRef<OsStr>) -> Command {
     command
 }
 
-/// The `PATH` a provider CLI runs with: every directory Waku itself searched,
+/// The `PATH` a provider CLI runs with: every directory Insulator itself searched,
 /// plus the one the binary was found in.
 ///
 /// Detection resolves CLIs from more directories than the desktop process
@@ -65,7 +65,7 @@ pub fn command(program: impl AsRef<OsStr>) -> Command {
 ///
 /// Windows needs this most: the login-shell probe there is best-effort — no
 /// PowerShell may be present, and a profile can refuse to load — so a
-/// GUI-launched Waku can still be running with only the `PATH` it inherited.
+/// GUI-launched Insulator can still be running with only the `PATH` it inherited.
 fn child_search_path(program: &Path) -> Option<OsString> {
     let mut directories = executable_search_paths();
     // Last, not first: an install outside the known prefixes still finds its
@@ -83,7 +83,7 @@ fn child_search_path(program: &Path) -> Option<OsString> {
 
 /// A command that never flashes a console window.
 ///
-/// Waku's Windows build is a GUI-subsystem binary with no console of its own,
+/// Insulator's Windows build is a GUI-subsystem binary with no console of its own,
 /// so `CreateProcess` allocates one for every console child — `git`, a
 /// provider CLI, the daemon — and flashes it on screen. `CREATE_NO_WINDOW`
 /// keeps the child's console hidden while its pipes still work.
@@ -128,7 +128,7 @@ pub fn output(command: &mut Command) -> io::Result<Output> {
     spawn(command)?.wait_with_output()
 }
 
-/// Normalize a Waku-owned provider thread before a dependency spawns the child
+/// Normalize a Insulator-owned provider thread before a dependency spawns the child
 /// internally. The ACP SDK owns its `async_process::Command`, so its dedicated
 /// connection thread uses this once at startup instead of [`spawn`].
 pub(crate) fn unblock_sigchld_for_current_thread() -> io::Result<()> {
@@ -291,7 +291,7 @@ pub fn refresh_from_default_shell() -> bool {
 }
 
 /// Windows has no login shell, but it still needs this probe. A GUI-launched
-/// Waku inherits explorer's `PATH`, which predates later installs, and the
+/// Insulator inherits explorer's `PATH`, which predates later installs, and the
 /// package managers users actually add to it — fnm, Volta, nvm — extend
 /// `PATH` only in the PowerShell profile, which never reaches the machine or
 /// user environment block. Probe PowerShell with the profile loaded, capture
@@ -339,9 +339,9 @@ foreach ($name in @('PATH', 'FNM_DIR', 'FNM_MULTISHELL_PATH')) {
 }
 foreach ($target in @('User', 'Machine')) {
   $value = [Environment]::GetEnvironmentVariable('PATH', $target)
-  if ($value) { $entries.Add('WAKU_' + $target.ToUpper() + '_PATH=' + [Environment]::ExpandEnvironmentVariables($value)) }
+  if ($value) { $entries.Add('INSULATOR_' + $target.ToUpper() + '_PATH=' + [Environment]::ExpandEnvironmentVariables($value)) }
 }
-[IO.File]::WriteAllText($env:WAKU_SHELL_ENV_CAPTURE_FILE, [string]::Join([string][char]0, $entries))
+[IO.File]::WriteAllText($env:INSULATOR_SHELL_ENV_CAPTURE_FILE, [string]::Join([string][char]0, $entries))
 ";
 
 /// PowerShell 7 first, then the in-box Windows PowerShell. `cmd.exe` is not a
@@ -400,7 +400,7 @@ fn capture_windows_environment(
     command
         .arg("-Command")
         .arg(WINDOWS_ENV_CAPTURE_COMMAND)
-        .env("WAKU_SHELL_ENV_CAPTURE_FILE", capture.path())
+        .env("INSULATOR_SHELL_ENV_CAPTURE_FILE", capture.path())
         .stdin(Stdio::null())
         .stdout(Stdio::null())
         .stderr(Stdio::null());
@@ -421,7 +421,7 @@ fn capture_windows_environment(
 #[cfg(windows)]
 fn merge_windows_environment(mut environment: ShellEnvironment) -> Option<ShellEnvironment> {
     let mut directories = Vec::new();
-    for name in ["PATH", "WAKU_USER_PATH", "WAKU_MACHINE_PATH"] {
+    for name in ["PATH", "INSULATOR_USER_PATH", "INSULATOR_MACHINE_PATH"] {
         if let Some(value) = take_environment_variable(&mut environment, name) {
             directories.extend(std::env::split_paths(&value));
         }
@@ -626,7 +626,7 @@ fn windows_shell_candidates() -> Vec<PathBuf> {
 pub fn default_terminal_shell() -> PathBuf {
     let mut candidates = Vec::new();
     // The shell the user chose outranks whatever `SHELL` was inherited from;
-    // see the note in waku-client's `unix_terminal_shell_candidates`. The
+    // see the note in insulator-client's `unix_terminal_shell_candidates`. The
     // environment probe below keeps its own order, since it wants the shell
     // whose rc files produced this process's `PATH`.
     #[cfg(unix)]
@@ -726,7 +726,7 @@ fn capture_shell_environment(
     command
         .args(shell_args)
         .arg(SHELL_ENV_COMMAND)
-        .env("WAKU_SHELL_ENV_CAPTURE_FILE", capture.path())
+        .env("INSULATOR_SHELL_ENV_CAPTURE_FILE", capture.path())
         // Match shell-env's safeguards for common interactive zsh setups so
         // an update prompt or tmux auto-start cannot consume the probe budget.
         .env("DISABLE_AUTO_UPDATE", "true")
@@ -767,7 +767,7 @@ fn parse_shell_environment(bytes: &[u8]) -> Option<ShellEnvironment> {
 
 fn is_shell_capture_variable(name: &OsStr) -> bool {
     [
-        "WAKU_SHELL_ENV_CAPTURE_FILE",
+        "INSULATOR_SHELL_ENV_CAPTURE_FILE",
         "DISABLE_AUTO_UPDATE",
         "ZSH_TMUX_AUTOSTARTED",
         "ZSH_TMUX_AUTOSTART",
@@ -880,9 +880,9 @@ mod tests {
     #[test]
     fn a_provider_cli_runs_with_the_directories_detection_searched() {
         #[cfg(windows)]
-        let program = PathBuf::from("C:\\waku-fixture\\bin\\pi.exe");
+        let program = PathBuf::from("C:\\insulator-fixture\\bin\\pi.exe");
         #[cfg(not(windows))]
-        let program = PathBuf::from("/opt/waku-fixture/bin/pi");
+        let program = PathBuf::from("/opt/insulator-fixture/bin/pi");
 
         let directories = command_search_path(&command(&program));
 
@@ -917,7 +917,7 @@ mod tests {
 
     #[test]
     fn child_wait_distinguishes_exit_status_from_timeout_and_reaps_the_child() {
-        const CHILD_MODE: &str = "WAKU_CHILD_WAIT_TEST_MODE";
+        const CHILD_MODE: &str = "INSULATOR_CHILD_WAIT_TEST_MODE";
         if let Some(mode) = std::env::var_os(CHILD_MODE) {
             match mode.to_str().expect("child mode") {
                 "success" => std::process::exit(0),
@@ -983,7 +983,7 @@ mod tests {
     #[cfg(target_os = "macos")]
     #[test]
     fn spawn_unblocks_sigchld_in_the_child_and_restores_the_caller() {
-        if std::env::var_os("WAKU_SIGCHLD_CHILD_PROBE").is_some() {
+        if std::env::var_os("INSULATOR_SIGCHLD_CHILD_PROBE").is_some() {
             assert!(!sigchld_is_blocked().expect("read child signal mask"));
             return;
         }
@@ -998,7 +998,7 @@ mod tests {
                 "command_env::tests::spawn_unblocks_sigchld_in_the_child_and_restores_the_caller",
                 "--nocapture",
             ])
-            .env("WAKU_SIGCHLD_CHILD_PROBE", "1");
+            .env("INSULATOR_SIGCHLD_CHILD_PROBE", "1");
         let output = output(&mut command).expect("spawn child signal probe");
 
         assert!(
@@ -1106,7 +1106,7 @@ mod tests {
         command
             .args(["-NoLogo", "-NoProfile", "-NonInteractive", "-Command"])
             .arg(WINDOWS_ENV_CAPTURE_COMMAND)
-            .env("WAKU_SHELL_ENV_CAPTURE_FILE", capture.path())
+            .env("INSULATOR_SHELL_ENV_CAPTURE_FILE", capture.path())
             .stdin(Stdio::null())
             // A file preserves diagnostics without a pipe buffer blocking the probe.
             .stdout(output.try_clone().expect("clone diagnostics handle"))
@@ -1143,11 +1143,11 @@ mod tests {
                 OsString::from("C:\\profile-first;C:\\shared"),
             ),
             (
-                OsString::from("WAKU_USER_PATH"),
+                OsString::from("INSULATOR_USER_PATH"),
                 OsString::from("C:\\user;C:\\shared"),
             ),
             (
-                OsString::from("WAKU_MACHINE_PATH"),
+                OsString::from("INSULATOR_MACHINE_PATH"),
                 OsString::from("C:\\machine;C:\\USER;C:\\SHARED"),
             ),
         ])
@@ -1171,19 +1171,19 @@ mod tests {
         assert!(
             !environment
                 .iter()
-                .any(|(name, _)| name == OsStr::new("WAKU_USER_PATH"))
+                .any(|(name, _)| name == OsStr::new("INSULATOR_USER_PATH"))
         );
         assert!(
             !environment
                 .iter()
-                .any(|(name, _)| name == OsStr::new("WAKU_MACHINE_PATH"))
+                .any(|(name, _)| name == OsStr::new("INSULATOR_MACHINE_PATH"))
         );
     }
 
     #[cfg(windows)]
     #[test]
     fn a_bare_name_resolves_through_pathext() {
-        let directory = std::env::temp_dir().join(format!("waku-pathext-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!("insulator-pathext-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("create fixture directory");
         // Only a suffixed file exists here, so the bare name resolves through PATHEXT.
@@ -1213,7 +1213,7 @@ mod tests {
         // A global npm install writes all three of these side by side. Only the `.cmd`
         // can be launched by `CreateProcess`; the extensionless one is a POSIX shim.
         let directory =
-            std::env::temp_dir().join(format!("waku-pathext-shim-{}", std::process::id()));
+            std::env::temp_dir().join(format!("insulator-pathext-shim-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("create fixture directory");
         std::fs::write(directory.join("faux-provider"), "#!/bin/sh\n")
@@ -1263,7 +1263,7 @@ mod tests {
     #[test]
     fn parses_null_delimited_environment_without_losing_value_contents() {
         let environment = parse_shell_environment(
-            b"PATH=/Users/example/.fnm/current/bin:/usr/bin\0TOKEN=line one\nline two=rest\0EMPTY=\0WAKU_SHELL_ENV_CAPTURE_FILE=/tmp/capture\0",
+            b"PATH=/Users/example/.fnm/current/bin:/usr/bin\0TOKEN=line one\nline two=rest\0EMPTY=\0INSULATOR_SHELL_ENV_CAPTURE_FILE=/tmp/capture\0",
         )
         .expect("parse shell environment");
 
@@ -1288,12 +1288,12 @@ mod tests {
     fn captures_environment_from_a_shell_process() {
         let id = SHELL_ENV_CAPTURE_ID.fetch_add(1, Ordering::Relaxed);
         let directory =
-            std::env::temp_dir().join(format!("waku-command-env-test-{}-{id}", std::process::id()));
+            std::env::temp_dir().join(format!("insulator-command-env-test-{}-{id}", std::process::id()));
         fs::create_dir(&directory).expect("create shell fixture directory");
         let shell = directory.join("fake-shell");
         fs::write(
             &shell,
-            "#!/bin/sh\n/usr/bin/printf 'PATH=/Users/example/.fnm/current/bin:/usr/bin\\000WAKU_TEST_TOKEN=from-shell\\000' > \"$WAKU_SHELL_ENV_CAPTURE_FILE\"\n",
+            "#!/bin/sh\n/usr/bin/printf 'PATH=/Users/example/.fnm/current/bin:/usr/bin\\000INSULATOR_TEST_TOKEN=from-shell\\000' > \"$INSULATOR_SHELL_ENV_CAPTURE_FILE\"\n",
         )
         .expect("write shell fixture");
         let mut permissions = fs::metadata(&shell)
@@ -1314,7 +1314,7 @@ mod tests {
                     OsString::from("/Users/example/.fnm/current/bin:/usr/bin"),
                 ),
                 (
-                    OsString::from("WAKU_TEST_TOKEN"),
+                    OsString::from("INSULATOR_TEST_TOKEN"),
                     OsString::from("from-shell"),
                 ),
             ]

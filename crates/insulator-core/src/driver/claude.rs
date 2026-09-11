@@ -79,7 +79,7 @@ fn user_message_payload(text: &str) -> Value {
 fn stop_task_request(request_id: u64, task_id: &str) -> Value {
     json!({
         "type": "control_request",
-        "request_id": format!("waku-{request_id}"),
+        "request_id": format!("insulator-{request_id}"),
         "request": {"subtype": "stop_task", "task_id": task_id}
     })
 }
@@ -130,7 +130,7 @@ fn start_claude_title_refresh(
 ) {
     let session_id = session_id.to_owned();
     title_refresh.start(
-        "waku-claude-title",
+        "insulator-claude-title",
         vec![Duration::from_secs(5), Duration::from_secs(10)],
         events.clone(),
         move || crate::claude_session::session_metadata(&session_id).map(|native| native.title),
@@ -256,7 +256,7 @@ impl ClaudeDriver {
         let reader_pending_task_stops = pending_task_stops.clone();
         let reader_pending_user_inputs = pending_user_inputs.clone();
         let reader_thread = thread::Builder::new()
-            .name("waku-claude-reader".into())
+            .name("insulator-claude-reader".into())
             .spawn(move || {
                 let mut state = ClaudeStreamState {
                     pending_task_stops: reader_pending_task_stops,
@@ -288,7 +288,7 @@ impl ClaudeDriver {
         let writer_title_refresh = super::title_refresh::NativeTitleRefresh::default();
         let title_session_id = session_id;
         thread::Builder::new()
-            .name("waku-claude-writer".into())
+            .name("insulator-claude-writer".into())
             .spawn(move || {
                 let mut stdin = stdin;
                 let mut next_request_id = 0_u64;
@@ -352,7 +352,7 @@ impl ClaudeDriver {
                                 &mut stdin,
                                 &json!({
                                     "type": "control_request",
-                                    "request_id": format!("waku-{next_request_id}"),
+                                    "request_id": format!("insulator-{next_request_id}"),
                                     "request": {"subtype": "interrupt"}
                                 }),
                             )
@@ -447,14 +447,14 @@ impl ClaudeDriver {
                                 &mut stdin,
                                 &json!({
                                     "type": "control_request",
-                                    "request_id": format!("waku-{next_request_id}"),
+                                    "request_id": format!("insulator-{next_request_id}"),
                                     "request": {"subtype": "set_model", "model": model}
                                 }),
                             )
                         }
                         CommandMessage::StopBackgroundWork { key, control_id } => {
                             next_request_id += 1;
-                            let request_id = format!("waku-{next_request_id}");
+                            let request_id = format!("insulator-{next_request_id}");
                             writer_pending_task_stops
                                 .lock()
                                 .insert(request_id, key.clone());
@@ -487,7 +487,7 @@ impl ClaudeDriver {
         let stderr_last_error = last_visible_stderr.clone();
         let stderr_events = events.clone();
         let stderr_thread = thread::Builder::new()
-            .name("waku-claude-stderr".into())
+            .name("insulator-claude-stderr".into())
             .spawn(move || {
                 let lines = BufReader::new(stderr)
                     .lines()
@@ -502,7 +502,7 @@ impl ClaudeDriver {
             })?;
 
         thread::Builder::new()
-            .name("waku-claude-process".into())
+            .name("insulator-claude-process".into())
             .spawn(move || {
                 let status = child.wait();
                 let _ = reader_thread.join();
@@ -799,7 +799,7 @@ fn start_claude_task_output_tail(
     let thread_stop = stop.clone();
     let thread_task_id = task_id.clone();
     let spawned = thread::Builder::new()
-        .name("waku-claude-task-output".into())
+        .name("insulator-claude-task-output".into())
         .spawn(move || {
             stream_claude_task_output_when_ready(
                 session_id,
@@ -1511,7 +1511,7 @@ fn handle_message(
             {
                 return;
             }
-            // `--replay-user-messages` echoes Waku's own prompts back; they are
+            // `--replay-user-messages` echoes Insulator's own prompts back; they are
             // an acknowledgement, not transcript content.
             if value.get("isReplay").and_then(Value::as_bool) == Some(true) {
                 return;
@@ -1794,9 +1794,9 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn locates_claudes_native_task_output_across_workspace_slugs() {
-        let root = std::env::temp_dir().join(format!("waku-claude-output-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-claude-output-test-{}", Uuid::new_v4()));
         let output = root
-            .join("-Users-egoist-dev-waku")
+            .join("-Users-egoist-dev-insulator")
             .join("session-live")
             .join("tasks")
             .join("task-live.output");
@@ -1836,7 +1836,7 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn native_task_output_streams_before_completion() {
-        let root = std::env::temp_dir().join(format!("waku-claude-tail-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-claude-tail-test-{}", Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();
         let output = root.join("task.output");
         std::fs::write(&output, "first\n").unwrap();
@@ -2048,7 +2048,7 @@ mod tests {
             stop_task_request(7, "agent-42"),
             json!({
                 "type": "control_request",
-                "request_id": "waku-7",
+                "request_id": "insulator-7",
                 "request": {"subtype": "stop_task", "task_id": "agent-42"}
             })
         );
@@ -2061,13 +2061,13 @@ mod tests {
         state
             .pending_task_stops
             .lock()
-            .insert("waku-8".into(), key.clone());
+            .insert("insulator-8".into(), key.clone());
         handle_message(
             &json!({
                 "type": "control_response",
                 "response": {
                     "subtype": "success",
-                    "request_id": "waku-8",
+                    "request_id": "insulator-8",
                     "response": {"status": "not_running"}
                 }
             }),
@@ -2098,7 +2098,7 @@ mod tests {
                     "id": "toolu-bash",
                     "name": "Bash",
                     "input": {
-                        "command": "cargo check && cargo test --bin waku",
+                        "command": "cargo check && cargo test --bin insulator",
                         "description": "Type-check and run full suite"
                     }
                 }]}
@@ -2140,7 +2140,7 @@ mod tests {
         assert_eq!(started.key.kind, BackgroundWorkKind::Process);
         assert_eq!(
             started.command.as_deref(),
-            Some("cargo check && cargo test --bin waku")
+            Some("cargo check && cargo test --bin insulator")
         );
     }
 
@@ -2287,7 +2287,7 @@ mod tests {
                 "tool_use_id": "toolu-agent",
                 "status": "completed",
                 "output_file": "",
-                "summary": "I have a complete map.\n\n# Waku Right Panel\nDetails…"
+                "summary": "I have a complete map.\n\n# Insulator Right Panel\nDetails…"
             }),
             "s",
             &events,
@@ -2312,7 +2312,7 @@ mod tests {
         );
         assert_eq!(
             settled.output.as_deref(),
-            Some("I have a complete map.\n\n# Waku Right Panel\nDetails…"),
+            Some("I have a complete map.\n\n# Insulator Right Panel\nDetails…"),
             "the final report belongs in the output pane"
         );
     }
@@ -2474,7 +2474,7 @@ mod tests {
         // Payloads copied from a live streaming-input session.
         let wire = [
             json!({"type":"system","subtype":"init","session_id":"s","tools":[]}),
-            // Waku's own prompt, echoed by --replay-user-messages.
+            // Insulator's own prompt, echoed by --replay-user-messages.
             json!({"type":"user","message":{"role":"user","content":[{"type":"text","text":"go"}]},"isReplay":true}),
             json!({"type":"stream_event","event":{"type":"message_start","message":{"role":"assistant"}}}),
             json!({"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"pondering"}}}),

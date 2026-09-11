@@ -1,4 +1,4 @@
-//! Provider backend and driver-event wire translation for `waku-daemon`.
+//! Provider backend and driver-event wire translation for `insulator-daemon`.
 
 use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
@@ -42,7 +42,7 @@ fn trim_resident_transcripts(state: &mut PersistedState, pinned: &HashSet<Uuid>)
     state.trim_idle_transcripts(pinned, RESIDENT_TRANSCRIPT_WINDOW);
 }
 
-pub struct WakuBackend {
+pub struct InsulatorBackend {
     sessions: Mutex<HashMap<Uuid, (Uuid, DriverHandle)>>,
     terminals: Mutex<HashMap<Uuid, (Uuid, crate::terminal::DaemonTerminal)>>,
     #[cfg(all(test, unix))]
@@ -59,11 +59,11 @@ pub struct WakuBackend {
     default_cwd: std::path::PathBuf,
 }
 
-impl WakuBackend {
+impl InsulatorBackend {
     pub fn new(settings: DaemonSettingsStore, task_store: StateStore) -> anyhow::Result<Self> {
         let mut task_state = task_store
             .load()
-            .context("could not load Waku task database")?;
+            .context("could not load Insulator task database")?;
         migrate_projectless_state(&task_store, &mut task_state)?;
         let composer_drafts = ComposerDraftStore::for_state_path(task_store.path());
         let attachments = AttachmentStore::new(
@@ -222,7 +222,7 @@ fn migrate_projectless_state(
     Ok(())
 }
 
-impl Backend for WakuBackend {
+impl Backend for InsulatorBackend {
     fn handle(&self, request: Request, events: EventSink) -> anyhow::Result<ResponsePayload> {
         let session_id = request.session_id;
         let runtime_id = request.runtime_id;
@@ -801,7 +801,7 @@ impl Backend for WakuBackend {
                 let handle = driver::start_local(provider, options, event_sender)?;
                 let supports_steer = handle.supports_steer();
                 std::thread::Builder::new()
-                    .name(format!("waku-daemon-events-{session_id}"))
+                    .name(format!("insulator-daemon-events-{session_id}"))
                     .spawn(move || {
                         while let Ok(event) = event_receiver.recv() {
                             let wire = event_to_wire(event).unwrap_or_else(|error| {
@@ -957,7 +957,7 @@ fn preserve_daemon_checkpoints(existing: &AgentSession, incoming: &mut AgentSess
     }
 }
 
-impl WakuBackend {
+impl InsulatorBackend {
     /// Fork a response using only daemon-host state.
     ///
     /// A browser must never reconstruct or persist this operation itself:
@@ -1107,7 +1107,7 @@ impl WakuBackend {
             bail!("the checkpoint before this message is unavailable");
         }
 
-        let safety_ref = format!("refs/waku/revert-backup-{session_id}-{}", Uuid::new_v4());
+        let safety_ref = format!("refs/insulator/revert-backup-{session_id}-{}", Uuid::new_v4());
         crate::checkpoint::capture_ref(&cwd, &safety_ref)
             .context("could not create a rewind safety snapshot")?;
         if let Err(error) = crate::checkpoint::restore_ref(&cwd, &restore_ref) {
@@ -2198,7 +2198,7 @@ mod tests {
         existing.finish_active_turn(crate::model::TurnStatus::Completed);
         let checkpoint = Checkpoint {
             turn_count: 1,
-            git_ref: "refs/waku/canonical".into(),
+            git_ref: "refs/insulator/canonical".into(),
             status: CheckpointStatus::Ready,
             files: Vec::new(),
             additions: 0,
@@ -2209,7 +2209,7 @@ mod tests {
 
         let mut incoming = existing.clone();
         incoming.turns[0].checkpoint = Some(Checkpoint {
-            git_ref: "refs/waku/stale-client".into(),
+            git_ref: "refs/insulator/stale-client".into(),
             ..checkpoint.clone()
         });
         preserve_daemon_checkpoints(&existing, &mut incoming);

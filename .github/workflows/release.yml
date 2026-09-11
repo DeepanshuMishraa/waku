@@ -1,10 +1,8 @@
 name: Release
 
 on:
-  push:
-    tags:
-      - "v*"
-  workflow_dispatch:
+  release:
+    types: [published]
 
 permissions:
   contents: read
@@ -24,7 +22,6 @@ jobs:
     outputs:
       version: ${{ steps.resolve.outputs.version }}
       tag: ${{ steps.resolve.outputs.tag }}
-      published: ${{ steps.published.outputs.published }}
     steps:
       - uses: actions/checkout@v6
 
@@ -36,42 +33,22 @@ jobs:
             echo "::error::No version found in Cargo.toml"
             exit 1
           fi
-          # Cargo.toml is the source of truth. A tag push must agree with it;
-          # a manual run has no tag and simply releases what Cargo.toml says.
-          if [ "$GITHUB_EVENT_NAME" = push ]; then
-            tag="${GITHUB_REF_NAME#v}"
-            if [ "$tag" != "$version" ]; then
-              echo "::error::Tag ${GITHUB_REF_NAME} does not match Cargo.toml version ${version}"
-              exit 1
-            fi
+          tag="${{ github.event.release.tag_name }}"
+          if [[ ! "$tag" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Tag must use the vX.Y.Z format, got $tag"
+            exit 1
+          fi
+          if [ "${tag#v}" != "$version" ]; then
+            echo "::error::Tag $tag does not match Cargo.toml version $version"
+            exit 1
           fi
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "tag=v$version" >> "$GITHUB_OUTPUT"
-          echo "Releasing $version as v$version"
-
-      # A published release for this version is already the finished product,
-      # so rebuilding it would burn 90 minutes and could replace artifacts
-      # people have downloaded. A leftover draft is this workflow's own
-      # output, so it does not count and gets overwritten as before.
-      - name: Look for an existing published release
-        id: published
-        env:
-          GH_TOKEN: ${{ github.token }}
-          TAG: ${{ steps.resolve.outputs.tag }}
-        run: |
-          draft=$(gh release view "$TAG" --repo "$GITHUB_REPOSITORY" \
-            --json isDraft --jq .isDraft 2>/dev/null) || draft=missing
-          if [ "$draft" = false ]; then
-            echo "published=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::$TAG is already published; skipping this run"
-          else
-            echo "published=false" >> "$GITHUB_OUTPUT"
-          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+          echo "Building assets for published release $tag"
 
   linux-x86_64:
     name: Linux x86_64
     needs: version
-    if: needs.version.outputs.published != 'true'
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
@@ -110,12 +87,9 @@ jobs:
       # release's bundles are still sitting in `target/release` when this one
       # starts. Cargo does not own them, so nothing else clears them.
       - name: Clear stale bundles
-        run: rm -f target/release/waku-*.tar.gz
+        run: rm -f target/release/insulator-*.tar.gz
 
       - name: Bundle
-        env:
-          WAKU_ANALYTICS_ENDPOINT: ${{ secrets.WAKU_ANALYTICS_ENDPOINT }}
-          WAKU_ANALYTICS_WEBSITE_ID: ${{ secrets.WAKU_ANALYTICS_WEBSITE_ID }}
         run: ./scripts/bundle-linux.sh
 
       - uses: actions/upload-artifact@v7
@@ -124,13 +98,12 @@ jobs:
           # Named exactly, not globbed: `if-no-files-found: error` is then a
           # real check that this version built, rather than something an older
           # bundle can satisfy.
-          path: target/release/waku-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
+          path: target/release/insulator-${{ needs.version.outputs.version }}-x86_64-unknown-linux-gnu.tar.gz
           if-no-files-found: error
 
   linux-arm64:
     name: Linux arm64
     needs: version
-    if: needs.version.outputs.published != 'true'
     runs-on: ubuntu-22.04-arm
     timeout-minutes: 90
     steps:
@@ -169,24 +142,20 @@ jobs:
       # release's bundles are still sitting in `target/release` when this one
       # starts. Cargo does not own them, so nothing else clears them.
       - name: Clear stale bundles
-        run: rm -f target/release/waku-*.tar.gz
+        run: rm -f target/release/insulator-*.tar.gz
 
       - name: Bundle
-        env:
-          WAKU_ANALYTICS_ENDPOINT: ${{ secrets.WAKU_ANALYTICS_ENDPOINT }}
-          WAKU_ANALYTICS_WEBSITE_ID: ${{ secrets.WAKU_ANALYTICS_WEBSITE_ID }}
         run: ./scripts/bundle-linux.sh
 
       - uses: actions/upload-artifact@v7
         with:
           name: linux-arm64
-          path: target/release/waku-${{ needs.version.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz
+          path: target/release/insulator-${{ needs.version.outputs.version }}-aarch64-unknown-linux-gnu.tar.gz
           if-no-files-found: error
 
   windows-x86_64:
     name: Windows x86_64
     needs: version
-    if: needs.version.outputs.published != 'true'
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -217,12 +186,10 @@ jobs:
       # release's bundles are still sitting in `target/release` when this one
       # starts. Cargo does not own them, so nothing else clears them.
       - name: Clear stale bundles
-        run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/waku-*.zip, target/release/Waku-*-Setup.exe
+        run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/insulator-*.zip, target/release/Insulator-*-Setup.exe
 
       - name: Bundle
         env:
-          WAKU_ANALYTICS_ENDPOINT: ${{ secrets.WAKU_ANALYTICS_ENDPOINT }}
-          WAKU_ANALYTICS_WEBSITE_ID: ${{ secrets.WAKU_ANALYTICS_WEBSITE_ID }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: bun scripts/bundle-windows.ts
@@ -231,14 +198,13 @@ jobs:
         with:
           name: windows-x86_64
           path: |
-            target/release/waku-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.zip
-            target/release/Waku-${{ needs.version.outputs.version }}-x86_64-Setup.exe
+            target/release/insulator-${{ needs.version.outputs.version }}-x86_64-pc-windows-msvc.zip
+            target/release/Insulator-${{ needs.version.outputs.version }}-x86_64-Setup.exe
           if-no-files-found: error
 
   windows-arm64:
     name: Windows arm64
     needs: version
-    if: needs.version.outputs.published != 'true'
     runs-on: windows-11-arm
     timeout-minutes: 90
     steps:
@@ -269,12 +235,10 @@ jobs:
       # release's bundles are still sitting in `target/release` when this one
       # starts. Cargo does not own them, so nothing else clears them.
       - name: Clear stale bundles
-        run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/waku-*.zip, target/release/Waku-*-Setup.exe
+        run: Remove-Item -Force -ErrorAction SilentlyContinue target/release/insulator-*.zip, target/release/Insulator-*-Setup.exe
 
       - name: Bundle
         env:
-          WAKU_ANALYTICS_ENDPOINT: ${{ secrets.WAKU_ANALYTICS_ENDPOINT }}
-          WAKU_ANALYTICS_WEBSITE_ID: ${{ secrets.WAKU_ANALYTICS_WEBSITE_ID }}
           WINDOWS_CERTIFICATE: ${{ secrets.WINDOWS_CERTIFICATE }}
           WINDOWS_CERTIFICATE_PASSWORD: ${{ secrets.WINDOWS_CERTIFICATE_PASSWORD }}
         run: bun scripts/bundle-windows.ts
@@ -283,14 +247,13 @@ jobs:
         with:
           name: windows-arm64
           path: |
-            target/release/waku-${{ needs.version.outputs.version }}-aarch64-pc-windows-msvc.zip
-            target/release/Waku-${{ needs.version.outputs.version }}-aarch64-Setup.exe
+            target/release/insulator-${{ needs.version.outputs.version }}-aarch64-pc-windows-msvc.zip
+            target/release/Insulator-${{ needs.version.outputs.version }}-aarch64-Setup.exe
           if-no-files-found: error
 
   macos:
     name: macOS
     needs: version
-    if: needs.version.outputs.published != 'true'
     runs-on: macos-latest
     timeout-minutes: 90
     steps:
@@ -316,53 +279,27 @@ jobs:
           restore-keys: |
             macos-latest-rust-1.96.0-release-
 
-      - name: Import Apple Developer Certificate
-        env:
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-        run: |
-          KEYCHAIN_PASSWORD=$(openssl rand -base64 24)
-          echo $APPLE_CERTIFICATE | base64 --decode > certificate.p12
-          security create-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security default-keychain -s build.keychain
-          security unlock-keychain -p "$KEYCHAIN_PASSWORD" build.keychain
-          security set-keychain-settings -t 3600 -u build.keychain
-          security import certificate.p12 -k build.keychain -P "$APPLE_CERTIFICATE_PASSWORD" -T /usr/bin/codesign
-          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KEYCHAIN_PASSWORD" build.keychain
-          security find-identity -v -p codesigning build.keychain
-          rm certificate.p12
-
-      - name: Store notary credentials
-        env:
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        run: |
-          xcrun notarytool store-credentials NOTARY \
-            --apple-id "$APPLE_ID" \
-            --password "$APPLE_APP_SPECIFIC_PASSWORD" \
-            --team-id "$APPLE_TEAM_ID"
-
+      # Insulator is distributed without a Developer ID certificate or
+      # notarization. Sparkle still authenticates the update archive with its
+      # Ed25519 key, while the app and DMG use an ad-hoc signature.
       - name: Release
         env:
-          WAKU_SIGNING_IDENTITY: ${{ secrets.WAKU_SIGNING_IDENTITY }}
-          WAKU_ANALYTICS_ENDPOINT: ${{ secrets.WAKU_ANALYTICS_ENDPOINT }}
-          WAKU_ANALYTICS_WEBSITE_ID: ${{ secrets.WAKU_ANALYTICS_WEBSITE_ID }}
           SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
-        run: bun run release --local
+          INSULATOR_DOWNLOAD_URL_PREFIX: https://github.com/${{ github.repository }}/releases/download/v${{ needs.version.outputs.version }}/
+        run: bun run release --local --adhoc
 
       - uses: actions/upload-artifact@v7
         with:
           name: macos
           path: |
-            dist/Waku-${{ needs.version.outputs.version }}.dmg
-            dist/Waku-${{ needs.version.outputs.version }}.md
-            dist/Waku-${{ needs.version.outputs.version }}.zip
+            dist/Insulator-${{ needs.version.outputs.version }}.dmg
+            dist/Insulator-${{ needs.version.outputs.version }}.md
+            dist/Insulator-${{ needs.version.outputs.version }}.zip
             dist/appcast.xml
           if-no-files-found: error
 
-  draft-release:
-    name: Draft GitHub release
+  attach-release-assets:
+    name: Attach assets to GitHub release
     needs:
       [
         version,
@@ -372,7 +309,6 @@ jobs:
         windows-arm64,
         macos,
       ]
-    if: needs.version.outputs.published != 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -408,7 +344,7 @@ jobs:
           for platform in linux windows; do
             for arch in x86_64 aarch64; do
               curl -fsSL --max-time 30 \
-                "https://releases.waku.sh/appcast-$platform-$arch.xml" \
+                "https://releases.insulator.sh/appcast-$platform-$arch.xml" \
                 -o "artifacts/appcast-$platform-$arch.xml" || true
             done
           done
@@ -434,11 +370,8 @@ jobs:
 
       - uses: softprops/action-gh-release@v3
         with:
-          draft: true
-          # A manual run has no tag yet; publishing the draft creates this one
-          # at the commit that was built.
+          draft: false
           tag_name: ${{ needs.version.outputs.tag }}
-          target_commitish: ${{ github.sha }}
           name: ${{ needs.version.outputs.tag }}
           body_path: release-notes.md
           fail_on_unmatched_files: true

@@ -1,5 +1,11 @@
 # Releasing Insulator
 
+Insulator's macOS appcast and update archives are published as GitHub Release assets.
+The release workflow creates a `v<version>` tag and release title (for example, `v0.2.0`);
+Sparkle reads the appcast from the latest release. macOS builds use ad-hoc code signing
+because this distribution does not use a Developer ID certificate. Sparkle still verifies
+archives with its Ed25519 signing key.
+
 Insulator ships signed in-app updates on macOS, Linux, and Windows. Releases live in
 a **Cloudflare R2** bucket served at **`https://releases.insulator.sh`**. macOS uses
 [Sparkle](https://sparkle-project.org), including binary deltas when available;
@@ -28,9 +34,8 @@ bun run release
   [`scripts/appcast.ts`](scripts/appcast.ts),
   [`scripts/changelog.ts`](scripts/changelog.ts).
 - GitHub Actions: [`.github/workflows/release.yml`](.github/workflows/release.yml)
-  builds Linux (x86_64, arm64), Windows (x86_64, arm64), and macOS archives on
-  a `v*` tag — or on a manual **Run workflow**, which takes the version from
-  `Cargo.toml` — and opens a draft GitHub release;
+  builds Linux (x86_64, arm64), Windows (x86_64, arm64), and macOS archives
+  automatically when a `v*` release is published;
   [`.github/workflows/sync-release.yml`](.github/workflows/sync-release.yml)
   copies published assets into the R2 bucket.
 
@@ -71,21 +76,12 @@ new public key in Info.plist, and pass `--account insulator` through to
 old key, so do this on a release that still signs with the old key… in other
 words, don't do it casually.
 
-### 2. Developer ID signing + notarization
+### 2. Release build configuration
 
-Copy `.env.example` to `.env` and replace the signing and analytics
-placeholders. Bun loads these values before Cargo compiles the release, so the
-analytics endpoint and website ID are embedded in the executable. The script
-notarizes with the `NOTARY` keychain profile by default. On a fresh machine:
-
-```sh
-cp .env.example .env
-xcrun notarytool store-credentials NOTARY \
-  --apple-id you@example.com --team-id YOUR_APPLE_TEAM_ID
-```
-
-Override the environment with `--signing-identity`, or change the notary
-profile with `--notary-profile` / `INSULATOR_NOTARY_PROFILE`.
+No analytics configuration is required. GitHub Actions uses
+`bun run release --local --adhoc`, so a Developer ID certificate and notarization
+profile are not required. For a separately notarized local build, configure the
+signing identity and `NOTARY` keychain profile as usual.
 
 ### 3. Cloudflare R2 bucket + domain  ← **still to do once**
 
@@ -135,17 +131,19 @@ everything with immutable cache headers (the appcast itself stays
 Test by keeping an older build around, launching it, and choosing
 **Check for Updates…**.
 
-### GitHub draft release + R2 sync
+### GitHub release + R2 sync
 
-The Release workflow runs two ways:
+The release flow is:
 
-- **Push a `v*` tag** — the tag must match the `version` in `Cargo.toml`, or the
-  run fails before anything builds.
-- **Actions → Release → Run workflow** — no tag needed. The run releases
-  whatever `Cargo.toml` says and drafts it as `v<version>`; that tag is created
-  at the built commit when you publish the draft.
+1. Bump `version` in `Cargo.toml`.
+2. Create and publish a GitHub release with a matching `v<version>` tag.
 
-macOS CI runs `bun run release --local`, which signs, notarizes, and writes the
+Publishing the release triggers the workflow automatically. It validates the tag against
+`Cargo.toml`, builds every platform, extracts
+that version's `CHANGELOG.md` section into the release body, and attaches the DMG,
+ZIP, appcast, and other platform assets to the existing release.
+
+macOS CI runs `bun run release --local --adhoc`, which writes the
 same artifacts as a local release:
 
 - `Insulator-<version>.dmg`
@@ -198,7 +196,7 @@ rolls back if the replacement cannot open its main window.
   drift onto different keys.
 - [`scripts/appcast-windows.ts`](scripts/appcast-windows.ts) and
   [`scripts/appcast-linux.ts`](scripts/appcast-linux.ts) sign the feeds in the
-  draft-release job — the only one holding all native artifacts. They sign
+  release asset job — the only one holding all native artifacts. They sign
   with Node's Ed25519 over the same `SPARKLE_PRIVATE_KEY`, and refuse to run
   when the key does not derive `SUPublicEDKey` (signing with the wrong key
   ships a feed the app rejects).
@@ -211,9 +209,9 @@ distribution Insulator can start on (2.35 — Ubuntu 22.04, Debian 12, Fedora 36
 Moving those jobs to a newer runner silently drops support for everything
 older.
 
-The workflow opens (or updates) a **draft** GitHub release with those files and
-the matching `CHANGELOG.md` section. Publishing the GitHub release syncs the
-assets — including every signed update feed — to R2.
+The workflow updates the published GitHub release with those files and
+the matching `CHANGELOG.md` section. Publishing the release also syncs the
+assets, including every signed update feed, to R2.
 
 `appcast.xml`, the architecture-specific Linux/Windows appcasts,
 `latest-linux.txt`, and `latest-windows.txt` are the bucket's mutable pointers
@@ -228,8 +226,6 @@ secrets first:
 
 | Secret | Purpose |
 | --- | --- |
-| `INSULATOR_ANALYTICS_ENDPOINT` | embedded in every desktop CI build |
-| `INSULATOR_ANALYTICS_WEBSITE_ID` | embedded in every desktop CI build |
 | `INSULATOR_SIGNING_IDENTITY` | Developer ID identity selector |
 | `APPLE_CERTIFICATE` | base64-encoded Developer ID Application `.p12` |
 | `APPLE_CERTIFICATE_PASSWORD` | password for that `.p12` |

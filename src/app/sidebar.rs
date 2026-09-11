@@ -5,7 +5,7 @@ use std::time::Duration;
 use super::right_panel::file_icon_for_path;
 use super::*;
 
-actions!(waku_sidebar, [CancelSessionRename]);
+actions!(insulator_sidebar, [CancelSessionRename]);
 
 const SESSION_RENAME_PARENT_CONTEXT: &str = "SessionRename";
 const SESSION_RENAME_FIELD_CONTEXT: &str = "SessionRename > TextInput";
@@ -505,7 +505,7 @@ impl Render for DraggedSessionPreview {
     }
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn window_drag_region(
         &self,
         region: Stateful<Div>,
@@ -808,12 +808,12 @@ impl Waku {
                 let github_project = github_project.clone();
                 vec![
                     MenuItem::new("Local project", move |_, cx| {
-                        let _ = local_project.update(cx, |waku, cx| waku.add_project(cx));
+                        let _ = local_project.update(cx, |insulator, cx| insulator.add_project(cx));
                     })
                     .icon("icons/folder-new.svg"),
                     MenuItem::new("Import from GitHub", move |window, cx| {
                         let _ = github_project
-                            .update(cx, |waku, cx| waku.open_github_project_dialog(window, cx));
+                            .update(cx, |insulator, cx| insulator.open_github_project_dialog(window, cx));
                     })
                     .icon("icons/github.svg"),
                 ]
@@ -1154,7 +1154,7 @@ impl Waku {
         }
 
         let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let labels = cx
                 .background_executor()
                 .spawn(async move {
@@ -1175,11 +1175,11 @@ impl Waku {
                     labels
                 })
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                if waku.sidebar_branch_scan_generation.get() != generation {
+            let _ = insulator.update(cx, |insulator, cx| {
+                if insulator.sidebar_branch_scan_generation.get() != generation {
                     return;
                 }
-                *waku.sidebar_branch_labels.borrow_mut() = labels
+                *insulator.sidebar_branch_labels.borrow_mut() = labels
                     .into_iter()
                     .map(|(path, branch)| (path, SharedString::from(branch)))
                     .collect();
@@ -1716,7 +1716,7 @@ impl Waku {
                 .into_any_element()
         };
 
-        let waku = cx.entity().downgrade();
+        let insulator = cx.entity().downgrade();
         let menu = self.menu_handle(format!("project-{group_key}"), cx);
         let project_id = match group {
             SidebarGroup::Project(project_id) => Some(project_id),
@@ -1904,18 +1904,18 @@ impl Waku {
                 SharedString::from(format!("project-menu-{project_id}")),
                 &menu,
                 move |_| {
-                    let rename_waku = waku.clone();
-                    let remove_waku = waku.clone();
+                    let rename_insulator = insulator.clone();
+                    let remove_insulator = insulator.clone();
                     vec![
                         MenuItem::new(tr!("common.rename"), move |window, cx| {
-                            let _ = rename_waku.update(cx, |waku, cx| {
-                                waku.open_rename_project_dialog(project_id, window, cx);
+                            let _ = rename_insulator.update(cx, |insulator, cx| {
+                                insulator.open_rename_project_dialog(project_id, window, cx);
                             });
                         }),
                         MenuItem::Separator,
                         MenuItem::new(tr!("common.remove"), move |_, cx| {
-                            let _ = remove_waku.update(cx, |waku, cx| {
-                                waku.remove_project(project_id, cx);
+                            let _ = remove_insulator.update(cx, |insulator, cx| {
+                                insulator.remove_project(project_id, cx);
                             });
                         }),
                     ]
@@ -2282,7 +2282,7 @@ impl Waku {
                 .child(title_str.clone())
                 .into_any_element()
         };
-        let waku = cx.entity().downgrade();
+        let insulator = cx.entity().downgrade();
         let current_status = session.chat_status;
         let menu = self.menu_handle(format!("session-{session_id}"), cx);
         let row_focus = menu.trigger_focus_handle().clone();
@@ -2416,20 +2416,20 @@ impl Waku {
                 &menu,
                 move |cx| {
                     let theme = Theme::current(cx);
-                    let status_waku = waku.clone();
-                    let pin_waku = waku.clone();
-                    let rename_waku = waku.clone();
-                    let remove_waku = waku.clone();
+                    let status_insulator = insulator.clone();
+                    let pin_insulator = insulator.clone();
+                    let rename_insulator = insulator.clone();
+                    let remove_insulator = insulator.clone();
 
                     let set_status_submenu = MenuItem::submenu("Set status", move |cx| {
                         let theme = Theme::current(cx);
                         ChatStatus::MENU_ORDER
                             .iter()
                             .map(|&status| {
-                                let status_waku = status_waku.clone();
+                                let status_insulator = status_insulator.clone();
                                 MenuItem::new(status.label(), move |_window, cx| {
-                                    let _ = status_waku.update(cx, |waku, cx| {
-                                        waku.set_session_chat_status(session_id, status, cx);
+                                    let _ = status_insulator.update(cx, |insulator, cx| {
+                                        insulator.set_session_chat_status(session_id, status, cx);
                                     });
                                 })
                                 .icon(status.icon())
@@ -2443,8 +2443,8 @@ impl Waku {
 
                     vec![
                         MenuItem::new(if is_pinned { "Unpin" } else { "Pin" }, move |_, cx| {
-                            let _ = pin_waku.update(cx, |waku, cx| {
-                                waku.toggle_session_pinned(session_id, cx);
+                            let _ = pin_insulator.update(cx, |insulator, cx| {
+                                insulator.toggle_session_pinned(session_id, cx);
                             });
                         })
                         .icon(if is_pinned {
@@ -2454,15 +2454,15 @@ impl Waku {
                         }),
                         set_status_submenu,
                         MenuItem::new(tr!("common.rename"), move |window, cx| {
-                            let _ = rename_waku.update(cx, |waku, cx| {
-                                waku.open_rename_session_dialog(session_id, window, cx);
+                            let _ = rename_insulator.update(cx, |insulator, cx| {
+                                insulator.open_rename_session_dialog(session_id, window, cx);
                             });
                         })
                         .icon("icons/pencil.svg"),
                         MenuItem::Separator,
                         MenuItem::new(tr!("common.remove"), move |_, cx| {
-                            let _ = remove_waku
-                                .update(cx, |waku, cx| waku.remove_session(session_id, cx));
+                            let _ = remove_insulator
+                                .update(cx, |insulator, cx| insulator.remove_session(session_id, cx));
                         })
                         .icon("icons/trash.svg"),
                     ]
@@ -2625,7 +2625,7 @@ impl Waku {
 
     pub(super) fn render_session_tabs(&self, cx: &mut Context<Self>) -> Stateful<Div> {
         let theme = Theme::current(cx);
-        let waku = cx.entity().downgrade();
+        let insulator = cx.entity().downgrade();
         let mut tabs = Vec::new();
         let current_project_id = self.selected_project().map(|project| project.id);
         for (index, tab) in self.main_tabs.iter().enumerate() {
@@ -2659,8 +2659,8 @@ impl Waku {
                         provider_mark(&theme, provider, 13.0, provider_color(&theme, provider))
                             .into_any_element()
                     };
-                    let tab_waku = waku.clone();
-                    let close_waku = waku.clone();
+                    let tab_insulator = insulator.clone();
+                    let close_insulator = insulator.clone();
                     tabs.push(
                         div()
                             .id(SharedString::from(format!("main-chat-tab-{session_id}")))
@@ -2684,8 +2684,8 @@ impl Waku {
                             })
                             .hover(|element| element.bg(theme.overlay))
                             .on_click(move |_, _, cx| {
-                                let _ = tab_waku.update(cx, |waku, cx| {
-                                    waku.activate_main_tab_at_index(index, cx);
+                                let _ = tab_insulator.update(cx, |insulator, cx| {
+                                    insulator.activate_main_tab_at_index(index, cx);
                                 });
                             })
                             .child(tab_mark)
@@ -2713,8 +2713,8 @@ impl Waku {
                                     })
                                     .on_click(move |_, _, cx| {
                                         cx.stop_propagation();
-                                        let _ = close_waku.update(cx, |waku, cx| {
-                                            waku.close_main_chat_tab(session_id, cx);
+                                        let _ = close_insulator.update(cx, |insulator, cx| {
+                                            insulator.close_main_chat_tab(session_id, cx);
                                         });
                                     })
                                     .child(icon("icons/x.svg", 10.0, theme.text_tertiary)),
@@ -2732,8 +2732,8 @@ impl Waku {
                         .to_owned();
                     let selected = !self.active_main_review_tab
                         && self.active_main_file_tab.as_deref() == Some(path.as_str());
-                    let activate_waku = waku.clone();
-                    let close_waku = waku.clone();
+                    let activate_insulator = insulator.clone();
+                    let close_insulator = insulator.clone();
                     tabs.push(
                         div()
                             .id(SharedString::from(format!("main-file-tab-{index}")))
@@ -2757,8 +2757,8 @@ impl Waku {
                             })
                             .hover(|element| element.bg(theme.overlay))
                             .on_click(move |_, _, cx| {
-                                let _ = activate_waku.update(cx, |waku, cx| {
-                                    waku.activate_main_tab_at_index(index, cx);
+                                let _ = activate_insulator.update(cx, |insulator, cx| {
+                                    insulator.activate_main_tab_at_index(index, cx);
                                 });
                             })
                             .child(icon(file_icon_for_path(&path), 13.0, theme.text_tertiary))
@@ -2784,8 +2784,8 @@ impl Waku {
                                     })
                                     .on_click(move |_, _, cx| {
                                         cx.stop_propagation();
-                                        let _ = close_waku.update(cx, |waku, cx| {
-                                            waku.close_main_file_tab(&path_for_close, cx);
+                                        let _ = close_insulator.update(cx, |insulator, cx| {
+                                            insulator.close_main_file_tab(&path_for_close, cx);
                                         });
                                     })
                                     .child(icon("icons/x.svg", 10.0, theme.text_tertiary)),
@@ -2795,8 +2795,8 @@ impl Waku {
                 }
                 MainTab::Review => {
                     let selected = self.active_main_review_tab;
-                    let activate_waku = waku.clone();
-                    let close_waku = waku.clone();
+                    let activate_insulator = insulator.clone();
+                    let close_insulator = insulator.clone();
                     tabs.push(
                         div()
                             .id(SharedString::from(format!("main-review-tab-{index}")))
@@ -2820,8 +2820,8 @@ impl Waku {
                             })
                             .hover(|element| element.bg(theme.overlay))
                             .on_click(move |_, _, cx| {
-                                let _ = activate_waku.update(cx, |waku, cx| {
-                                    waku.activate_main_tab_at_index(index, cx);
+                                let _ = activate_insulator.update(cx, |insulator, cx| {
+                                    insulator.activate_main_tab_at_index(index, cx);
                                 });
                             })
                             .child(icon("icons/file-diff.svg", 13.0, theme.text_tertiary))
@@ -2847,8 +2847,8 @@ impl Waku {
                                     })
                                     .on_click(move |_, _, cx| {
                                         cx.stop_propagation();
-                                        let _ = close_waku.update(cx, |waku, cx| {
-                                            waku.close_main_review_tab(cx);
+                                        let _ = close_insulator.update(cx, |insulator, cx| {
+                                            insulator.close_main_review_tab(cx);
                                         });
                                     })
                                     .child(icon("icons/x.svg", 10.0, theme.text_tertiary)),
@@ -2859,7 +2859,7 @@ impl Waku {
             }
         }
 
-        let new_tab_waku = cx.entity().downgrade();
+        let new_tab_insulator = cx.entity().downgrade();
         let new_tab = div()
             .id("session-tabs-new")
             .size(px(24.0))
@@ -2875,19 +2875,19 @@ impl Waku {
             .active(|element| element.bg(theme.overlay_strong))
             .tooltip(|window, cx| Tooltip::new(tr!("session.new_task")).build(window, cx))
             .on_click(move |_, window, cx| {
-                let _ = new_tab_waku.update(cx, |waku, cx| {
-                    waku.main_tabs_open = true;
-                    waku.active_main_file_tab = None;
-                    waku.active_main_review_tab = false;
-                    if let Some(session_id) = waku.create_new_chat_tab(cx) {
+                let _ = new_tab_insulator.update(cx, |insulator, cx| {
+                    insulator.main_tabs_open = true;
+                    insulator.active_main_file_tab = None;
+                    insulator.active_main_review_tab = false;
+                    if let Some(session_id) = insulator.create_new_chat_tab(cx) {
                         let tab = MainTab::Chat(session_id);
-                        if !waku.main_tabs.contains(&tab) {
-                            waku.main_tabs.push(tab);
+                        if !insulator.main_tabs.contains(&tab) {
+                            insulator.main_tabs.push(tab);
                         }
-                        let index = waku.main_tabs.len().saturating_sub(1);
-                        waku.main_tabs_scroll_handle.scroll_to_item(index);
+                        let index = insulator.main_tabs.len().saturating_sub(1);
+                        insulator.main_tabs_scroll_handle.scroll_to_item(index);
                     }
-                    let focus_handle = waku.composer_focus(cx);
+                    let focus_handle = insulator.composer_focus(cx);
                     window.focus(&focus_handle, cx);
                     cx.notify();
                 });
@@ -2933,159 +2933,170 @@ impl Waku {
 
     // ── Empty states ───────────────────────────────────────────────────────
 
-    pub(super) fn render_home_screen(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_home_screen(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::current(cx);
         div()
-            .flex_1()
-            .w_full()
-            .h_full()
+            .id("home-screen")
+            .size_full()
             .min_w_0()
+            .overflow_y_scroll()
             .flex()
             .flex_col()
             .items_center()
             .justify_center()
-            .pb(px(40.0))
-            .child(
-                img(crate::assets::home_logo())
-                    .w(px(500.0))
-                    .h(px(171.0))
-                    .mb(px(44.0))
-                    .object_fit(ObjectFit::Contain),
-            )
+            .p(px(20.0))
             .child(
                 div()
+                    .w_full()
+                    .max_w(px(640.0))
                     .flex()
-                    .flex_row()
+                    .flex_col()
                     .items_center()
-                    .justify_center()
-                    .gap(px(14.0))
                     .child(
-                        div()
-                            .id("home-card-open-project")
-                            .track_focus(&self.onboarding_add_project_focus)
-                            .tab_index(0)
-                            .w(px(210.0))
-                            .h(px(140.0))
-                            .p(px(20.0))
-                            .rounded(px(10.0))
-                            .border_1()
-                            .border_color(theme.border_strong)
-                            .bg(theme.raised)
-                            .cursor_pointer()
-                            .focus_visible(|s| s.border_color(theme.accent))
-                            .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
-                            .flex()
-                            .flex_col()
-                            .justify_between()
-                            .child(
-                                div()
-                                    .flex()
-                                    .items_start()
-                                    .child(icon("icons/folder-outline.svg", 20.0, theme.text)),
-                            )
-                            .child(
-                                div()
-                                    .text_size(sp(14.0))
-                                    .text_color(theme.text)
-                                    .font_weight(FontWeight::NORMAL)
-                                    .child("Open project"),
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.add_project(cx);
-                            }))
-                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    this.add_project(cx);
-                                    cx.stop_propagation();
-                                }
-                            })),
+                        img(crate::assets::home_logo())
+                            .w(px(360.0))
+                            .h(px(123.0))
+                            .max_w_full()
+                            .mb(px(28.0))
+                            .object_fit(ObjectFit::Contain),
                     )
                     .child(
                         div()
-                            .id("home-card-open-github")
-                            .track_focus(&self.onboarding_github_project_focus)
-                            .tab_index(1)
-                            .w(px(210.0))
-                            .h(px(140.0))
-                            .p(px(20.0))
-                            .rounded(px(10.0))
-                            .border_1()
-                            .border_color(theme.border_strong)
-                            .bg(theme.raised)
-                            .cursor_pointer()
-                            .focus_visible(|s| s.border_color(theme.accent))
-                            .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
+                            .w_full()
                             .flex()
-                            .flex_col()
-                            .justify_between()
+                            .flex_wrap()
+                            .items_center()
+                            .justify_center()
+                            .gap(px(12.0))
                             .child(
                                 div()
+                                    .id("home-card-open-project")
+                                    .track_focus(&self.onboarding_add_project_focus)
+                                    .tab_index(0)
+                                    .w(px(200.0))
+                                    .h(px(116.0))
+                                    .p(px(16.0))
+                                    .rounded(px(10.0))
+                                    .border_1()
+                                    .border_color(theme.border_strong)
+                                    .bg(theme.raised)
+                                    .cursor_pointer()
+                                    .focus_visible(|s| s.border_color(theme.accent))
+                                    .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
                                     .flex()
-                                    .items_start()
-                                    .child(icon("icons/globe.svg", 20.0, theme.text)),
+                                    .flex_col()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_start()
+                                            .child(icon("icons/folder-outline.svg", 20.0, theme.text)),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(sp(14.0))
+                                            .text_color(theme.text)
+                                            .font_weight(FontWeight::NORMAL)
+                                            .child("Open project"),
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.add_project(cx);
+                                    }))
+                                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                            this.add_project(cx);
+                                            cx.stop_propagation();
+                                        }
+                                    })),
                             )
                             .child(
                                 div()
-                                    .text_size(sp(14.0))
-                                    .text_color(theme.text)
-                                    .font_weight(FontWeight::NORMAL)
-                                    .child("Open GitHub project"),
-                            )
-                            .on_click(cx.listener(|this, _, window, cx| {
-                                this.open_github_project_dialog(window, cx);
-                            }))
-                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
-                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    this.open_github_project_dialog(window, cx);
-                                    cx.stop_propagation();
-                                }
-                            })),
-                    )
-                    .child(
-                        div()
-                            .id("home-card-quick-start")
-                            .track_focus(&self.onboarding_projectless_focus)
-                            .tab_index(2)
-                            .w(px(210.0))
-                            .h(px(140.0))
-                            .p(px(20.0))
-                            .rounded(px(10.0))
-                            .border_1()
-                            .border_color(theme.border_strong)
-                            .bg(theme.raised)
-                            .cursor_pointer()
-                            .focus_visible(|s| s.border_color(theme.accent))
-                            .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
-                            .flex()
-                            .flex_col()
-                            .justify_between()
-                            .child(
-                                div()
+                                    .id("home-card-open-github")
+                                    .track_focus(&self.onboarding_github_project_focus)
+                                    .tab_index(1)
+                                    .w(px(200.0))
+                                    .h(px(116.0))
+                                    .p(px(16.0))
+                                    .rounded(px(10.0))
+                                    .border_1()
+                                    .border_color(theme.border_strong)
+                                    .bg(theme.raised)
+                                    .cursor_pointer()
+                                    .focus_visible(|s| s.border_color(theme.accent))
+                                    .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
                                     .flex()
-                                    .items_start()
-                                    .child(icon("icons/folder-plus.svg", 20.0, theme.text)),
+                                    .flex_col()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_start()
+                                            .child(icon("icons/globe.svg", 20.0, theme.text)),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(sp(14.0))
+                                            .text_color(theme.text)
+                                            .font_weight(FontWeight::NORMAL)
+                                            .child("Open GitHub project"),
+                                    )
+                                    .on_click(cx.listener(|this, _, window, cx| {
+                                        this.open_github_project_dialog(window, cx);
+                                    }))
+                                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, window, cx| {
+                                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                            this.open_github_project_dialog(window, cx);
+                                            cx.stop_propagation();
+                                        }
+                                    })),
                             )
                             .child(
                                 div()
-                                    .text_size(sp(14.0))
-                                    .text_color(theme.text)
-                                    .font_weight(FontWeight::NORMAL)
-                                    .child("Quick start"),
-                            )
-                            .on_click(cx.listener(|this, _, _, cx| {
-                                this.create_projectless_session(cx);
-                            }))
-                            .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
-                                if matches!(event.keystroke.key.as_str(), "enter" | "space") {
-                                    this.create_projectless_session(cx);
-                                    cx.stop_propagation();
-                                }
-                            })),
+                                    .id("home-card-quick-start")
+                                    .track_focus(&self.onboarding_projectless_focus)
+                                    .tab_index(2)
+                                    .w(px(200.0))
+                                    .h(px(116.0))
+                                    .p(px(16.0))
+                                    .rounded(px(10.0))
+                                    .border_1()
+                                    .border_color(theme.border_strong)
+                                    .bg(theme.raised)
+                                    .cursor_pointer()
+                                    .focus_visible(|s| s.border_color(theme.accent))
+                                    .hover(|s| s.bg(theme.composer).border_color(theme.text_secondary))
+                                    .flex()
+                                    .flex_col()
+                                    .justify_between()
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .items_start()
+                                            .child(icon("icons/folder-plus.svg", 20.0, theme.text)),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(sp(14.0))
+                                            .text_color(theme.text)
+                                            .font_weight(FontWeight::NORMAL)
+                                            .child("Quick start"),
+                                    )
+                                    .on_click(cx.listener(|this, _, _, cx| {
+                                        this.create_projectless_session(cx);
+                                    }))
+                                    .on_key_down(cx.listener(|this, event: &KeyDownEvent, _, cx| {
+                                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                                            this.create_projectless_session(cx);
+                                            cx.stop_propagation();
+                                        }
+                                    })),
+                            ),
                     ),
             )
+            .into_any_element()
     }
 
-    pub(super) fn render_empty_state(&self, cx: &mut Context<Self>) -> Div {
+    pub(super) fn render_empty_state(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::current(cx);
         if self.selected_project().is_none() || self.selected_session().is_none() {
             return self.render_home_screen(cx);
@@ -3160,8 +3171,7 @@ impl Waku {
                             }
                         });
                     })
-                    .icon("icons/x.svg")
-                    .selected(projectless_selected),
+                    .icon("icons/sparkle.svg"),
                 );
                 items
             },
@@ -3209,6 +3219,7 @@ impl Waku {
                             )
                     }),
             )
+            .into_any_element()
     }
 }
 

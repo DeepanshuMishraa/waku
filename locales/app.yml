@@ -157,7 +157,7 @@ settings.daemon:
 settings.computer_use:
   en: Computer Use
 settings.general_keywords:
-  en: general local projects conversations privacy analytics telemetry anonymous sharing updates automatic sparkle version
+  en: general local projects conversations updates automatic sparkle version
 settings.appearance_keywords:
   en: appearance theme system light dark language english chinese simplified font size text editor
 settings.providers_keywords:
@@ -395,10 +395,6 @@ settings.automatic_updates:
   en: Automatic updates
 settings.automatic_updates_description:
   en: Check for new versions in the background and offer to install them
-settings.share_anonymous_usage_data:
-  en: Share anonymous usage data
-settings.share_anonymous_usage_data_description:
-  en: Help improve Insulator by sharing feature usage and reliability data. Prompts, responses, project names, file paths, and other personal data are never included
 
 providers.coding_agents:
   en: Coding agents
@@ -994,6 +990,8 @@ composer.no_providers:
 
 models.none_found:
   en: No models found
+models.recent_hint:
+  en: Recently used models will appear here
 models.favorite_hint:
   en: Star a model to keep it here
 models.loading:

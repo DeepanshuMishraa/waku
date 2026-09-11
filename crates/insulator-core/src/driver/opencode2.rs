@@ -1,8 +1,8 @@
 //! OpenCode 2 sessions over the one adopted background service.
 //!
-//! Everything structural about this driver follows from a single fact: Waku
+//! Everything structural about this driver follows from a single fact: Insulator
 //! does not own an OpenCode 2 process. `opencode2_service` finds the daemon
-//! the user's own terminal already started, and every Waku task rides the one
+//! the user's own terminal already started, and every Insulator task rides the one
 //! `GET /api/event` stream it exposes. So this file has no server handle, no
 //! process teardown and no exit budget — dropping a driver unsubscribes and
 //! sends `Shutdown`, and that is the whole of it.
@@ -65,7 +65,7 @@ use crate::opencode2_api::{
 };
 use crate::opencode2_service::{self, HubFrame, Opencode2Service, Subscription};
 
-/// A one-shot user action posted onto the worker waits this long before Waku
+/// A one-shot user action posted onto the worker waits this long before Insulator
 /// gives up on it. Comfortably past the API layer's own fork budget, so a slow
 /// fork answers rather than being reported as a timeout twice.
 const ACTION_TIMEOUT: Duration = Duration::from_secs(150);
@@ -254,7 +254,7 @@ struct StreamState {
     /// dedupe is what absorbs the overlap between a snapshot and the live
     /// stream.
     permissions: OpenCodePermissionState,
-    /// The forms Waku has surfaced, with their fields: a reply must round-trip
+    /// The forms Insulator has surfaced, with their fields: a reply must round-trip
     /// each field's own `key`, which is a fidelity gain over v1's positional
     /// answers.
     forms: HashMap<String, Vec<FormField>>,
@@ -465,9 +465,9 @@ impl OpenCode2Driver {
         };
 
         // A resumed session keeps whatever the user's own client last chose,
-        // so an explicit Waku selection is re-applied and everything else is
+        // so an explicit Insulator selection is re-applied and everything else is
         // left alone. Neither is fatal: a session that will not switch is
-        // still a session Waku can drive.
+        // still a session Insulator can drive.
         let agent = if resuming {
             match requested_agent {
                 Some(_) if session.agent.as_deref() != Some(agent.as_str()) => {
@@ -536,7 +536,7 @@ impl OpenCode2Driver {
         let generation = service.generation();
         let mut state = StreamState::new(session_id.clone(), mode, session_model, generation);
         thread::Builder::new()
-            .name(format!("waku-opencode2-{session_id}"))
+            .name(format!("insulator-opencode2-{session_id}"))
             .spawn(move || {
                 // The snapshot runs in the same sequential position as the
                 // event loop, before a single frame is decoded. Deferring it
@@ -673,7 +673,7 @@ fn model_key(model: &ModelRef) -> String {
     format!("{}/{}", model.provider_id, model.id)
 }
 
-/// Waku stores a model as `"provider/model"`; v2 wants the two apart, plus the
+/// Insulator stores a model as `"provider/model"`; v2 wants the two apart, plus the
 /// variant that carries reasoning effort (`low`/`high`).
 fn model_ref(model: Option<&str>, reasoning_effort: Option<&str>) -> Option<ModelRef> {
     let (provider_id, id) = model?.split_once('/')?;
@@ -688,7 +688,7 @@ fn model_ref(model: Option<&str>, reasoning_effort: Option<&str>) -> Option<Mode
 
 /// The agent this session runs.
 ///
-/// Waku's access modes do not name an agent — v2 has no read-only product mode
+/// Insulator's access modes do not name an agent — v2 has no read-only product mode
 /// in this tree — so the choice is the user's own preset when the service
 /// still lists it as a selectable primary, and `build` otherwise.
 fn resolve_agent(preset: Option<&str>, agents: &[opencode2_api::AgentInfo]) -> String {
@@ -787,11 +787,11 @@ fn stripped(value: Option<&Value>) -> Option<Value> {
     Some(value)
 }
 
-/// Waku's access mode, applied locally.
+/// Insulator's access mode, applied locally.
 ///
 /// v2 exposes no session-local permission ruleset — `/api/permission/saved` is
 /// a GLOBAL store shared with the user's own terminal — so unlike v1 the mode
-/// cannot be installed on the session. What reaches Waku is whatever the
+/// cannot be installed on the session. What reaches Insulator is whatever the
 /// resolved agent's own rules mark `ask`; the mode only decides who answers.
 fn auto_replies(mode: RuntimeMode, action: &str) -> bool {
     match mode {
@@ -886,7 +886,7 @@ fn handle_command(worker: &Worker, message: DriverCommand, state: &mut StreamSta
                         steer: true,
                     });
                     // The inbox event is authoritative; this 2xx is only the
-                    // fallback for a response Waku never sees.
+                    // fallback for a response Insulator never sees.
                     let _ = events.send(DriverEvent::SteerAccepted { message: text });
                 }
                 Ok(None) => {
@@ -1005,7 +1005,7 @@ fn fork_session(
         .checked_sub(turns_to_remove)
         .ok_or_else(|| {
             anyhow!(
-                "OpenCode 2 has only {} native turns, but Waku needs to remove {turns_to_remove}",
+                "OpenCode 2 has only {} native turns, but Insulator needs to remove {turns_to_remove}",
                 user_messages.len()
             )
         })?;
@@ -2480,7 +2480,7 @@ mod tests {
                 "id": "per_def",
                 "sessionID": "ses_1",
                 "action": "bash",
-                "resources": ["rm -rf /tmp/waku-cache"],
+                "resources": ["rm -rf /tmp/insulator-cache"],
                 "save": ["rm -rf *"]
             }
         }));
@@ -2786,7 +2786,7 @@ mod tests {
         assert_eq!(resolve_agent(Some("plan"), &agents), "plan");
         assert_eq!(resolve_agent(Some("title"), &agents), "build");
         assert_eq!(resolve_agent(None, &agents), "build");
-        // A catalogue Waku could not read must not veto the user's choice.
+        // A catalogue Insulator could not read must not veto the user's choice.
         assert_eq!(resolve_agent(Some("plan"), &[]), "plan");
     }
 
@@ -2862,7 +2862,7 @@ mod tests {
     /// Drives the user's own adopted service through the real driver. Ignored
     /// by default: it needs the OpenCode 2 CLI installed and its background
     /// service healthy. Run with
-    /// `cargo test -p waku-core opencode2_session_against_the_adopted_service -- --ignored`.
+    /// `cargo test -p insulator-core opencode2_session_against_the_adopted_service -- --ignored`.
     #[test]
     #[ignore = "requires a healthy opencode2 background service"]
     fn opencode2_session_against_the_adopted_service() {

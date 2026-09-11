@@ -54,7 +54,7 @@ fn native_override(preference: ThemePreference) -> Option<bool> {
     }
 }
 
-/// Waku's visual language, take two: neutral graphite surfaces in the spirit
+/// Insulator's visual language, take two: neutral graphite surfaces in the spirit
 /// of Cursor — color is reserved for meaning. On macOS the sidebar's semantic
 /// tint is installed as a native layer above Sidebar vibrancy; keeping this
 /// GPUI surface clear avoids incorrectly accumulating the alpha of nested Metal
@@ -112,19 +112,19 @@ pub struct Theme {
 
 impl Theme {
     pub fn current(cx: &App) -> Self {
-        if cx.has_global::<ActiveWakuTheme>() {
-            cx.global::<ActiveWakuTheme>().0
+        if cx.has_global::<ActiveInsulatorTheme>() {
+            cx.global::<ActiveInsulatorTheme>().0
         } else {
             Self::dark()
         }
     }
 
     pub fn from_color_theme(color_theme: ColorTheme) -> Self {
-        // Preserve the original Waku graphite palettes as selectable themes,
+        // Preserve the original Insulator graphite palettes as selectable themes,
         // including their native sidebar, overlay, and semantic colors.
         match color_theme {
-            ColorTheme::WakuLight => return Self::light(),
-            ColorTheme::WakuDark => return Self::dark(),
+            ColorTheme::InsulatorLight => return Self::light(),
+            ColorTheme::InsulatorDark => return Self::dark(),
             _ => {}
         }
         let palette = match color_theme {
@@ -151,7 +151,7 @@ impl Theme {
             ColorTheme::SolarizedLight => (0xfdf6e3, 0xeee8d5, 0xe5dfc9, 0x657b83, 0x586e75, 0x268bd2, 0x859900, 0xb58900, 0xdc322f, false),
             ColorTheme::EverforestDark => (0x2d353b, 0x343f44, 0x3d484d, 0xd3c6aa, 0x859289, 0xa7c080, 0xa7c080, 0xdbbc7f, 0xe67e80, true),
             ColorTheme::EverforestLight => (0xfdf6e3, 0xf4f0d9, 0xe8e4cf, 0x5c6a72, 0x939f91, 0x8da101, 0x8da101, 0xdfa000, 0xf85552, false),
-            ColorTheme::WakuLight | ColorTheme::WakuDark => unreachable!("Waku base themes return above"),
+            ColorTheme::InsulatorLight | ColorTheme::InsulatorDark => unreachable!("Insulator base themes return above"),
         };
         let (canvas, surface, raised, text, muted, accent, success, warning, danger, is_dark) = palette;
         let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(if is_dark { surface } else { surface }).into() };
@@ -283,14 +283,14 @@ impl Theme {
 }
 
 #[derive(Clone, Copy)]
-struct ActiveWakuTheme(Theme);
+struct ActiveInsulatorTheme(Theme);
 
-impl Global for ActiveWakuTheme {}
+impl Global for ActiveInsulatorTheme {}
 
 /// Publish the resolved palette. [`Theme::current`] reads it back from the
 /// global, which is how every view gets its colors.
 fn set_active_theme(theme: Theme, cx: &mut App) {
-    cx.set_global(ActiveWakuTheme(theme));
+    cx.set_global(ActiveInsulatorTheme(theme));
 }
 
 /// Resolve and publish the startup palette, before any window exists.

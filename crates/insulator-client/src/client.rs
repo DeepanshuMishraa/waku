@@ -77,7 +77,7 @@ impl DaemonClient {
             .max_frame_size(Some(MAX_WIRE_MESSAGE_BYTES));
         let (mut socket, _) =
             tungstenite::client::connect_with_config(url.as_str(), Some(config), 3)
-                .context("could not connect to Waku daemon")?;
+                .context("could not connect to Insulator daemon")?;
         set_client_read_timeout(&mut socket, Some(Duration::from_secs(5)))?;
         write_json(
             &mut socket,
@@ -115,9 +115,9 @@ impl DaemonClient {
         });
         let thread_inner = inner.clone();
         std::thread::Builder::new()
-            .name("waku-daemon-client".into())
+            .name("insulator-daemon-client".into())
             .spawn(move || run_client(socket, outgoing_rx, thread_inner))
-            .context("could not start Waku daemon client thread")?;
+            .context("could not start Insulator daemon client thread")?;
         Ok(Self { inner })
     }
 
@@ -167,7 +167,7 @@ impl DaemonClient {
         command: Command,
     ) -> anyhow::Result<ResponsePayload> {
         if self.inner.disconnected.load(Ordering::Acquire) {
-            bail!("Waku daemon is disconnected");
+            bail!("Insulator daemon is disconnected");
         }
         let request_id = Uuid::new_v4();
         let (response, response_rx) = bounded(1);
@@ -185,14 +185,14 @@ impl DaemonClient {
             .is_err()
         {
             self.inner.pending.lock().remove(&request_id);
-            bail!("Waku daemon connection is closed");
+            bail!("Insulator daemon connection is closed");
         }
         match response_rx.recv_timeout(REQUEST_TIMEOUT) {
             Ok(Ok(payload)) => Ok(payload),
             Ok(Err(error)) => Err(anyhow!(error.message)),
             Err(error) => {
                 self.inner.pending.lock().remove(&request_id);
-                Err(anyhow!("timed out waiting for Waku daemon: {error}"))
+                Err(anyhow!("timed out waiting for Insulator daemon: {error}"))
             }
         }
     }
@@ -204,7 +204,7 @@ impl DaemonClient {
         command: Command,
     ) -> anyhow::Result<()> {
         if self.inner.disconnected.load(Ordering::Acquire) {
-            bail!("Waku daemon is disconnected");
+            bail!("Insulator daemon is disconnected");
         }
         self.inner
             .outgoing
@@ -217,7 +217,7 @@ impl DaemonClient {
                 runtime_id,
                 command,
             })))
-            .map_err(|_| anyhow!("Waku daemon connection is closed"))
+            .map_err(|_| anyhow!("Insulator daemon connection is closed"))
     }
 
     pub fn last_sequences(&self) -> Vec<ReplayCursor> {
@@ -245,7 +245,7 @@ fn daemon_url(address: &str) -> anyhow::Result<String> {
     } else {
         format!("ws://{address}")
     };
-    let mut url = url::Url::parse(&normalized).context("Waku daemon address is invalid")?;
+    let mut url = url::Url::parse(&normalized).context("Insulator daemon address is invalid")?;
     url.set_path("/v1");
     url.set_query(None);
     url.set_fragment(None);
@@ -349,7 +349,7 @@ fn run_client(
     let pending = std::mem::take(&mut *inner.pending.lock());
     for (_, response) in pending {
         let _ = response.send(Err(RpcError {
-            message: "Waku daemon disconnected".into(),
+            message: "Insulator daemon disconnected".into(),
         }));
     }
     // Closing the desktop transport is not evidence that a daemon-owned
@@ -411,7 +411,7 @@ fn read_server_message(
         match socket.read()? {
             Message::Text(text) => return Ok(serde_json::from_str(text.as_ref())?),
             Message::Ping(_) => socket.flush()?,
-            Message::Close(_) => bail!("Waku daemon closed during handshake"),
+            Message::Close(_) => bail!("Insulator daemon closed during handshake"),
             _ => {}
         }
     }
@@ -428,8 +428,8 @@ mod tests {
             "ws://127.0.0.1:4312/v1"
         );
         assert_eq!(
-            daemon_url("wss://waku.example.test/old?ignored=1").unwrap(),
-            "wss://waku.example.test/v1"
+            daemon_url("wss://insulator.example.test/old?ignored=1").unwrap(),
+            "wss://insulator.example.test/v1"
         );
     }
 }

@@ -1,7 +1,7 @@
 //! Daemon-wide pool of resident `dsh web` processes.
 //!
 //! A Harness Host owns many sessions and every session supplies its own cwd,
-//! so all Waku tasks using the same executable share one process. Starts and
+//! so all Insulator tasks using the same executable share one process. Starts and
 //! final teardown are serialized so a new task never races a dying Host over
 //! Harness's persistent session store.
 

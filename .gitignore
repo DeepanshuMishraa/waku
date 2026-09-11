@@ -1,5 +1,5 @@
 target
-.waku-cache
+.insulator-cache
 .DS_Store
 *.log
 .env

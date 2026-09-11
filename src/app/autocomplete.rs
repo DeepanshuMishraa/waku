@@ -105,7 +105,7 @@ impl AutocompleteUi {
     }
 }
 
-impl Waku {
+impl Insulator {
     /// Refresh the drawn command and file indexes for the selected session.
     ///
     /// A cache hit lands immediately; a miss starts discovery on the
@@ -160,7 +160,7 @@ impl Waku {
                 }
                 let path = project_path.clone();
                 let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-                cx.spawn(async move |waku, cx| {
+                cx.spawn(async move |insulator, cx| {
                     let commands = cx
                         .background_executor()
                         .spawn(async move {
@@ -178,9 +178,9 @@ impl Waku {
                             }
                         })
                         .await;
-                    waku.update(cx, |waku, cx| {
-                        if waku.slash_commands.fulfill(token, commands) {
-                            waku.refresh_composer_sources(cx);
+                    insulator.update(cx, |insulator, cx| {
+                        if insulator.slash_commands.fulfill(token, commands) {
+                            insulator.refresh_composer_sources(cx);
                             cx.notify();
                         }
                     })
@@ -211,7 +211,7 @@ impl Waku {
                 }
                 let path = project_path.clone();
                 let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-                cx.spawn(async move |waku, cx| {
+                cx.spawn(async move |insulator, cx| {
                     let files = cx
                         .background_executor()
                         .spawn(async move {
@@ -228,9 +228,9 @@ impl Waku {
                             }
                         })
                         .await;
-                    waku.update(cx, |waku, cx| {
-                        if waku.mention_files.fulfill(token, files) {
-                            waku.refresh_composer_sources(cx);
+                    insulator.update(cx, |insulator, cx| {
+                        if insulator.mention_files.fulfill(token, files) {
+                            insulator.refresh_composer_sources(cx);
                             cx.notify();
                         }
                     })

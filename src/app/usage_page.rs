@@ -35,7 +35,7 @@ fn provider_kind(provider: UsageProvider) -> ProviderKind {
     }
 }
 
-impl Waku {
+impl Insulator {
     /// Switch the settings view to `page`, warming the Usage scan when that
     /// is where the user is heading.
     pub(super) fn open_settings_page(&mut self, page: SettingsPage, cx: &mut Context<Self>) {
@@ -1421,7 +1421,7 @@ impl Waku {
         ))
     }
 
-    /// Display name and path caption for a project row: a known Waku
+    /// Display name and path caption for a project row: a known Insulator
     /// project's name when the path is one, else the directory's own name
     /// alongside its complete path, shortening only the home prefix.
     fn usage_project_identity(&self, project: &ProjectSlice) -> (String, Option<String>) {
@@ -2381,12 +2381,12 @@ fn usage_month_strip(
 /// the timeline reads honestly. The card pins its header and scrolls the
 /// rows internally, matching the projects view.
 fn usage_month_list(
-    waku: &Waku,
+    insulator: &Insulator,
     history: &UsageHistory,
     theme: &Theme,
     scroll: &ScrollHandle,
     scrollbar_state: &Rc<ScrollbarState>,
-    cx: &mut Context<Waku>,
+    cx: &mut Context<Insulator>,
 ) -> Div {
     let by_cost = rank_by_cost(history);
     let colors = usage_provider_colors(theme);
@@ -2423,7 +2423,7 @@ fn usage_month_list(
             let last = index + 1 == count;
             rows = rows.child(match history.month(*first_day) {
                 Some(month) => {
-                    let models_control = waku.usage_models_control(
+                    let models_control = insulator.usage_models_control(
                         format!("usage-month-models-{first_day}"),
                         &month.top_models,
                         month.cost_usd,
@@ -2916,17 +2916,17 @@ mod tests {
         let home = Path::new("/Users/developer");
 
         assert_eq!(
-            usage_project_path(Path::new("/Users/developer/dev/waku"), Some(home)),
-            "~/dev/waku"
+            usage_project_path(Path::new("/Users/developer/dev/insulator"), Some(home)),
+            "~/dev/insulator"
         );
         assert_eq!(usage_project_path(home, Some(home)), "~");
         assert_eq!(
-            usage_project_path(Path::new("/Users/developer-2/waku"), Some(home)),
-            "/Users/developer-2/waku"
+            usage_project_path(Path::new("/Users/developer-2/insulator"), Some(home)),
+            "/Users/developer-2/insulator"
         );
         assert_eq!(
-            usage_project_path(Path::new("/Volumes/work/waku"), Some(home)),
-            "/Volumes/work/waku"
+            usage_project_path(Path::new("/Volumes/work/insulator"), Some(home)),
+            "/Volumes/work/insulator"
         );
     }
 

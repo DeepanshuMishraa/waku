@@ -327,7 +327,7 @@ mod tests {
     }
 
     fn repository() -> PathBuf {
-        let root = std::env::temp_dir().join(format!("waku-branch-test-{}", Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-branch-test-{}", Uuid::new_v4()));
         fs::create_dir_all(&root).unwrap();
         run_git(&root, &["init", "-b", "main"]);
         fs::write(root.join("README.md"), "main\n").unwrap();
@@ -336,9 +336,9 @@ mod tests {
             &root,
             &[
                 "-c",
-                "user.name=Waku Tests",
+                "user.name=Insulator Tests",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "-m",
                 "initial",

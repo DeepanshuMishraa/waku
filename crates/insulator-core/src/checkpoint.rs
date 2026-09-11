@@ -13,7 +13,7 @@ use uuid::Uuid;
 
 use crate::model::{Checkpoint, CheckpointFile, CheckpointStatus, unix_time};
 
-const TURN_START_METADATA_PREFIX: &str = "Waku-Turn-Start: ";
+const TURN_START_METADATA_PREFIX: &str = "Insulator-Turn-Start: ";
 const EMPTY_TREE: &str = "4b825dc642cb6eb9a060e54bf8d69288fbee4904";
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -24,15 +24,15 @@ struct TurnStartMetadata {
 }
 
 pub fn checkpoint_ref(session_id: Uuid, turn_count: usize) -> String {
-    format!("refs/waku/session-{session_id}-turn-{turn_count}")
+    format!("refs/insulator/session-{session_id}-turn-{turn_count}")
 }
 
 pub fn turn_start_ref(session_id: Uuid, turn_count: usize) -> String {
-    format!("refs/waku/session-{session_id}-turn-start-{turn_count}")
+    format!("refs/insulator/session-{session_id}-turn-start-{turn_count}")
 }
 
 pub fn turn_diff_base_ref(session_id: Uuid, turn_count: usize) -> String {
-    format!("refs/waku/session-{session_id}-turn-diff-{turn_count}")
+    format!("refs/insulator/session-{session_id}-turn-diff-{turn_count}")
 }
 
 /// Capture the exact workspace state accepted for a turn before its provider
@@ -53,7 +53,7 @@ pub fn capture_turn_start(cwd: &Path, session_id: Uuid, turn_count: usize) -> an
         refs,
     };
     let message = format!(
-        "Waku turn start snapshot\n\n{TURN_START_METADATA_PREFIX}{}",
+        "Insulator turn start snapshot\n\n{TURN_START_METADATA_PREFIX}{}",
         serde_json::to_string(&metadata)?
     );
     let mut parents = Vec::new();
@@ -95,7 +95,7 @@ pub fn capture_turn(cwd: &Path, session_id: Uuid, turn_count: usize) -> anyhow::
     let end_branch = symbolic_head(cwd);
     let end_head = resolve_ref(cwd, "HEAD");
     let end_commit =
-        capture_worktree_commit_from(cwd, end_head.as_deref(), "Waku worktree snapshot", &[])?;
+        capture_worktree_commit_from(cwd, end_head.as_deref(), "Insulator worktree snapshot", &[])?;
     git_output(cwd, ["update-ref", &git_ref, &end_commit])?;
     let files = if turn_count == 0 {
         Vec::new()
@@ -154,7 +154,7 @@ pub fn capture_worktree_commit(cwd: &Path) -> anyhow::Result<String> {
     }
 
     let head = resolve_ref(cwd, "HEAD");
-    capture_worktree_commit_from(cwd, head.as_deref(), "Waku worktree snapshot", &[])
+    capture_worktree_commit_from(cwd, head.as_deref(), "Insulator worktree snapshot", &[])
 }
 
 fn capture_worktree_commit_from(
@@ -179,7 +179,7 @@ fn capture_worktree_commit_from(
     } else {
         cwd.join(common_dir)
     };
-    let temporary_index = common_dir.join(format!("waku-checkpoint-index-{}", Uuid::new_v4()));
+    let temporary_index = common_dir.join(format!("insulator-checkpoint-index-{}", Uuid::new_v4()));
 
     let result = (|| {
         if let Some(head) = head {
@@ -324,11 +324,11 @@ fn virtual_branch_start(
         .map(str::trim)
         .filter(|tree| !tree.is_empty())
         .ok_or_else(|| anyhow!("git merge-tree returned no tree"))?;
-    commit_tree(cwd, tree, "Waku turn diff base", &[])
+    commit_tree(cwd, tree, "Insulator turn diff base", &[])
 }
 
 fn empty_tree_commit(cwd: &Path) -> anyhow::Result<String> {
-    commit_tree(cwd, EMPTY_TREE, "Waku empty turn diff base", &[])
+    commit_tree(cwd, EMPTY_TREE, "Insulator empty turn diff base", &[])
 }
 
 fn commit_tree(
@@ -346,7 +346,7 @@ fn commit_tree(
     } else {
         cwd.join(common_dir)
     };
-    let temporary_index = common_dir.join(format!("waku-checkpoint-index-{}", Uuid::new_v4()));
+    let temporary_index = common_dir.join(format!("insulator-checkpoint-index-{}", Uuid::new_v4()));
     let mut arguments = vec![
         "commit-tree".to_owned(),
         tree.to_owned(),
@@ -523,7 +523,7 @@ struct SessionCheckpointRefs {
 
 /// Every checkpoint ref for `session_id`, resolved in one `git for-each-ref`.
 fn session_checkpoint_ref_commits(cwd: &Path, session_id: Uuid) -> SessionCheckpointRefs {
-    let prefix = format!("refs/waku/session-{session_id}-");
+    let prefix = format!("refs/insulator/session-{session_id}-");
     git_output(
         cwd,
         [
@@ -748,9 +748,9 @@ where
     if identity {
         command
             .env("GIT_AUTHOR_NAME", "Insulator")
-            .env("GIT_AUTHOR_EMAIL", "waku@localhost")
+            .env("GIT_AUTHOR_EMAIL", "insulator@localhost")
             .env("GIT_COMMITTER_NAME", "Insulator")
-            .env("GIT_COMMITTER_EMAIL", "waku@localhost");
+            .env("GIT_COMMITTER_EMAIL", "insulator@localhost");
     }
     let output = command.output().context("failed to execute git")?;
     if output.status.success() {
@@ -793,11 +793,11 @@ mod tests {
     }
 
     fn diverged_repository() -> PathBuf {
-        let directory = std::env::temp_dir().join(format!("waku-checkpoints-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-checkpoints-{}", Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
         git_ok(&directory, &["init", "--quiet", "--initial-branch=main"]);
-        git_ok(&directory, &["config", "user.name", "Waku Test"]);
-        git_ok(&directory, &["config", "user.email", "waku@example.com"]);
+        git_ok(&directory, &["config", "user.name", "Insulator Test"]);
+        git_ok(&directory, &["config", "user.email", "insulator@example.com"]);
         fs::write(directory.join("shared.txt"), "shared\n").unwrap();
         git_ok(&directory, &["add", "shared.txt"]);
         git_ok(&directory, &["commit", "--quiet", "-m", "baseline"]);
@@ -817,7 +817,7 @@ mod tests {
 
     #[test]
     fn session_turn_refs_lists_the_sessions_checkpoints_in_one_call() {
-        let directory = std::env::temp_dir().join(format!("waku-checkpoints-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-checkpoints-{}", Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
         git_ok(&directory, &["init", "--quiet"]);
         fs::write(directory.join("tracked.txt"), "baseline\n").unwrap();
@@ -826,9 +826,9 @@ mod tests {
             &directory,
             &[
                 "-c",
-                "user.name=Waku Test",
+                "user.name=Insulator Test",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "--quiet",
                 "-m",
@@ -857,7 +857,7 @@ mod tests {
     /// are worth pinning down.
     #[test]
     fn refs_are_deleted_and_copied_in_batches() {
-        let directory = std::env::temp_dir().join(format!("waku-checkpoints-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-checkpoints-{}", Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
         git_ok(&directory, &["init", "--quiet"]);
         fs::write(directory.join("tracked.txt"), "baseline\n").unwrap();
@@ -866,9 +866,9 @@ mod tests {
             &directory,
             &[
                 "-c",
-                "user.name=Waku Test",
+                "user.name=Insulator Test",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "--quiet",
                 "-m",
@@ -932,7 +932,7 @@ mod tests {
 
     #[test]
     fn captures_diffs_and_restores_tracked_and_untracked_files() {
-        let directory = std::env::temp_dir().join(format!("waku-checkpoints-{}", Uuid::new_v4()));
+        let directory = std::env::temp_dir().join(format!("insulator-checkpoints-{}", Uuid::new_v4()));
         fs::create_dir_all(&directory).unwrap();
         git_ok(&directory, &["init", "--quiet"]);
         git_ok(&directory, &["config", "core.autocrlf", "false"]);
@@ -942,9 +942,9 @@ mod tests {
             &directory,
             &[
                 "-c",
-                "user.name=Waku Test",
+                "user.name=Insulator Test",
                 "-c",
-                "user.email=waku@example.com",
+                "user.email=insulator@example.com",
                 "commit",
                 "--quiet",
                 "-m",

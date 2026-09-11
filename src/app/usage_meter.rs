@@ -30,7 +30,7 @@ const PLAN_USAGE_REFRESH_GROK: Duration = Duration::from_secs(600);
 const PLAN_USAGE_REFRESH_STALE: Duration = Duration::from_secs(30);
 const PLAN_USAGE_RETRY: Duration = Duration::from_secs(90);
 
-impl Waku {
+impl Insulator {
     /// Start background fetches of any plan meters whose snapshot is due.
     /// The slow maintenance clock and explicit panel-open requests call this;
     /// guards keep it to one in-flight fetch per provider.

@@ -1,4 +1,4 @@
-//! Immutable, render-ready Git diffs for Waku's Review surface.
+//! Immutable, render-ready Git diffs for Insulator's Review surface.
 //!
 //! The daemon captures Git output. This desktop module only parses and expands
 //! that returned data off the UI thread; a frame only indexes stored rows.

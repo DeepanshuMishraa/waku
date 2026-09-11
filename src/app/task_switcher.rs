@@ -1,4 +1,4 @@
-//! Ctrl-Tab switching across Waku tasks.
+//! Ctrl-Tab switching across Insulator tasks.
 //!
 //! The task order is snapshotted when Control-Tab opens the overlay. Repeated
 //! presses move only the highlight; releasing Control commits once, so a
@@ -8,15 +8,11 @@
 
 use super::*;
 
-const CARD_WIDTH: f32 = 194.0;
-const CARD_HEIGHT: f32 = 169.0;
-const CARD_INSET: f32 = 9.0;
-const CARD_BOTTOM_INSET: f32 = 14.0;
-const PREVIEW_WIDTH: f32 = 176.0;
-const PREVIEW_HEIGHT: f32 = 119.0;
-const PREVIEW_TITLE_GAP: f32 = 9.0;
-const GRID_INSET: f32 = 8.0;
-const CONTAINER_RADIUS: f32 = 26.0;
+const CARD_WIDTH: f32 = 224.0;
+const CARD_HEIGHT: f32 = 138.0;
+const CARD_GAP: f32 = 8.0;
+const GRID_INSET: f32 = 12.0;
+const CONTAINER_RADIUS: f32 = 18.0;
 const MAX_COLUMNS: usize = 5;
 const MAX_ROWS: usize = 2;
 const MAX_TASKS: usize = MAX_COLUMNS * MAX_ROWS;
@@ -47,8 +43,8 @@ impl TaskSwitcherUi {
             recent_session_ids: Vec::new(),
             focus,
             previous_focus: None,
-            list: ListState::new(0, ListAlignment::Top, px(CARD_HEIGHT * 2.0))
-                .with_uniform_item_height(px(CARD_HEIGHT)),
+            list: ListState::new(0, ListAlignment::Top, px((CARD_HEIGHT + CARD_GAP) * 2.0))
+                .with_uniform_item_height(px(CARD_HEIGHT + CARD_GAP)),
             columns: 1,
             generation: 0,
         }
@@ -85,7 +81,7 @@ impl TaskSwitcherUi {
 
     fn reset_list(&self) {
         let rows = self.ordered_session_ids.len().div_ceil(self.columns.max(1));
-        self.list.reset_with_uniform_height(rows, px(CARD_HEIGHT));
+        self.list.reset_with_uniform_height(rows, px(CARD_HEIGHT + CARD_GAP));
     }
 
     fn reveal_highlight(&self) {
@@ -159,7 +155,7 @@ fn initial_highlight_index(
 fn task_switcher_column_count(count: usize, viewport_width: f32) -> usize {
     let count = count.min(MAX_TASKS);
     let usable = (viewport_width - WINDOW_MARGIN - GRID_INSET * 2.0).max(CARD_WIDTH);
-    let fitting = (usable / CARD_WIDTH).floor() as usize;
+    let fitting = ((usable + CARD_GAP) / (CARD_WIDTH + CARD_GAP)).floor() as usize;
     let minimum_for_two_rows = count.div_ceil(MAX_ROWS);
     count
         .min(fitting.max(minimum_for_two_rows).max(1))
@@ -168,7 +164,7 @@ fn task_switcher_column_count(count: usize, viewport_width: f32) -> usize {
 
 fn task_switcher_grid_height(count: usize, columns: usize, viewport_height: f32) -> f32 {
     let rows = count.div_ceil(columns.max(1));
-    let content_height = rows as f32 * CARD_HEIGHT + GRID_INSET * 2.0;
+    let content_height = rows as f32 * (CARD_HEIGHT + CARD_GAP) + GRID_INSET * 2.0 - CARD_GAP;
     content_height.min((viewport_height - WINDOW_MARGIN).max(CARD_HEIGHT + GRID_INSET * 2.0))
 }
 
@@ -200,29 +196,14 @@ fn task_switcher_status_icon(status: SessionStatus) -> Option<&'static str> {
     }
 }
 
-impl Waku {
-    pub(crate) fn cycle_tabs_or_tasks(
-        &mut self,
-        reverse: bool,
-        window: &mut Window,
-        cx: &mut Context<Self>,
-    ) {
-        if self.task_switcher.open {
-            self.cycle_task_switcher(reverse, window, cx);
-        } else if self.main_tabs.len() > 1 {
-            self.cycle_main_tabs(reverse, cx);
-        } else {
-            self.cycle_task_switcher(reverse, window, cx);
-        }
-    }
-
+impl Insulator {
     pub(super) fn switch_task_forward_action(
         &mut self,
         _: &SwitchTaskForward,
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cycle_tabs_or_tasks(false, window, cx);
+        self.cycle_task_switcher(false, window, cx);
     }
 
     pub(super) fn switch_task_backward_action(
@@ -231,7 +212,7 @@ impl Waku {
         window: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        self.cycle_tabs_or_tasks(true, window, cx);
+        self.cycle_task_switcher(true, window, cx);
     }
 
     pub(super) fn select_first_task_action(
@@ -286,7 +267,7 @@ impl Waku {
         }
     }
 
-    fn cycle_task_switcher(&mut self, reverse: bool, window: &mut Window, cx: &mut Context<Self>) {
+    pub(crate) fn cycle_task_switcher(&mut self, reverse: bool, window: &mut Window, cx: &mut Context<Self>) {
         if !self.task_switcher.open {
             self.open_task_switcher(reverse, window, cx);
             return;
@@ -466,10 +447,11 @@ impl Waku {
         let start = row_index.saturating_mul(columns);
         let end = (start + columns).min(self.task_switcher.ordered_session_ids.len());
         div()
-            .h(px(CARD_HEIGHT))
+            .h(px(CARD_HEIGHT + CARD_GAP))
             .w_full()
             .flex_none()
             .flex()
+            .gap(px(CARD_GAP))
             .children(
                 self.task_switcher.ordered_session_ids[start..end]
                     .iter()
@@ -510,107 +492,14 @@ impl Waku {
             .filter(|model| !model.is_empty())
             .unwrap_or_else(|| provider.display_name());
 
-        let preview = div()
-            .w(px(PREVIEW_WIDTH))
-            .h(px(PREVIEW_HEIGHT))
-            .flex_none()
-            .p(px(12.0))
-            .rounded(px(12.0))
-            .border_1()
-            .border_color(theme.border_strong)
-            .bg(theme.inset)
-            .flex()
-            .flex_col()
-            .child(
-                div()
-                    .h(px(18.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(7.0))
-                    .child(provider_mark(&theme, provider, 14.0, provider_color(&theme, provider)))
-                    .child(
-                        div()
-                            .flex_1()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(sp(12.5))
-                            .font_weight(FontWeight::MEDIUM)
-                            .text_color(theme.text_secondary)
-                            .child(provider.display_name()),
-                    )
-                    .when_some(status_icon, |row, icon_path| {
-                        if icon_path == "icons/loader-circle.svg" {
-                            row.child(dot_matrix_loader(
-                                status_color(&theme, session.status),
-                                12.0,
-                            ))
-                        } else {
-                            row.child(icon(icon_path, 12.0, status_color(&theme, session.status)))
-                        }
-                    }),
-            )
-            .child(
-                div()
-                    .flex_1()
-                    .min_h_0()
-                    .flex()
-                    .flex_col()
-                    .justify_center()
-                    .gap(px(6.0))
-                    .child(
-                        div()
-                            .flex()
-                            .items_center()
-                            .gap(px(7.0))
-                            .child(icon("icons/folder.svg", 16.0, theme.text_tertiary))
-                            .child(
-                                div()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_size(sp(14.0))
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .text_color(theme.text)
-                                    .child(project_name),
-                            ),
-                    )
-                    .child(
-                        div()
-                            .min_w_0()
-                            .truncate()
-                            .text_size(sp(12.5))
-                            .text_color(theme.text_tertiary)
-                            .child(model.to_owned()),
-                    ),
-            )
-            .child(
-                div()
-                    .h(px(16.0))
-                    .flex_none()
-                    .flex()
-                    .items_center()
-                    .gap(px(5.0))
-                    .when_some(branch.clone(), |row, branch| {
-                        row.child(icon("icons/git-branch.svg", 11.5, theme.text_tertiary))
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_w_0()
-                                    .truncate()
-                                    .text_size(sp(12.5))
-                                    .text_color(theme.text_tertiary)
-                                    .child(branch),
-                            )
-                    })
-                    .when(branch.is_none(), |row| row.child(div().flex_1()))
-                    .child(
-                        div()
-                            .flex_none()
-                            .text_size(sp(12.5))
-                            .text_color(theme.text_ghost)
-                            .child(time),
-                    ),
-            );
+        let status_element = match status_icon {
+            Some("icons/loader-circle.svg") => Some(dot_matrix_loader(
+                status_color(&theme, session.status),
+                11.0,
+            )),
+            Some(path) => Some(icon(path, 11.0, status_color(&theme, session.status)).into_any_element()),
+            None => None,
+        };
 
         div()
             .id(SharedString::from(format!(
@@ -619,16 +508,29 @@ impl Waku {
             .w(px(CARD_WIDTH))
             .h(px(CARD_HEIGHT))
             .flex_none()
-            .px(px(CARD_INSET))
-            .pt(px(CARD_INSET))
-            .pb(px(CARD_BOTTOM_INSET))
-            .rounded(px(16.0))
+            .p(px(12.0))
+            .rounded(px(12.0))
+            .border_1()
+            .when(highlighted, |card| {
+                card.border_color(theme.accent)
+                    .bg(theme.surface)
+                    .shadow_md()
+            })
+            .when(!highlighted, |card| {
+                card.border_color(theme.border)
+                    .bg(theme.inset)
+            })
+            .hover(|card| {
+                if !highlighted {
+                    card.border_color(theme.border_strong).bg(theme.overlay)
+                } else {
+                    card
+                }
+            })
+            .cursor_default()
             .flex()
             .flex_col()
-            .gap(px(PREVIEW_TITLE_GAP))
-            .cursor_default()
-            .when(highlighted, |card| card.bg(theme.overlay_strong))
-            .hover(|card| card.bg(theme.overlay))
+            .justify_between()
             .on_mouse_move(cx.listener(move |this, _, _, cx| {
                 let Some(index) = this
                     .task_switcher
@@ -648,32 +550,120 @@ impl Waku {
                     cx.stop_propagation();
                 }
             }))
-            .child(preview)
+            // Top row: Provider + Status + Relative Time
             .child(
                 div()
                     .h(px(18.0))
                     .flex_none()
                     .flex()
                     .items_center()
-                    .gap(px(8.0))
-                    .child(provider_mark(&theme, provider, 16.0, if highlighted {
-                            provider_color(&theme, provider)
-                        } else {
-                            theme.text_secondary
-                        }))
+                    .justify_between()
                     .child(
                         div()
+                            .flex()
+                            .items_center()
+                            .gap(px(6.0))
                             .min_w_0()
-                            .flex_1()
-                            .truncate()
-                            .text_size(sp(14.0))
+                            .child(provider_mark(&theme, provider, 13.0, provider_color(&theme, provider)))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(sp(12.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(if highlighted {
+                                        theme.text
+                                    } else {
+                                        theme.text_secondary
+                                    })
+                                    .child(provider.display_name()),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.0))
+                            .flex_none()
+                            .when_some(status_element, |row, el| row.child(el))
+                            .child(
+                                div()
+                                    .text_size(sp(11.0))
+                                    .text_color(theme.text_ghost)
+                                    .child(time),
+                            ),
+                    ),
+            )
+            // Middle: Task Title
+            .child(
+                div()
+                    .flex_1()
+                    .min_h_0()
+                    .flex()
+                    .flex_col()
+                    .justify_center()
+                    .py(px(4.0))
+                    .child(
+                        div()
+                            .line_clamp(2)
+                            .text_size(sp(13.5))
                             .font_weight(FontWeight::MEDIUM)
-                            .text_color(if highlighted {
-                                theme.text
-                            } else {
-                                theme.text_secondary
-                            })
+                            .text_color(theme.text)
                             .child(task_switcher_title(session)),
+                    ),
+            )
+            // Bottom row: Project / Branch & Model badge
+            .child(
+                div()
+                    .h(px(20.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .justify_between()
+                    .gap(px(6.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap(px(5.0))
+                            .child(icon("icons/folder.svg", 12.0, theme.text_tertiary))
+                            .child(
+                                div()
+                                    .truncate()
+                                    .text_size(sp(11.5))
+                                    .text_color(theme.text_tertiary)
+                                    .child(project_name),
+                            )
+                            .when_some(branch, |row, branch| {
+                                row.child(icon("icons/git-branch.svg", 11.0, theme.text_ghost))
+                                    .child(
+                                        div()
+                                            .truncate()
+                                            .text_size(sp(11.5))
+                                            .text_color(theme.text_ghost)
+                                            .child(branch),
+                                    )
+                            }),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .px(px(6.0))
+                            .py(px(1.5))
+                            .rounded(px(4.0))
+                            .bg(if highlighted {
+                                theme.raised
+                            } else {
+                                theme.surface
+                            })
+                            .border_1()
+                            .border_color(theme.border)
+                            .max_w(px(85.0))
+                            .truncate()
+                            .text_size(sp(10.5))
+                            .text_color(theme.text_secondary)
+                            .child(model.to_owned()),
                     ),
             )
             .into_any_element()
@@ -695,7 +685,9 @@ impl Waku {
         if rows == 0 {
             return None;
         }
-        let container_width = columns as f32 * CARD_WIDTH + GRID_INSET * 2.0;
+        let container_width = columns as f32 * CARD_WIDTH
+            + (columns.saturating_sub(1)) as f32 * CARD_GAP
+            + GRID_INSET * 2.0;
         let container_height =
             task_switcher_grid_height(count, columns, f32::from(window.viewport_size().height));
         let list_state = self.task_switcher.list.clone();
@@ -714,13 +706,20 @@ impl Waku {
         .size_full();
 
         let theme = Theme::current(cx);
+        let scrim = if theme.is_dark {
+            gpui::hsla(0.0, 0.0, 0.0, 0.40)
+        } else {
+            gpui::hsla(0.0, 0.0, 0.0, 0.18)
+        };
         let card = div()
             .id("task-switcher")
             .key_context("TaskSwitcher")
             .track_focus(&focus)
             .w(px(container_width))
             .h(px(container_height))
-            .p(px(GRID_INSET))
+            .pt(px(GRID_INSET))
+            .px(px(GRID_INSET))
+            .pb(px(GRID_INSET - CARD_GAP))
             .overflow_hidden()
             .rounded(px(CONTAINER_RADIUS))
             .border_1()
@@ -734,6 +733,7 @@ impl Waku {
             .absolute()
             .inset_0()
             .occlude()
+            .bg(scrim)
             .flex()
             .items_center()
             .justify_center()

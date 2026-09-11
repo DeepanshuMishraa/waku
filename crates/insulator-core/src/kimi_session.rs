@@ -4,7 +4,7 @@
 //! key, a quota wall — only in its own per-session wire log. Over ACP the same
 //! turn simply returns `end_turn` carrying no content at all, with nothing on
 //! stderr and no JSON-RPC error, so a client that trusts the protocol shows an
-//! empty answer and calls it a success. Reading the wire log is what lets Waku
+//! empty answer and calls it a success. Reading the wire log is what lets Insulator
 //! name the real cause instead.
 
 use std::collections::HashSet;
@@ -141,7 +141,7 @@ fn list_provider_sessions_in(home: &Path, limit: usize) -> Vec<ProviderSessionSu
 /// Read Kimi's provider-owned state files without opening any recorded cwd.
 /// ACP `session/list` is workspace-scoped and makes the agent inspect each
 /// historical project, which can trigger macOS Desktop/Downloads/Documents
-/// permission dialogs just by opening Waku's Resume picker.
+/// permission dialogs just by opening Insulator's Resume picker.
 pub fn list_provider_sessions(limit: usize) -> anyhow::Result<Vec<ProviderSessionSummary>> {
     if limit == 0 {
         return Ok(Vec::new());
@@ -191,7 +191,7 @@ fn turn_failure_in(
 }
 
 /// Sessions are filed under a per-workspace directory whose name carries a
-/// hash Waku cannot reproduce, so the session id is matched by scanning.
+/// hash Insulator cannot reproduce, so the session id is matched by scanning.
 fn wire_log(home: &Path, session_id: &str) -> Option<PathBuf> {
     if session_id.is_empty() || session_id.contains(std::path::MAIN_SEPARATOR) {
         return None;
@@ -306,10 +306,10 @@ mod tests {
 
     #[test]
     fn lists_kimi_owned_state_without_opening_the_recorded_workspace() {
-        let root = std::env::temp_dir().join(format!("waku-kimi-catalog-{}", uuid::Uuid::new_v4()));
+        let root = std::env::temp_dir().join(format!("insulator-kimi-catalog-{}", uuid::Uuid::new_v4()));
         let session = root.join("sessions/wd-protected/session-native");
         let recorded_cwd = std::env::temp_dir().join(format!(
-            "waku-kimi-protected-workspace-{}",
+            "insulator-kimi-protected-workspace-{}",
             uuid::Uuid::new_v4()
         ));
         fs::create_dir_all(&session).unwrap();

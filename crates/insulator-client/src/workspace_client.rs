@@ -21,7 +21,7 @@ impl WorkspaceClient {
             .request(Uuid::nil(), Uuid::nil(), Command::Workspace { operation })?
         {
             ResponsePayload::Workspace { result } => Ok(result),
-            _ => anyhow::bail!("Waku daemon returned an invalid workspace response"),
+            _ => anyhow::bail!("Insulator daemon returned an invalid workspace response"),
         }
     }
 
@@ -35,7 +35,7 @@ impl WorkspaceClient {
             Command::ForkProviderSession { request },
         )? {
             ResponsePayload::ProviderSessionForked { result } => Ok(result),
-            _ => anyhow::bail!("Waku daemon returned an invalid provider-fork response"),
+            _ => anyhow::bail!("Insulator daemon returned an invalid provider-fork response"),
         }
     }
 }

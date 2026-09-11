@@ -1,6 +1,6 @@
 #![recursion_limit = "256"]
 
-//! Waku's shared, versioned wire contract.
+//! Insulator's shared, versioned wire contract.
 //!
 //! This crate contains serializable data only. It performs no provider,
 //! database, workspace, Git, attachment, or transport I/O, so native and web

@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
 use ts_rs::TS;
 
-pub const ATTACHMENT_SCHEME: &str = "waku-attachment:";
+pub const ATTACHMENT_SCHEME: &str = "insulator-attachment:";
 pub const MAX_ATTACHMENT_BYTES: usize = 32 * 1024 * 1024;
 pub const MAX_ATTACHMENT_FILES: usize = 4_096;
 

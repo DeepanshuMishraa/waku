@@ -17,7 +17,7 @@ fn play_asset(bytes: &'static [u8], name: &'static str) {
     // Audio device setup and playback may touch platform services, so keep it
     // off the GPUI thread. The stream must stay alive until the sink finishes.
     std::thread::Builder::new()
-        .name(format!("waku-audio-{name}"))
+        .name(format!("insulator-audio-{name}"))
         .spawn(move || {
             let Ok(stream) = rodio::OutputStreamBuilder::open_default_stream() else {
                 return;

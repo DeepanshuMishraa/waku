@@ -9,7 +9,7 @@ use serde::{Deserialize, Serialize};
 use super::*;
 
 actions!(
-    waku_project_dialog,
+    insulator_project_dialog,
     [
         ConfirmGithubProject,
         DismissProjectDialog,
@@ -90,7 +90,7 @@ fn default_clone_location() -> PathBuf {
     }
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn open_project_source_dialog(
         &mut self,
         window: &mut Window,
@@ -141,7 +141,7 @@ impl Waku {
         });
 
         // Fetch recent repos in background
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let repos = cx
                 .background_executor()
                 .spawn(async move {
@@ -165,9 +165,9 @@ impl Waku {
                 })
                 .await;
 
-            let _ = waku.update(cx, |waku, cx| {
+            let _ = insulator.update(cx, |insulator, cx| {
                 if let Some(ProjectDialogState::Github { recent_repos, .. }) =
-                    waku.project_dialog.as_mut()
+                    insulator.project_dialog.as_mut()
                 {
                     *recent_repos = repos;
                     cx.notify();
@@ -255,13 +255,13 @@ impl Waku {
         let window_handle = window.window_handle();
         let url_to_clone = repository_url.clone();
 
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             // First show "Fetching repository…" briefly to indicate verification phase
             cx.background_executor()
                 .timer(Duration::from_millis(400))
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                if let Some(ProjectDialogState::Github { stage, .. }) = waku.project_dialog.as_mut()
+            let _ = insulator.update(cx, |insulator, cx| {
+                if let Some(ProjectDialogState::Github { stage, .. }) = insulator.project_dialog.as_mut()
                 {
                     *stage = CloneStage::Cloning;
                     cx.notify();
@@ -282,15 +282,15 @@ impl Waku {
                 })
                 .await;
 
-            let focus = waku.update(cx, |waku, cx| match result {
+            let focus = insulator.update(cx, |insulator, cx| match result {
                 Ok(path) => {
-                    waku.project_dialog = None;
-                    waku.add_project_path(path, cx);
-                    Some(waku.composer_focus(cx))
+                    insulator.project_dialog = None;
+                    insulator.add_project_path(path, cx);
+                    Some(insulator.composer_focus(cx))
                 }
                 Err(message) => {
                     if let Some(ProjectDialogState::Github { stage, error, .. }) =
-                        waku.project_dialog.as_mut()
+                        insulator.project_dialog.as_mut()
                     {
                         *stage = CloneStage::Idle;
                         *error = Some(message);
@@ -363,16 +363,16 @@ impl Waku {
                                     theme,
                                 )
                                 .on_click(move |_, window, cx| {
-                                    let _ = local_click.update(cx, |waku, cx| {
-                                        waku.choose_local_project(window, cx)
+                                    let _ = local_click.update(cx, |insulator, cx| {
+                                        insulator.choose_local_project(window, cx)
                                     });
                                 })
                                 .on_key_down(
                                     move |event: &KeyDownEvent, window, cx| {
                                         if matches!(event.keystroke.key.as_str(), "enter" | "space")
                                         {
-                                            let _ = local_key.update(cx, |waku, cx| {
-                                                waku.choose_local_project(window, cx)
+                                            let _ = local_key.update(cx, |insulator, cx| {
+                                                insulator.choose_local_project(window, cx)
                                             });
                                             cx.stop_propagation();
                                         }
@@ -389,16 +389,16 @@ impl Waku {
                                     theme,
                                 )
                                 .on_click(move |_, window, cx| {
-                                    let _ = github_click.update(cx, |waku, cx| {
-                                        waku.open_github_project_dialog(window, cx)
+                                    let _ = github_click.update(cx, |insulator, cx| {
+                                        insulator.open_github_project_dialog(window, cx)
                                     });
                                 })
                                 .on_key_down(
                                     move |event: &KeyDownEvent, window, cx| {
                                         if matches!(event.keystroke.key.as_str(), "enter" | "space")
                                         {
-                                            let _ = github_key.update(cx, |waku, cx| {
-                                                waku.open_github_project_dialog(window, cx)
+                                            let _ = github_key.update(cx, |insulator, cx| {
+                                                insulator.open_github_project_dialog(window, cx)
                                             });
                                             cx.stop_propagation();
                                         }
@@ -540,12 +540,12 @@ impl Waku {
                                     .on_click(move |_, _, cx| {
                                         let repo_url = repo_url.clone();
                                         let repo_name = repo_name.clone();
-                                        let _ = item_weak.update(cx, move |waku, cx| {
+                                        let _ = item_weak.update(cx, move |insulator, cx| {
                                             if let Some(ProjectDialogState::Github {
                                                 url,
                                                 selected_repo,
                                                 ..
-                                            }) = waku.project_dialog.as_mut()
+                                            }) = insulator.project_dialog.as_mut()
                                             {
                                                 *selected_repo = Some(repo_name);
                                                 url.update(cx, |input, cx| {
@@ -638,8 +638,8 @@ impl Waku {
                                     button
                                         .hover(|button| button.opacity(0.9))
                                         .on_click(move |_, window, cx| {
-                                            let _ = button_weak.update(cx, |waku, cx| {
-                                                waku.clone_github_project(window, cx)
+                                            let _ = button_weak.update(cx, |insulator, cx| {
+                                                insulator.clone_github_project(window, cx)
                                             });
                                         })
                                         .on_key_down(move |event: &KeyDownEvent, window, cx| {
@@ -647,8 +647,8 @@ impl Waku {
                                                 event.keystroke.key.as_str(),
                                                 "enter" | "space"
                                             ) {
-                                                let _ = button_key_weak.update(cx, |waku, cx| {
-                                                    waku.clone_github_project(window, cx)
+                                                let _ = button_key_weak.update(cx, |insulator, cx| {
+                                                    insulator.clone_github_project(window, cx)
                                                 });
                                                 cx.stop_propagation();
                                             }
@@ -681,11 +681,11 @@ impl Waku {
         let layer = div()
             .id("project-dialog-scrim")
             .key_context(DIALOG_CONTEXT)
-            .on_action(cx.listener(|waku, _: &DismissProjectDialog, window, cx| {
-                waku.close_project_dialog(window, cx)
+            .on_action(cx.listener(|insulator, _: &DismissProjectDialog, window, cx| {
+                insulator.close_project_dialog(window, cx)
             }))
-            .on_action(cx.listener(|waku, _: &ConfirmGithubProject, window, cx| {
-                waku.clone_github_project(window, cx)
+            .on_action(cx.listener(|insulator, _: &ConfirmGithubProject, window, cx| {
+                insulator.clone_github_project(window, cx)
             }))
             .absolute()
             .inset_0()
@@ -697,7 +697,7 @@ impl Waku {
             .p(px(24.0))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|waku, _, window, cx| waku.close_project_dialog(window, cx)),
+                cx.listener(|insulator, _, window, cx| insulator.close_project_dialog(window, cx)),
             )
             .child(
                 div()
@@ -873,8 +873,8 @@ impl Waku {
                             .text_color(theme.text_secondary)
                             .child("Cancel")
                             .on_click(move |_, window, cx| {
-                                let _ = cancel_weak.update(cx, |waku, cx| {
-                                    waku.close_rename_dialog(window, cx);
+                                let _ = cancel_weak.update(cx, |insulator, cx| {
+                                    insulator.close_rename_dialog(window, cx);
                                 });
                             }),
                     )
@@ -895,8 +895,8 @@ impl Waku {
                             .text_color(theme.on_inverse)
                             .child("Rename")
                             .on_click(move |_, window, cx| {
-                                let _ = confirm_weak.update(cx, |waku, cx| {
-                                    waku.confirm_rename(window, cx);
+                                let _ = confirm_weak.update(cx, |insulator, cx| {
+                                    insulator.confirm_rename(window, cx);
                                 });
                             }),
                     ),
@@ -905,11 +905,11 @@ impl Waku {
         let layer = div()
             .id("rename-dialog-scrim")
             .key_context(RENAME_DIALOG_CONTEXT)
-            .on_action(cx.listener(|waku, _: &DismissRename, window, cx| {
-                waku.close_rename_dialog(window, cx)
+            .on_action(cx.listener(|insulator, _: &DismissRename, window, cx| {
+                insulator.close_rename_dialog(window, cx)
             }))
             .on_action(
-                cx.listener(|waku, _: &ConfirmRename, window, cx| waku.confirm_rename(window, cx)),
+                cx.listener(|insulator, _: &ConfirmRename, window, cx| insulator.confirm_rename(window, cx)),
             )
             .absolute()
             .inset_0()
@@ -921,7 +921,7 @@ impl Waku {
             .p(px(24.0))
             .on_mouse_down(
                 MouseButton::Left,
-                cx.listener(|waku, _, window, cx| waku.close_rename_dialog(window, cx)),
+                cx.listener(|insulator, _, window, cx| insulator.close_rename_dialog(window, cx)),
             )
             .child(
                 div()

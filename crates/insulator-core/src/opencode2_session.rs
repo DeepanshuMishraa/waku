@@ -17,7 +17,7 @@
 //!   Verified against beta-19192: it replaces the user's prompt, the
 //!   assistant's prose, reasoning, tool input, tool output and tool metadata
 //!   alike with `[redacted:…:msg_…]` placeholders, so importing a sanitized
-//!   export yields a transcript of nothing but placeholders. Waku exports
+//!   export yields a transcript of nothing but placeholders. Insulator exports
 //!   unsanitized and drops the private parts itself — see
 //!   [`strip_provider_state`].
 //! * One agent STEP is one assistant message. A three-tool turn is four
@@ -44,7 +44,7 @@ use crate::opencode2_service;
 /// Matches `acp_session`: a catalog that needs more than this many pages is
 /// either enormous or looping, and both deserve the same bound.
 const MAX_PAGES: usize = 20;
-/// The service caps nothing, so the page size is Waku's choice. Large enough
+/// The service caps nothing, so the page size is Insulator's choice. Large enough
 /// that an ordinary catalog is one round trip.
 const PAGE_SIZE: usize = 100;
 /// `GET /api/session` lists subagent children too. The literal string `null`
@@ -168,7 +168,7 @@ pub fn provider_session_history(
 /// memory: a single reasoning blob runs to multiple kilobytes, and the tool
 /// state carries whole tool inputs and outputs an imported transcript never
 /// renders. Doing it unconditionally means a change in what the server
-/// chooses to redact cannot leak anything into Waku.
+/// chooses to redact cannot leak anything into Insulator.
 fn strip_provider_state(messages: &mut [MessageInfo]) {
     for message in messages {
         let MessageInfo::Assistant { content, .. } = message else {
@@ -185,7 +185,7 @@ fn strip_provider_state(messages: &mut [MessageInfo]) {
     }
 }
 
-/// Projects stored messages onto Waku's turn model.
+/// Projects stored messages onto Insulator's turn model.
 ///
 /// Only `user` and assistant TEXT survive: reasoning is dropped from an
 /// imported transcript the way `acp_session` drops it, and every other message
@@ -292,7 +292,7 @@ pub fn fork_session_at_turn(
 ///
 /// Deliberately NOT built on `POST …/revert/stage|commit|clear`: revert
 /// mutates the same session, writes files, and answers 409 `SessionBusyError`
-/// while a turn is running, whereas Waku's contract here is "drop the last N
+/// while a turn is running, whereas Insulator's contract here is "drop the last N
 /// turns and hand back a cursor for the continuing conversation". Revert is
 /// real headroom — it survives reconnect via `Session.Info.revert` and carries
 /// per-file patches — and wants its own affordance rather than this one.
@@ -372,7 +372,7 @@ fn fork_boundary(
 ) -> anyhow::Result<ForkRequestBoundary> {
     if retained_turns > message_ids.len() {
         bail!(
-            "OpenCode 2 has only {} native turns, but Waku needs {retained_turns}",
+            "OpenCode 2 has only {} native turns, but Insulator needs {retained_turns}",
             message_ids.len()
         );
     }
@@ -387,7 +387,7 @@ fn fork_boundary(
 fn retained_turn_count(total_turns: usize, turns_to_remove: usize) -> anyhow::Result<usize> {
     total_turns.checked_sub(turns_to_remove).ok_or_else(|| {
         anyhow!(
-            "OpenCode 2 has only {total_turns} native turns, but Waku needs to remove {turns_to_remove}"
+            "OpenCode 2 has only {total_turns} native turns, but Insulator needs to remove {turns_to_remove}"
         )
     })
 }
@@ -507,16 +507,16 @@ mod tests {
 
     #[test]
     fn summaries_keep_the_stored_directory_and_convert_millis_to_seconds() {
-        let project_dir = std::env::temp_dir().join("waku-opencode2-project");
-        let untitled_dir = std::env::temp_dir().join("waku-opencode2-untitled");
+        let project_dir = std::env::temp_dir().join("insulator-opencode2-project");
+        let untitled_dir = std::env::temp_dir().join("insulator-opencode2-untitled");
         let listed = sessions(json!([
             {
-                "id": "ses_waku",
+                "id": "ses_insulator",
                 "projectID": "prj",
                 "cost": 0,
                 "tokens": {"input": 0, "output": 0, "reasoning": 0, "cache": {"read": 0, "write": 0}},
                 "time": {"created": 1_788_689_510_000_u64, "updated": 1_788_689_514_982_u64},
-                "title": "Review and merge Waku PR #113",
+                "title": "Review and merge Insulator PR #113",
                 "location": {"directory": project_dir}
             },
             {
@@ -546,7 +546,7 @@ mod tests {
         assert_eq!(
             summaries[0].cursor,
             ProviderResumeCursor::OpenCode2 {
-                session_id: "ses_waku".into(),
+                session_id: "ses_insulator".into(),
                 directory: Some(project_dir.to_string_lossy().into_owned()),
             }
         );
@@ -799,7 +799,7 @@ mod tests {
     /// spawn one, and the picker must not fail either.
     #[test]
     fn a_missing_service_lists_nothing_and_starts_nothing() {
-        let binary = std::env::temp_dir().join("waku-opencode2-absent");
+        let binary = std::env::temp_dir().join("insulator-opencode2-absent");
         assert!(list_provider_sessions(&binary, 0).unwrap().is_empty());
         assert_eq!(
             provider_session_history(&binary, "ses_x", 0)
@@ -845,12 +845,12 @@ mod tests {
     /// while `sanitize=true` replaces even the user's own prompt with a
     /// `[redacted:…]` placeholder.
     #[test]
-    #[ignore = "requires a running opencode2 background service and WAKU_OPENCODE2_TEST_SESSION_ID"]
+    #[ignore = "requires a running opencode2 background service and INSULATOR_OPENCODE2_TEST_SESSION_ID"]
     fn imports_a_real_transcript_without_redaction_placeholders() {
         let binary =
             crate::command_env::find_executable("opencode2").expect("opencode2 is not installed");
-        let session_id = std::env::var("WAKU_OPENCODE2_TEST_SESSION_ID")
-            .expect("set WAKU_OPENCODE2_TEST_SESSION_ID to a completed session");
+        let session_id = std::env::var("INSULATOR_OPENCODE2_TEST_SESSION_ID")
+            .expect("set INSULATOR_OPENCODE2_TEST_SESSION_ID to a completed session");
         let history =
             provider_session_history(&binary, &session_id, 100).expect("the import should work");
         assert!(!history.messages.is_empty());

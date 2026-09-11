@@ -1,6 +1,6 @@
 use super::*;
 
-impl Waku {
+impl Insulator {
     pub(super) fn finish_streaming_assistant(&mut self, session_id: Uuid) {
         if let Some(session) = self.state.session_mut(session_id) {
             for message in &mut session.messages {
@@ -269,7 +269,7 @@ impl Waku {
                     session.agent_preset = agent_preset;
                 }
             }
-            // Provider-owned names are intentionally ignored. Waku generates
+            // Provider-owned names are intentionally ignored. Insulator generates
             // one title from the completed first user/assistant exchange so
             // every provider follows the same timing and naming behavior.
             DriverEvent::AutoTitleUpdated(_) => {}
@@ -673,17 +673,12 @@ impl Waku {
                         );
                     }
                 }
-                self.finish_active_turn_with_analytics(
+                self.finish_active_turn(
                     session_id,
                     if success {
                         TurnStatus::Completed
                     } else {
                         TurnStatus::Failed
-                    },
-                    if success {
-                        crate::analytics::TurnOutcome::Completed
-                    } else {
-                        crate::analytics::TurnOutcome::Failed
                     },
                 );
                 if success && !needs_fallback {
@@ -786,11 +781,7 @@ impl Waku {
                 };
                 let finished_turn = should_finish_turn
                     && self
-                        .finish_active_turn_with_analytics(
-                            session_id,
-                            TurnStatus::Failed,
-                            crate::analytics::TurnOutcome::ProcessExited,
-                        )
+                        .finish_active_turn(session_id, TurnStatus::Failed)
                         .is_some();
                 if finished_turn {
                     self.capture_latest_turn_checkpoint_for(session_id);

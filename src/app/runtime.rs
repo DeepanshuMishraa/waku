@@ -198,7 +198,7 @@ fn attach_driver(
         supports_steer,
     } = response
     else {
-        anyhow::bail!("Waku daemon returned an invalid runtime attachment response");
+        anyhow::bail!("Insulator daemon returned an invalid runtime attachment response");
     };
     let Some(runtime_id) = runtime_id else {
         return Ok(None);
@@ -230,7 +230,7 @@ fn load_remote_task_state(
         ..
     } = response
     else {
-        anyhow::bail!("Waku daemon returned an invalid task-state response");
+        anyhow::bail!("Insulator daemon returned an invalid task-state response");
     };
     for session in &mut sessions {
         session.detail_loaded = false;
@@ -436,7 +436,7 @@ fn perform_message_rewind(
         return Err(tr!("session.pre_turn_checkpoint_missing"));
     }
 
-    let safety_ref = format!("refs/waku/revert-backup-{session_id}-{}", Uuid::new_v4());
+    let safety_ref = format!("refs/insulator/revert-backup-{session_id}-{}", Uuid::new_v4());
     workspace_ack(
         &request.workspace_client,
         insulator_client::WorkspaceOperation::CaptureRef {
@@ -686,7 +686,7 @@ fn perform_provider_rewind(
         ProviderKind::Cursor => {
             let source = request.cursor_source.as_ref().ok_or_else(|| {
                 anyhow::anyhow!(tr!(
-                    "errors.provider_waku_task_unavailable",
+                    "errors.provider_insulator_task_unavailable",
                     provider = "Cursor"
                 ))
             })?;
@@ -1129,13 +1129,13 @@ fn perform_response_fork(mut request: ResponseForkRequest) -> Result<PreparedRes
     })
 }
 
-impl Waku {
+impl Insulator {
     pub(super) fn restart_task_state_sync(&self) {
         let clients = self.daemon.subscribe_clients();
         let results = self.task_state_sync_tx.clone();
         let event_wake = self.event_wake_tx.clone();
         std::thread::Builder::new()
-            .name("waku-task-state-sync".into())
+            .name("insulator-task-state-sync".into())
             .spawn(move || {
                 let Ok(mut client) = clients.recv() else {
                     return;
@@ -1294,13 +1294,13 @@ impl Waku {
         }
         let daemon = self.daemon.clone();
         let event_wake = self.event_wake_tx.clone();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { attach_driver(daemon, session_id, event_wake) })
                 .await;
-            let _ = waku.update(cx, move |waku, cx| {
-                waku.finish_runtime_attachment(session_id, result, cx);
+            let _ = insulator.update(cx, move |insulator, cx| {
+                insulator.finish_runtime_attachment(session_id, result, cx);
             });
         })
         .detach();
@@ -1350,12 +1350,12 @@ impl Waku {
                 let misses = self.runtime_attach_misses.entry(session_id).or_default();
                 *misses = misses.saturating_add(1);
                 if *misses < 4 {
-                    cx.spawn(async move |waku, cx| {
+                    cx.spawn(async move |insulator, cx| {
                         cx.background_executor()
                             .timer(Duration::from_millis(250))
                             .await;
-                        let _ = waku.update(cx, |waku, cx| {
-                            waku.start_runtime_attachment(session_id, cx);
+                        let _ = insulator.update(cx, |insulator, cx| {
+                            insulator.start_runtime_attachment(session_id, cx);
                         });
                     })
                     .detach();
@@ -1448,55 +1448,14 @@ impl Waku {
         self.state.sessions.iter().find(|session| session.id == id)
     }
 
-    fn active_turn_finished_event(
-        &self,
-        session_id: Uuid,
-        outcome: crate::analytics::TurnOutcome,
-    ) -> Option<crate::analytics::Event> {
-        let session = self
-            .state
-            .sessions
-            .iter()
-            .find(|session| session.id == session_id)?;
-        let turn = session
-            .turns
-            .last()
-            .filter(|turn| turn.status == TurnStatus::Running)?;
-        Some(crate::analytics::Event::TurnFinished {
-            provider: session.provider.id(),
-            turn_number: turn.turn_count,
-            outcome,
-            duration_seconds: unix_time().saturating_sub(turn.started_at),
-        })
-    }
-
-    /// Completes a persisted turn and emits its anonymous outcome exactly
-    /// once. All production turn-settlement paths go through this seam.
-    pub(super) fn finish_active_turn_with_analytics(
+    pub(super) fn finish_active_turn(
         &mut self,
         session_id: Uuid,
         status: TurnStatus,
-        outcome: crate::analytics::TurnOutcome,
     ) -> Option<(Uuid, usize)> {
-        let event = self.active_turn_finished_event(session_id, outcome);
-        let result = self
-            .state
+        self.state
             .session_mut(session_id)?
-            .finish_active_turn(status);
-        if result.is_some()
-            && let Some(event) = event
-        {
-            self.analytics.track(event);
-        }
-        result
-    }
-
-    /// Records a failed submission that is about to be unwound and therefore
-    /// will not remain as a persisted turn.
-    fn track_active_turn_outcome(&self, session_id: Uuid, outcome: crate::analytics::TurnOutcome) {
-        if let Some(event) = self.active_turn_finished_event(session_id, outcome) {
-            self.analytics.track(event);
-        }
+            .finish_active_turn(status)
     }
 
     /// The directory every filesystem and provider operation for `session`
@@ -1555,7 +1514,7 @@ impl Waku {
         let daemon = self.daemon.client();
         let binary_override = self.state.provider_binary_overrides.get(&provider).cloned();
         if std::thread::Builder::new()
-            .name(format!("waku-{}-model-discovery", provider.id()))
+            .name(format!("insulator-{}-model-discovery", provider.id()))
             .spawn(move || {
                 let discovered = match daemon.request(
                     Uuid::nil(),
@@ -1582,7 +1541,7 @@ impl Waku {
     }
 
     /// Re-run one provider's model-owned catalog discovery, for selectors whose
-    /// contents can change while Waku stays open — models the user just
+    /// contents can change while Insulator stays open — models the user just
     /// authored in a provider's config, or DeepSeek's custom agent presets.
     /// The stale catalog stays on screen until the fresh probe lands, so an
     /// open menu never blanks into a loading state while it refreshes.
@@ -1613,7 +1572,7 @@ impl Waku {
             let daemon = self.daemon.client();
             let binary_override = self.state.provider_binary_overrides.get(&provider).cloned();
             if std::thread::Builder::new()
-                .name(format!("waku-{}-version-probe", provider.id()))
+                .name(format!("insulator-{}-version-probe", provider.id()))
                 .spawn(move || {
                     let version = match daemon.request(
                         Uuid::nil(),
@@ -1668,7 +1627,7 @@ impl Waku {
         let detect_providers = providers.clone();
         let daemon = self.daemon.client();
         if std::thread::Builder::new()
-            .name("waku-provider-detection".into())
+            .name("insulator-provider-detection".into())
             .spawn(move || {
                 for provider in detect_providers {
                     let response = daemon.request(
@@ -1921,7 +1880,7 @@ impl Waku {
                 continue;
             }
             let workspace = insulator_client::WorkspaceClient::new(self.daemon.client());
-            cx.spawn(async move |waku, cx| {
+            cx.spawn(async move |insulator, cx| {
                 let captured = cx
                     .background_executor()
                     .spawn({
@@ -1944,22 +1903,22 @@ impl Waku {
                         }
                     })
                     .await;
-                waku.update(cx, |waku, cx| {
-                    waku.checkpoint_captures_in_flight
+                insulator.update(cx, |insulator, cx| {
+                    insulator.checkpoint_captures_in_flight
                         .remove(&(session_id, turn_count));
-                    let selected = waku.state.selected_session == Some(session_id);
+                    let selected = insulator.state.selected_session == Some(session_id);
                     if selected {
-                        waku.sync_transcript_rows();
+                        insulator.sync_transcript_rows();
                     }
                     let previous_kinds = if selected {
-                        waku.transcript_row_kinds.borrow().clone()
+                        insulator.transcript_row_kinds.borrow().clone()
                     } else {
                         Vec::new()
                     };
                     let checkpoint = match captured {
                         Ok(checkpoint) => checkpoint,
                         Err(error) => {
-                            waku.show_toast(tr!("errors.capture_turn_checkpoint", error = error));
+                            insulator.show_toast(tr!("errors.capture_turn_checkpoint", error = error));
                             Checkpoint {
                                 turn_count,
                                 git_ref: checkpoint::checkpoint_ref(session_id, turn_count),
@@ -1971,9 +1930,9 @@ impl Waku {
                             }
                         }
                     };
-                    waku.invalidate_checkpoint_refs();
+                    insulator.invalidate_checkpoint_refs();
                     let mut attached_turn_id = None;
-                    if let Some(session) = waku.state.session_mut(session_id)
+                    if let Some(session) = insulator.state.session_mut(session_id)
                         && let Some(turn) = session
                             .turns
                             .iter_mut()
@@ -1988,22 +1947,22 @@ impl Waku {
                         // Reconcile a standalone card by row identity, then
                         // remeasure the terminal response when the card is
                         // hosted inline before its footer.
-                        waku.splice_transcript_rows_after_visibility_change(&previous_kinds);
-                        waku.remeasure_changed_files(turn_id);
+                        insulator.splice_transcript_rows_after_visibility_change(&previous_kinds);
+                        insulator.remeasure_changed_files(turn_id);
                     }
-                    let resume_queue = waku.pending_queue_drains.contains(&session_id);
+                    let resume_queue = insulator.pending_queue_drains.contains(&session_id);
                     if resume_queue {
-                        waku.pending_queue_drains.retain(|id| *id != session_id);
-                        waku.drain_queued_message(session_id, cx);
+                        insulator.pending_queue_drains.retain(|id| *id != session_id);
+                        insulator.drain_queued_message(session_id, cx);
                     }
                     cx.notify();
                     if attached_turn_id.is_some() {
                         // Let the new transcript row paint before SQLite work.
                         // Without this save, a checkpoint that lands after the
                         // turn's final stream save can disappear on relaunch.
-                        cx.spawn(async move |waku, cx| {
+                        cx.spawn(async move |insulator, cx| {
                             cx.background_executor().timer(STREAM_FRAME_INTERVAL).await;
-                            let _ = waku.update(cx, |waku, _| waku.save());
+                            let _ = insulator.update(cx, |insulator, _| insulator.save());
                         })
                         .detach();
                     }
@@ -2137,13 +2096,13 @@ impl Waku {
         self.hide_toast();
         cx.notify();
 
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { perform_response_fork(request) })
                 .await;
-            let _ = waku.update(cx, move |waku, cx| {
-                waku.finish_response_fork(session_id, turn_count, provider, result, cx);
+            let _ = insulator.update(cx, move |insulator, cx| {
+                insulator.finish_response_fork(session_id, turn_count, provider, result, cx);
             });
         })
         .detach();
@@ -2193,11 +2152,6 @@ impl Waku {
 
         let fork_id = forked.id;
         self.state.push_session(forked);
-        self.analytics
-            .track(crate::analytics::Event::ResponseForked {
-                provider: provider.id(),
-                turn_number: turn_count,
-            });
         self.select_session(fork_id, cx);
         self.drain_queued_message(session_id, cx);
         match checkpoint_warning {
@@ -2219,12 +2173,12 @@ impl Waku {
         cx: &mut Context<Self>,
     ) {
         let composer = self.composer.clone();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             cx.background_executor()
                 .timer(Duration::from_millis(1))
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                if waku.state.selected_session == Some(session_id) {
+            let _ = insulator.update(cx, |insulator, cx| {
+                if insulator.state.selected_session == Some(session_id) {
                     composer.update(cx, |input, cx| {
                         if input.content(cx).is_empty() {
                             input.set_content(prompt, cx);
@@ -2567,13 +2521,13 @@ impl Waku {
         self.remeasure_transcript_message(edited_message_index);
         cx.notify();
 
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { perform_message_rewind(request) })
                 .await;
-            let _ = waku.update(cx, move |waku, cx| {
-                waku.finish_message_rewind(
+            let _ = insulator.update(cx, move |insulator, cx| {
+                insulator.finish_message_rewind(
                     edit,
                     submission,
                     edited_message_id,
@@ -2644,18 +2598,12 @@ impl Waku {
             cleanup_error,
         } = prepared;
         let retained_turn_count = turn_count.saturating_sub(1);
-        let provider_and_removed_turns = self
+        let Some(provider) = self
             .state
             .sessions
             .iter()
             .find(|session| session.id == session_id)
-            .map(|session| {
-                (
-                    session.provider,
-                    session.turns.len().saturating_sub(retained_turn_count),
-                )
-            });
-        let Some((provider, removed_turns)) = provider_and_removed_turns else {
+            .map(|session| session.provider) else {
             return;
         };
         if selected {
@@ -2749,11 +2697,6 @@ impl Waku {
                 ),
             });
         }
-        self.analytics
-            .track(crate::analytics::Event::ConversationRolledBack {
-                provider: provider.id(),
-                turns: removed_turns,
-            });
         cx.notify();
         self.submit_submission_for_session(session_id, submission, cx);
     }
@@ -2879,18 +2822,18 @@ impl Waku {
         runtime.options_generation = runtime.options_generation.wrapping_add(1);
         let generation = runtime.options_generation;
         let driver = runtime.driver.clone();
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let applied = cx
                 .background_executor()
                 .spawn(async move { driver.apply_options(options) })
                 .await;
-            let _ = waku.update(cx, |waku, cx| {
-                let is_current = waku
+            let _ = insulator.update(cx, |insulator, cx| {
+                let is_current = insulator
                     .runtimes
                     .get(&session_id)
                     .is_some_and(|runtime| runtime.options_generation == generation);
                 if is_current && !applied {
-                    waku.reset_session_runtime(session_id);
+                    insulator.reset_session_runtime(session_id);
                     cx.notify();
                 }
             });
@@ -2930,20 +2873,20 @@ impl Waku {
             user_message,
             assistant_message,
         };
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let result = cx
                 .background_executor()
                 .spawn(async move { generate_session_title(request) })
                 .await;
-            let _ = waku.update(cx, move |waku, cx| {
-                waku.session_title_requests.remove(&session_id);
+            let _ = insulator.update(cx, move |insulator, cx| {
+                insulator.session_title_requests.remove(&session_id);
                 if let Ok(title) = result
-                    && let Some(session) = waku.state.session_mut(session_id)
+                    && let Some(session) = insulator.state.session_mut(session_id)
                     && session.title == AgentSession::DEFAULT_TITLE
                     && session.auto_title.is_none()
                     && session.set_auto_title(Some(title))
                 {
-                    waku.save();
+                    insulator.save();
                     cx.notify();
                 }
             });
@@ -3058,7 +3001,7 @@ impl Waku {
         self.goal_runtime_starts.insert(session_id);
         cx.notify();
         let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let prepared = cx
                 .background_executor()
                 .spawn(async move {
@@ -3073,8 +3016,8 @@ impl Waku {
                     )
                 })
                 .await;
-            let _ = waku.update(cx, move |waku, cx| {
-                waku.finish_goal_runtime_start(session_id, prepared, cx);
+            let _ = insulator.update(cx, move |insulator, cx| {
+                insulator.finish_goal_runtime_start(session_id, prepared, cx);
             });
         })
         .detach();
@@ -3471,24 +3414,12 @@ impl Waku {
         }
         let prompt = submission.prompt.clone();
         let human_prompt = submission.human_prompt();
-        let has_input = !submission
-            .display_content
-            .as_deref()
-            .unwrap_or(&submission.prompt)
-            .trim()
-            .is_empty();
         let next_turn_count = session.turns.len() + 1;
-        let provider = session.provider.id();
+        let session_provider = session.provider;
         let model = self
             .session_options(session)
             .model
             .unwrap_or_else(|| "default".into());
-        let workspace_kind = if session.workspace.is_worktree() {
-            "worktree"
-        } else {
-            "local"
-        };
-        let attachment_count = submission.attachments.len();
         let project_id = session.project_id;
         let workspace = session.workspace.clone();
         let driver_start = (!self.runtimes.contains_key(&session_id)).then(|| {
@@ -3512,7 +3443,6 @@ impl Waku {
             cx.notify();
             return;
         };
-        let projectless = project.is_projectless();
         // Busy is visible before any Git work begins. The separate transient
         // set keeps this non-cancellable phase visually distinct from a
         // connecting provider, whose runtime already has a working Stop path.
@@ -3546,16 +3476,9 @@ impl Waku {
         } else {
             None
         };
-        self.analytics
-            .track(crate::analytics::Event::TurnSubmitted {
-                provider,
-                model,
-                turn_number: next_turn_count,
-                workspace: workspace_kind,
-                projectless,
-                attachment_count,
-                has_input,
-            });
+        if model != "default" {
+            self.record_recent_model(session_provider, &model);
+        }
         self.submission_preparations.insert(session_id);
         if selected {
             self.activities_expanded.clear();
@@ -3586,7 +3509,7 @@ impl Waku {
 
         let preparation_prompt = human_prompt;
         let workspace_client = insulator_client::WorkspaceClient::new(self.daemon.client());
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             let prepared = cx
                 .background_executor()
                 .spawn(async move {
@@ -3601,8 +3524,8 @@ impl Waku {
                     )
                 })
                 .await;
-            let _ = waku.update(cx, move |waku, cx| {
-                waku.finish_submission_preparation(session_id, submission, prepared, cx);
+            let _ = insulator.update(cx, move |insulator, cx| {
+                insulator.finish_submission_preparation(session_id, submission, prepared, cx);
             });
         })
         .detach();
@@ -3623,10 +3546,6 @@ impl Waku {
             Ok(prepared) => prepared,
             Err(error) => {
                 self.submission_preparations.remove(&session_id);
-                self.track_active_turn_outcome(
-                    session_id,
-                    crate::analytics::TurnOutcome::PreparationFailed,
-                );
                 if selected {
                     self.sync_transcript_rows();
                 }
@@ -3760,11 +3679,7 @@ impl Waku {
                     session.status = SessionStatus::Failed;
                     session.push_message(MessageRole::Assistant, message);
                 }
-                self.finish_active_turn_with_analytics(
-                    session_id,
-                    TurnStatus::Failed,
-                    crate::analytics::TurnOutcome::StartFailed,
-                );
+                self.finish_active_turn(session_id, TurnStatus::Failed);
             }
         }
         // From this point onward `cancel_turn` has either a live driver to
@@ -3779,9 +3694,9 @@ impl Waku {
         // Persist on the next frame boundary. Saving is intentionally after
         // the spinner-to-Stop paint: SQLite or blob externalization must not
         // hold the final preparation frame motionless.
-        cx.spawn(async move |waku, cx| {
+        cx.spawn(async move |insulator, cx| {
             cx.background_executor().timer(STREAM_FRAME_INTERVAL).await;
-            let _ = waku.update(cx, |waku, _| waku.save());
+            let _ = insulator.update(cx, |insulator, _| insulator.save());
         })
         .detach();
     }

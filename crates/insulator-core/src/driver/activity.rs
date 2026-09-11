@@ -76,7 +76,7 @@ mod tests {
         );
         assert_eq!(
             input_title(Some(&serde_json::json!({
-                "tool_name": "waku_js_repl__js",
+                "tool_name": "insulator_js_repl__js",
                 "arguments": {"code": "1", "title": "Inspect wrapped app"}
             })))
             .as_deref(),
@@ -84,7 +84,7 @@ mod tests {
         );
         assert_eq!(
             input_title(Some(&serde_json::json!({
-                "tool_name": "waku_js_repl__js",
+                "tool_name": "insulator_js_repl__js",
                 "tool_input": {"code": "1", "title": "Verify Grok bridge"}
             })))
             .as_deref(),

@@ -1,4 +1,4 @@
-//! Rust transport and lifecycle support for clients of `waku-daemon`.
+//! Rust transport and lifecycle support for clients of `insulator-daemon`.
 //!
 //! This crate intentionally depends only on [`insulator_protocol`], so GUI and CLI
 //! clients cannot accidentally reach daemon-owned filesystem, Git, database,

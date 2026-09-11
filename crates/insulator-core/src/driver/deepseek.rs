@@ -3,7 +3,7 @@
 //! `dsh web` is the Harness client API: unary session operations travel over
 //! typed HTTP envelopes while ordered session events, projections, approval
 //! requests, questions, and background jobs arrive on its downlink streams.
-//! Keeping that protocol intact gives Waku native resume/fork semantics and
+//! Keeping that protocol intact gives Insulator native resume/fork semantics and
 //! avoids reverse-engineering the human CLI output.
 
 use std::collections::{HashMap, HashSet};
@@ -209,7 +209,7 @@ impl DeepSeekDriver {
         let worker_mode = Arc::clone(&mode);
         let worker_completed_turn_seqs = Arc::clone(&completed_turn_seqs);
         thread::Builder::new()
-            .name("waku-deepseek-driver".into())
+            .name("insulator-deepseek-driver".into())
             .spawn(move || {
                 let mut state = StreamState {
                     last_seq: history.last_seq,
@@ -640,7 +640,7 @@ fn handle_envelope(
                 .unwrap_or("DeepSeek Harness event stream failed");
             let _ = events.send(DriverEvent::Error(message.to_owned()));
         }
-        Some("waku/process-exited") => {
+        Some("insulator/process-exited") => {
             let message = payload
                 .get("message")
                 .and_then(Value::as_str)

@@ -1,6 +1,6 @@
 #[cfg(not(target_os = "linux"))]
 fn main() {
-    eprintln!("waku-updater is only supported on Linux");
+    eprintln!("insulator-updater is only supported on Linux");
     std::process::exit(1);
 }
 
@@ -22,10 +22,10 @@ mod linux {
 
     use anyhow::{Context as _, bail};
 
-    const MANAGED_MARKER: &str = "share/waku/self-update-v1";
-    const MANAGED_MARKER_CONTENTS: &str = "waku-self-update-v1\n";
-    const HELPER_EXECUTABLE: &str = "waku-updater";
-    const RELAUNCH_READY_ENV: &str = "WAKU_UPDATE_READY_FILE";
+    const MANAGED_MARKER: &str = "share/insulator/self-update-v1";
+    const MANAGED_MARKER_CONTENTS: &str = "insulator-self-update-v1\n";
+    const HELPER_EXECUTABLE: &str = "insulator-updater";
+    const RELAUNCH_READY_ENV: &str = "INSULATOR_UPDATE_READY_FILE";
     const READY_TIMEOUT: Duration = Duration::from_secs(60);
     const POLL_INTERVAL: Duration = Duration::from_millis(25);
     const MAX_ERROR_LENGTH: usize = 16 * 1024;
@@ -69,7 +69,7 @@ mod linux {
         }
         wait_for_parent(handoff.parent_pid);
         if let Err(error) = apply_update(&handoff) {
-            eprintln!("Waku updater: {error:#}");
+            eprintln!("Insulator updater: {error:#}");
             std::process::exit(1);
         }
     }
@@ -120,7 +120,7 @@ mod linux {
                 bail!("refusing to self-update from a root desktop session");
             }
             if arguments.parent_pid != unsafe { libc::getppid() as u32 } {
-                bail!("the update helper was not launched directly by Waku");
+                bail!("the update helper was not launched directly by Insulator");
             }
 
             let install_dir = arguments
@@ -155,7 +155,7 @@ mod linux {
                 .and_then(OsStr::to_str)
                 .is_some_and(|name| name.starts_with(&expected_staging_prefix))
             {
-                bail!("the staged install name does not belong to this Waku prefix");
+                bail!("the staged install name does not belong to this Insulator prefix");
             }
 
             validate_packaged_layout(&install_dir)?;
@@ -206,7 +206,7 @@ mod linux {
     fn apply_update(handoff: &Handoff) -> anyhow::Result<()> {
         let backup = handoff.unique_path("update-backup")?;
         if let Err(error) = fs::rename(&handoff.install_dir, &backup) {
-            let message = format!("could not preserve the current Waku install: {error}");
+            let message = format!("could not preserve the current Insulator install: {error}");
             record_error(handoff, &message);
             let _ = launch(&handoff.install_dir, None);
             bail!(message);
@@ -220,7 +220,7 @@ mod linux {
                 )
             })?;
             sync_directory(&handoff.parent);
-            let message = format!("could not activate the staged Waku install: {error}");
+            let message = format!("could not activate the staged Insulator install: {error}");
             record_error(handoff, &message);
             let _ = launch(&handoff.install_dir, None);
             bail!(message);
@@ -238,7 +238,7 @@ mod linux {
         let mut replacement = match launch(&handoff.install_dir, Some(&ready_path)) {
             Ok(child) => child,
             Err(error) => {
-                let message = format!("the updated Waku build could not start: {error}");
+                let message = format!("the updated Insulator build could not start: {error}");
                 rollback(handoff, &backup, &message)?;
                 bail!(message);
             }
@@ -249,7 +249,7 @@ mod linux {
                 let _ = fs::remove_file(&ready_path);
                 if let Err(error) = fs::remove_dir_all(&backup) {
                     eprintln!(
-                        "Waku updater: update succeeded but the rollback copy {} could not be removed: {error}",
+                        "Insulator updater: update succeeded but the rollback copy {} could not be removed: {error}",
                         backup.display()
                     );
                 }
@@ -258,7 +258,7 @@ mod linux {
             }
             RelaunchState::Exited(status) => {
                 let message =
-                    format!("the updated Waku build exited before its window opened ({status})");
+                    format!("the updated Insulator build exited before its window opened ({status})");
                 rollback(handoff, &backup, &message)?;
                 bail!(message)
             }
@@ -267,7 +267,7 @@ mod linux {
                 // remains active and the exact rollback directory is retained
                 // for manual recovery instead of being destructively guessed.
                 eprintln!(
-                    "Waku updater: the new build stayed alive but did not acknowledge startup; retaining {}",
+                    "Insulator updater: the new build stayed alive but did not acknowledge startup; retaining {}",
                     backup.display()
                 );
                 Ok(())
@@ -281,18 +281,18 @@ mod linux {
             .context("could not move the failed update out of the install path")?;
         if let Err(error) = fs::rename(backup, &handoff.install_dir) {
             let _ = fs::rename(&failed, &handoff.install_dir);
-            return Err(error).context("could not restore the previous Waku install");
+            return Err(error).context("could not restore the previous Insulator install");
         }
         sync_directory(&handoff.parent);
         let _ = fs::remove_dir_all(&failed);
         record_error(handoff, message);
         launch(&handoff.install_dir, None)
-            .context("the previous Waku build was restored but could not be relaunched")?;
+            .context("the previous Insulator build was restored but could not be relaunched")?;
         Ok(())
     }
 
     fn launch(prefix: &Path, ready_path: Option<&Path>) -> std::io::Result<Child> {
-        let mut command = Command::new(prefix.join("bin/waku"));
+        let mut command = Command::new(prefix.join("bin/insulator"));
         command
             .stdin(Stdio::null())
             .stdout(Stdio::null())
@@ -319,7 +319,7 @@ mod linux {
                 Ok(Some(status)) => return RelaunchState::Exited(status.to_string()),
                 Ok(None) => {}
                 Err(error) => {
-                    eprintln!("Waku updater: could not observe the relaunched app: {error}");
+                    eprintln!("Insulator updater: could not observe the relaunched app: {error}");
                     return RelaunchState::TimedOut;
                 }
             }
@@ -333,16 +333,16 @@ mod linux {
     fn validate_packaged_layout(prefix: &Path) -> anyhow::Result<()> {
         let metadata = fs::symlink_metadata(prefix)?;
         if !metadata.file_type().is_dir() {
-            bail!("the Waku prefix is not a real directory");
+            bail!("the Insulator prefix is not a real directory");
         }
         let marker = prefix.join(MANAGED_MARKER);
         let marker_metadata = fs::symlink_metadata(&marker)?;
         if !marker_metadata.file_type().is_file()
             || fs::read_to_string(&marker).ok().as_deref() != Some(MANAGED_MARKER_CONTENTS)
         {
-            bail!("the install is not marked as a Waku-managed tarball");
+            bail!("the install is not marked as a Insulator-managed tarball");
         }
-        for executable in ["insulator", "waku-daemon", HELPER_EXECUTABLE] {
+        for executable in ["insulator", "insulator-daemon", HELPER_EXECUTABLE] {
             let path = prefix.join("bin").join(executable);
             let metadata = fs::symlink_metadata(&path)?;
             if !metadata.file_type().is_file() || metadata.permissions().mode() & 0o111 == 0 {
@@ -396,7 +396,7 @@ mod linux {
 
         fn temporary_directory(label: &str) -> PathBuf {
             let path = std::env::temp_dir().join(format!(
-                "waku-update-helper-{label}-{}-{}",
+                "insulator-update-helper-{label}-{}-{}",
                 std::process::id(),
                 PATH_NONCE.fetch_add(1, Ordering::Relaxed)
             ));
@@ -406,9 +406,9 @@ mod linux {
 
         fn write_layout(prefix: &Path, value: &[u8]) {
             fs::create_dir_all(prefix.join("bin")).unwrap();
-            fs::create_dir_all(prefix.join("share/waku")).unwrap();
+            fs::create_dir_all(prefix.join("share/insulator")).unwrap();
             fs::write(prefix.join(MANAGED_MARKER), MANAGED_MARKER_CONTENTS).unwrap();
-            for executable in ["insulator", "waku-daemon", HELPER_EXECUTABLE] {
+            for executable in ["insulator", "insulator-daemon", HELPER_EXECUTABLE] {
                 let path = prefix.join("bin").join(executable);
                 fs::write(&path, value).unwrap();
                 let mut permissions = fs::metadata(&path).unwrap().permissions();
@@ -434,10 +434,10 @@ mod linux {
         #[test]
         fn packaged_layout_requires_real_executables_and_marker() {
             let directory = temporary_directory("layout");
-            let prefix = directory.join("waku.app");
+            let prefix = directory.join("insulator.app");
             write_layout(&prefix, b"old");
             validate_packaged_layout(&prefix).unwrap();
-            fs::remove_file(prefix.join("bin/waku-daemon")).unwrap();
+            fs::remove_file(prefix.join("bin/insulator-daemon")).unwrap();
             assert!(validate_packaged_layout(&prefix).is_err());
             fs::remove_dir_all(directory).unwrap();
         }
@@ -445,7 +445,7 @@ mod linux {
         #[test]
         fn directory_swap_can_be_rolled_back_without_merging() {
             let directory = temporary_directory("swap");
-            let install = directory.join("waku.app");
+            let install = directory.join("insulator.app");
             let staged = directory.join(".insulator.app.update-test");
             let backup = directory.join(".insulator.app.backup-test");
             write_layout(&install, b"old");
@@ -453,11 +453,11 @@ mod linux {
 
             fs::rename(&install, &backup).unwrap();
             fs::rename(&staged, &install).unwrap();
-            assert_eq!(fs::read(install.join("bin/waku")).unwrap(), b"new");
+            assert_eq!(fs::read(install.join("bin/insulator")).unwrap(), b"new");
             let failed = directory.join(".insulator.app.failed-test");
             fs::rename(&install, &failed).unwrap();
             fs::rename(&backup, &install).unwrap();
-            assert_eq!(fs::read(install.join("bin/waku")).unwrap(), b"old");
+            assert_eq!(fs::read(install.join("bin/insulator")).unwrap(), b"old");
 
             fs::remove_dir_all(directory).unwrap();
         }
@@ -465,14 +465,14 @@ mod linux {
         #[test]
         fn full_handoff_waits_for_startup_and_removes_the_rollback_copy() {
             let directory = temporary_directory("handoff");
-            let install = directory.join("waku.app");
+            let install = directory.join("insulator.app");
             let staged = directory.join(".insulator.app.update-test");
             write_layout(&install, b"old");
             write_layout(&staged, b"new");
-            let replacement = staged.join("bin/waku");
+            let replacement = staged.join("bin/insulator");
             fs::write(
                 &replacement,
-                b"#!/bin/sh\nprintf 'ready\\n' > \"$WAKU_UPDATE_READY_FILE\"\n",
+                b"#!/bin/sh\nprintf 'ready\\n' > \"$INSULATOR_UPDATE_READY_FILE\"\n",
             )
             .unwrap();
             let mut permissions = fs::metadata(&replacement).unwrap().permissions();
@@ -482,14 +482,14 @@ mod linux {
                 install_dir: install.clone(),
                 staged_dir: staged,
                 parent: directory.clone(),
-                prefix_name: "waku.app".into(),
+                prefix_name: "insulator.app".into(),
                 parent_pid: std::process::id(),
             };
 
             apply_update(&handoff).unwrap();
 
-            assert!(install.join("bin/waku").is_file());
-            assert_eq!(fs::read(install.join("bin/waku-daemon")).unwrap(), b"new");
+            assert!(install.join("bin/insulator").is_file());
+            assert_eq!(fs::read(install.join("bin/insulator-daemon")).unwrap(), b"new");
             assert!(
                 fs::read_dir(&directory).unwrap().all(|entry| {
                     !entry

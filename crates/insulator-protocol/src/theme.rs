@@ -39,8 +39,8 @@ impl WindowStyle {
 #[ts(export)]
 #[serde(rename_all = "snake_case")]
 pub enum ColorTheme {
-    WakuLight,
-    WakuDark,
+    InsulatorLight,
+    InsulatorDark,
     CatppuccinLatte,
     CatppuccinFrappe,
     CatppuccinMacchiato,
@@ -69,7 +69,7 @@ pub enum ColorTheme {
 
 impl ColorTheme {
     pub const ALL: [Self; 25] = [
-        Self::WakuLight, Self::WakuDark,
+        Self::InsulatorLight, Self::InsulatorDark,
         Self::CatppuccinLatte, Self::CatppuccinFrappe, Self::CatppuccinMacchiato,
         Self::CatppuccinMocha, Self::TokyoNight, Self::TokyoStorm, Self::TokyoMoon,
         Self::TokyoDay, Self::RosePine, Self::RosePineMoon, Self::RosePineDawn,
@@ -80,14 +80,14 @@ impl ColorTheme {
     ];
 
     pub fn is_dark(self) -> bool {
-        !matches!(self, Self::WakuLight | Self::CatppuccinLatte | Self::TokyoDay | Self::RosePineDawn
+        !matches!(self, Self::InsulatorLight | Self::CatppuccinLatte | Self::TokyoDay | Self::RosePineDawn
             | Self::GruvboxLight | Self::KanagawaLotus | Self::SolarizedLight
             | Self::EverforestLight)
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::WakuLight => "Waku Light", Self::WakuDark => "Waku Dark",
+            Self::InsulatorLight => "Insulator Light", Self::InsulatorDark => "Insulator Dark",
             Self::CatppuccinLatte => "Catppuccin Latte", Self::CatppuccinFrappe => "Catppuccin Frappé",
             Self::CatppuccinMacchiato => "Catppuccin Macchiato", Self::CatppuccinMocha => "Catppuccin Mocha",
             Self::TokyoNight => "Tokyo Night", Self::TokyoStorm => "Tokyo Storm", Self::TokyoMoon => "Tokyo Moon", Self::TokyoDay => "Tokyo Day",
@@ -104,7 +104,7 @@ impl ColorTheme {
     }
 
     pub fn default_for_dark(dark: bool) -> Self {
-        if dark { Self::WakuDark } else { Self::WakuLight }
+        if dark { Self::InsulatorDark } else { Self::InsulatorLight }
     }
 }
 

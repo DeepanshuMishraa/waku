@@ -3,16 +3,16 @@
 //! OpenCode 2 is not a per-workspace server. One background process, started
 //! by whoever needed it first — usually the user's own TUI — serves every
 //! workspace, because a v2 session carries its own `location.directory` and
-//! the service itself sits in `$HOME`. Waku therefore *finds* that process
+//! the service itself sits in `$HOME`. Insulator therefore *finds* that process
 //! through its registration file instead of owning one, and multiplexes every
-//! Waku task over the single `GET /api/event` stream it exposes.
+//! Insulator task over the single `GET /api/event` stream it exposes.
 //!
 //! Three rules make that safe, and all three are load-bearing:
 //!
 //! * **An adopted service is never killed.** Teardown cancels the SSE socket
-//!   and returns. Waku never signals the pid, never calls the service's own
+//!   and returns. Insulator never signals the pid, never calls the service's own
 //!   stop route, and never runs `opencode2 service stop` — the process it
-//!   found may be driving the user's terminal, and a process Waku started with
+//!   found may be driving the user's terminal, and a process Insulator started with
 //!   `serve --service` is indistinguishable from one it found.
 //! * **The registration file is opened read-only, always.** The service polls
 //!   its own descriptor every 5s and self-terminates when the contents change,
@@ -27,9 +27,9 @@
 //!   bare port.
 //!
 //! Demultiplexing is a security boundary rather than an optimization: the one
-//! stream carries the user's own TUI sessions and every other Waku task, so a
+//! stream carries the user's own TUI sessions and every other Insulator task, so a
 //! frame reaches exactly the subscriber that owns its session id, the whole
-//! `tui.*` remote-control family is dropped, and anything Waku does not own is
+//! `tui.*` remote-control family is dropped, and anything Insulator does not own is
 //! dropped too. See [`route`].
 //!
 //! Everything here blocks — file reads, HTTP, thread parks — so every caller
@@ -81,9 +81,9 @@ const MAX_REDISCOVERY_FAILURES: u32 = 3;
 
 /// The descriptor the service writes for its clients.
 ///
-/// `version` is the service's own build id. Waku surfaces it rather than
+/// `version` is the service's own build id. Insulator surfaces it rather than
 /// comparing it: the CLI's incumbency check compares against *its* build, and
-/// Waku is not an opencode2 build, so equality there would reject every
+/// Insulator is not an opencode2 build, so equality there would reject every
 /// perfectly healthy service.
 #[derive(Clone, Deserialize)]
 pub(crate) struct ServiceRegistration {
@@ -184,15 +184,15 @@ fn accept_health(registration: &ServiceRegistration, health: &Value) -> anyhow::
     Ok(())
 }
 
-/// How the service Waku is talking to came to exist.
+/// How the service Insulator is talking to came to exist.
 ///
-/// `Adopted` covers both a service Waku found and one it started with
+/// `Adopted` covers both a service Insulator found and one it started with
 /// `serve --service`; the two are indistinguishable by construction, and
 /// neither is ever signalled. `Private` is reserved for the future Computer
-/// Use path (`serve --stdio --port 0` with a Waku-generated password, which
+/// Use path (`serve --stdio --port 0` with a Insulator-generated password, which
 /// prints one JSON line and exits when stdin closes) and is unreachable today;
 /// wiring it up will also need the guardian-script plus `process_group(0)`
-/// wrapper from `deepseek_session`, because the dev watcher SIGTERMs Waku
+/// wrapper from `deepseek_session`, because the dev watcher SIGTERMs Insulator
 /// without running destructors.
 #[allow(dead_code)]
 pub(crate) enum Ownership {
@@ -213,7 +213,7 @@ pub(crate) enum HubFrame {
     Disconnected,
 }
 
-/// Fan-out from the one event stream to the sessions Waku owns.
+/// Fan-out from the one event stream to the sessions Insulator owns.
 #[derive(Default)]
 pub(crate) struct EventHub {
     subscribers: Mutex<HashMap<String, Vec<(usize, Sender<HubFrame>)>>>,
@@ -250,7 +250,7 @@ impl EventHub {
         }
     }
 
-    /// Routes one envelope. Frames for sessions Waku does not own — the user's
+    /// Routes one envelope. Frames for sessions Insulator does not own — the user's
     /// own TUI work, most of what this stream carries — land here and go
     /// nowhere.
     fn publish(&self, envelope: Value) {
@@ -308,8 +308,8 @@ enum Route {
 /// Demultiplexes one `/api/event` envelope.
 ///
 /// This is a security boundary. The stream is shared with the user's terminal
-/// and with every other Waku task, so anything that cannot be attributed to a
-/// session Waku owns must not reach a transcript.
+/// and with every other Insulator task, so anything that cannot be attributed to a
+/// session Insulator owns must not reach a transcript.
 fn route(envelope: &Value) -> Route {
     let kind = envelope
         .get("type")
@@ -318,7 +318,7 @@ fn route(envelope: &Value) -> Route {
     // `tui.*` are remote-control commands the service broadcasts to every
     // connected client — append to the prompt, execute a command, select a
     // session, show a toast. Forwarding them would let a foreign opencode2
-    // client drive Waku's composer and navigation.
+    // client drive Insulator's composer and navigation.
     if kind.starts_with("tui.") {
         return Route::Drop;
     }
@@ -425,7 +425,7 @@ impl Opencode2Service {
         self.model_windows.read().get(key).copied()
     }
 
-    /// The pid of the adopted service, for reporting only. Waku never signals
+    /// The pid of the adopted service, for reporting only. Insulator never signals
     /// it: see the module doc.
     #[allow(dead_code)]
     pub(crate) fn pid(&self) -> Option<u32> {
@@ -475,7 +475,7 @@ impl Opencode2Service {
         // and therefore itself — alive forever. See the module doc.
         let service = Arc::downgrade(self);
         if thread::Builder::new()
-            .name("waku-opencode2-events".into())
+            .name("insulator-opencode2-events".into())
             .spawn(move || run_reader(hub, stream, endpoint, service))
             .is_ok()
         {
@@ -501,7 +501,7 @@ impl Drop for Subscription {
         self.service.hub.unsubscribe(&self.session_id, self.rx_id);
         if self.service.subscribers.fetch_sub(1, Ordering::AcqRel) == 1 {
             // Park the reader rather than tear anything down: with no session
-            // watching, Waku has no business decoding the user's TUI traffic.
+            // watching, Insulator has no business decoding the user's TUI traffic.
             // The adopted process is left completely untouched.
             self.service.stream.cancel();
         }
@@ -615,7 +615,7 @@ fn connect(binary: &Path, may_spawn: bool) -> anyhow::Result<Option<Arc<Opencode
 /// Re-checks the service the slot has been holding.
 ///
 /// A CLI upgrade replaces the running service with a new url, pid and
-/// password, and the user can stop it outright between two Waku tasks. Both
+/// password, and the user can stop it outright between two Insulator tasks. Both
 /// are absorbed by refreshing the endpoint IN PLACE — minting a second service
 /// object would put a second reader on the same process and orphan every live
 /// subscription.
@@ -637,8 +637,8 @@ fn revalidate(service: &Arc<Opencode2Service>, may_spawn: bool) -> anyhow::Resul
 /// Starts a background service and waits for it to register.
 ///
 /// `serve --service` short-circuits on a healthy incumbent, so it is
-/// idempotent and safe to race — including against a second Waku daemon, which
-/// happens routinely when a release build and `Waku Debug.app` run side by
+/// idempotent and safe to race — including against a second Insulator daemon, which
+/// happens routinely when a release build and `Insulator Debug.app` run side by
 /// side. In that race the in-process condvar does nothing at all, and the
 /// pid-checked rediscovery below is the only thing that converges both
 /// processes on one service.
@@ -669,7 +669,7 @@ fn spawn_service(binary: &Path) -> anyhow::Result<(ServiceRegistration, Endpoint
         }
         if Instant::now() >= deadline {
             // A non-zero exit is deliberately NOT fatal on its own: losing the
-            // race to another Waku daemon looks exactly like that, and the
+            // race to another Insulator daemon looks exactly like that, and the
             // winner's service can still be seconds away from healthy.
             match exit {
                 Some(status) => bail!(
@@ -705,7 +705,7 @@ fn vacate(service: &Arc<Opencode2Service>) {
 /// moment it takes to record something. THE RECONNECT LOOP MAY NOT SPAWN — a
 /// user who ran `opencode2 service stop` must not have their daemon
 /// resurrected by a reader thread no session needs — and the end of the stream
-/// MUST NEVER become `ProcessExited`, because Waku does not own this process.
+/// MUST NEVER become `ProcessExited`, because Insulator does not own this process.
 fn run_reader(
     hub: Arc<EventHub>,
     stream: Arc<StreamControl>,
@@ -801,7 +801,7 @@ fn pump(
             return;
         };
         // A frame that is not an envelope means the stream is no longer
-        // carrying what Waku thinks it is; dropping it silently would leave a
+        // carrying what Insulator thinks it is; dropping it silently would leave a
         // session waiting forever for events that already stopped.
         if V2Event::deserialize(&envelope).is_err() {
             return;
@@ -849,7 +849,7 @@ fn refresh_model_windows(service: &Weak<Opencode2Service>, endpoint: &Endpoint) 
     let endpoint = endpoint.clone();
     let service = service.clone();
     if thread::Builder::new()
-        .name("waku-opencode2-models".into())
+        .name("insulator-opencode2-models".into())
         .spawn(move || {
             let windows = model_context_windows(&endpoint);
             if let Some(service) = service.upgrade() {
@@ -871,7 +871,7 @@ fn model_context_windows(endpoint: &Endpoint) -> Option<HashMap<String, u64>> {
 }
 
 /// `/api/model` answers `{location, data: [Model.Info]}`; the key drivers hold
-/// is `"{providerID}/{id}"`, which is also how Waku stores a selected model.
+/// is `"{providerID}/{id}"`, which is also how Insulator stores a selected model.
 fn context_windows(response: &Value) -> HashMap<String, u64> {
     response
         .get("data")
@@ -929,7 +929,7 @@ mod tests {
             })),
             Route::Session("ses_a".to_owned())
         );
-        // Never broadcast a form Waku cannot attribute.
+        // Never broadcast a form Insulator cannot attribute.
         assert_eq!(
             route(&json!({"type": "form.created", "data": {"form": {"id": "frm_1"}}})),
             Route::Drop
