@@ -1,6 +1,6 @@
 # Insulator
 
-Insulator is a native desktop app for running and managing local coding agents. It is built with Rust and [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui). Insulator is a fork of [insulator.sh](https://insulator.sh/) and is proudly built on its shoulders. Projects, sessions, transcripts, and app data stay on your machine. No Insulator account or hosted service is required.
+Insulator is a native desktop app for running and managing local coding agents. It is built with Rust and [GPUI](https://github.com/zed-industries/zed/tree/main/crates/gpui). Insulator is a fork of [Waku](https://waku.sh/) and is proudly built on its shoulders. Projects, sessions, transcripts, and app data stay on your machine. No Insulator account or hosted service is required.
 
 ## Features
 
