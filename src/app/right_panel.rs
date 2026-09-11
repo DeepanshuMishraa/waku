@@ -1964,6 +1964,9 @@ impl Insulator {
     /// currently visible, which is a per-caller decision: save works on a
     /// hidden panel, find does not.
     pub(super) fn visible_right_panel_file_path(&self) -> Option<String> {
+        if let Some(ref path) = self.active_main_file_tab {
+            return Some(path.clone());
+        }
         match self.active_right_panel_surface() {
             Some(RightPanelSurface::Files) => self.right_panel_files_selected_path.clone(),
             Some(RightPanelSurface::File(path)) => Some(path.clone()),
@@ -2329,6 +2332,9 @@ impl Insulator {
     }
 
     pub(super) fn close_main_file_tab(&mut self, path: &str, cx: &mut Context<Self>) {
+        if self.right_panel_file_is_dirty(path) {
+            self.save_file_by_path(path, false, cx);
+        }
         if self.file_editor_selection.as_ref().map_or(false, |s| s.path == path) {
             self.clear_file_editor_selection(Some(cx));
         }
@@ -2413,6 +2419,12 @@ impl Insulator {
     pub(super) fn close_right_panel_surface(&mut self, index: usize, cx: &mut Context<Self>) {
         if index >= self.right_panel_surfaces.len() {
             return;
+        }
+        if let Some(RightPanelSurface::File(path)) = self.right_panel_surfaces.get(index) {
+            let path = path.clone();
+            if self.right_panel_file_is_dirty(&path) {
+                self.save_file_by_path(&path, false, cx);
+            }
         }
         if let Some(terminal_id) = self.right_panel_surfaces[index].terminal_id() {
             self.right_panel_terminals.remove(&terminal_id);
@@ -3582,6 +3594,7 @@ impl Insulator {
             .min_h_0()
             .min_w_0()
             .flex()
+            .on_action(cx.listener(Self::save_right_panel_file_action))
             .child(editor)
     }
 
@@ -3615,6 +3628,7 @@ impl Insulator {
                 dirty: false,
                 reading: false,
                 read_epoch: 0,
+                save_generation: 0,
             },
         );
 
@@ -3637,6 +3651,9 @@ impl Insulator {
                     if editor.dirty != dirty {
                         editor.dirty = dirty;
                         cx.notify();
+                    }
+                    if dirty {
+                        this.schedule_file_editor_autosave(subscribed_path.as_str(), cx);
                     }
                 }
                 if let Some(ref sel) = this.file_editor_selection {
@@ -4085,32 +4102,72 @@ impl Insulator {
         let Some(relative_path) = self.visible_right_panel_file_path() else {
             return;
         };
+        if let Some(editor) = self.right_panel_file_editors.get(&relative_path) {
+            if !editor.dirty && editor.writable {
+                self.show_toast(tr!("files.saved", path = relative_path));
+                cx.notify();
+                return;
+            }
+        }
+        self.save_file_by_path(&relative_path, true, cx);
+    }
+
+    fn schedule_file_editor_autosave(&mut self, path: &str, cx: &mut Context<Self>) {
+        let Some(editor) = self.right_panel_file_editors.get_mut(path) else {
+            return;
+        };
+        editor.save_generation += 1;
+        let generation = editor.save_generation;
+        let relative_path = path.to_owned();
+
+        cx.spawn(async move |insulator, cx| {
+            cx.background_executor()
+                .timer(std::time::Duration::from_millis(800))
+                .await;
+            let _ = insulator.update(cx, |insulator, cx| {
+                if let Some(editor) = insulator.right_panel_file_editors.get(&relative_path) {
+                    if editor.save_generation == generation && editor.dirty {
+                        insulator.save_file_by_path(&relative_path, false, cx);
+                    }
+                }
+            });
+        })
+        .detach();
+    }
+
+    pub(super) fn save_file_by_path(
+        &mut self,
+        relative_path: &str,
+        show_toast: bool,
+        cx: &mut Context<Self>,
+    ) {
         let Some(project_path) = self
             .selected_workspace_path()
             .map(std::path::Path::to_path_buf)
         else {
             return;
         };
-        let Some(editor) = self.right_panel_file_editors.get(&relative_path) else {
+        let Some(editor) = self.right_panel_file_editors.get(relative_path) else {
             return;
         };
         if !editor.writable {
-            self.show_toast(if editor.reading {
-                tr!("files.could_not_save_opening", path = relative_path)
-            } else {
-                tr!("files.could_not_save_read_only", path = relative_path)
-            });
-            cx.notify();
+            if show_toast {
+                self.show_toast(if editor.reading {
+                    tr!("files.could_not_save_opening", path = relative_path)
+                } else {
+                    tr!("files.could_not_save_read_only", path = relative_path)
+                });
+                cx.notify();
+            }
             return;
         }
 
         let content = editor.state.read(cx).content().to_owned();
-        let Some(session_id) = self.state.selected_session else {
-            return;
-        };
-        let epoch = if let Some(editor) = self.right_panel_file_editors.get_mut(&relative_path) {
+        let relative_path_str = relative_path.to_owned();
+        let epoch = if let Some(editor) = self.right_panel_file_editors.get_mut(relative_path) {
             editor.reading = false;
             editor.read_epoch += 1;
+            editor.save_generation += 1;
             editor.read_epoch
         } else {
             return;
@@ -4121,7 +4178,7 @@ impl Insulator {
                 .background_executor()
                 .spawn({
                     let project_path = project_path.clone();
-                    let relative_path = relative_path.clone();
+                    let relative_path = relative_path_str.clone();
                     let content = content.clone();
                     async move {
                         match workspace.request(insulator_client::WorkspaceOperation::WriteTextFile {
@@ -4136,26 +4193,28 @@ impl Insulator {
                 })
                 .await;
             let _ = insulator.update(cx, |insulator, cx| {
-                if insulator.state.selected_session != Some(session_id)
-                    || insulator
-                        .selected_workspace_path()
-                        .is_none_or(|path| path != project_path)
+                if insulator
+                    .selected_workspace_path()
+                    .is_none_or(|path| path != project_path)
                 {
                     return;
                 }
                 match result {
                     Ok(()) => {
-                        if let Some(editor) = insulator.right_panel_file_editors.get_mut(&relative_path)
+                        if let Some(editor) = insulator.right_panel_file_editors.get_mut(&relative_path_str)
                             && editor.read_epoch == epoch
                         {
                             let current = editor.state.read(cx).content();
                             editor.disk_content = content.clone();
                             editor.dirty = current != content;
                         }
+                        if show_toast {
+                            insulator.show_toast(tr!("files.saved", path = relative_path_str.clone()));
+                        }
                     }
                     Err(error) => insulator.show_toast(tr!(
                         "files.could_not_save",
-                        path = relative_path,
+                        path = relative_path_str,
                         error = error.to_string()
                     )),
                 }

@@ -467,7 +467,7 @@ impl Insulator {
                             .font_family(crate::theme::active_ui_font_family())
                             .border_1()
                             .border_color(theme.border_strong)
-                            .bg(theme.raised)
+                            .bg(theme.elevated)
                             .shadow_lg()
                             .flex()
                             .flex_col()

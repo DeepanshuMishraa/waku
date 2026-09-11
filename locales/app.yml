@@ -1704,6 +1704,8 @@ files.could_not_save_read_only:
   en: "Could not save %{path}: file is not editable"
 files.could_not_save:
   en: "Could not save %{path}: %{error}"
+files.saved:
+  en: "Saved %{path}"
 files.preview_markdown:
   en: Preview markdown
 files.edit_markdown_source:

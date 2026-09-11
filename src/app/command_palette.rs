@@ -2006,7 +2006,7 @@ impl Insulator {
                 .rounded(px(15.0))
                 .border_1()
                 .border_color(theme.border_strong)
-                .bg(theme.raised)
+                .bg(theme.elevated)
                 .shadow_xl()
                 .relative()
                 .flex()

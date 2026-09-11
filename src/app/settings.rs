@@ -332,7 +332,8 @@ impl Insulator {
                 .border_l_1()
                 .border_color(theme.sidebar_border)
                 .bg(match self.state.window_style {
-                    WindowStyle::LiquidGlass | WindowStyle::Image => gpui::transparent_black(),
+                    WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
+                    WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                     WindowStyle::Solid => theme.surface,
                 })
                 .children(right_window_controls.map(|controls| {
@@ -408,7 +409,8 @@ impl Insulator {
             .border_l_1()
             .border_color(theme.sidebar_border)
             .bg(match self.state.window_style {
-                WindowStyle::LiquidGlass | WindowStyle::Image => gpui::transparent_black(),
+                WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
+                WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                 WindowStyle::Solid => theme.surface,
             })
             .child(

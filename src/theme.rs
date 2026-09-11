@@ -68,6 +68,10 @@ pub struct Theme {
     pub sidebar_item_background: Hsla,
     pub surface: Hsla,
     pub raised: Hsla,
+    /// Solid elevated surface for floating cards, popovers, and menus.
+    pub elevated: Hsla,
+    /// Solid surface for inner containers inside popovers and floating panels.
+    pub elevated_surface: Hsla,
     pub composer: Hsla,
     pub inset: Hsla,
     /// Terminal screen surface: paper-white in light mode, near-black in dark.
@@ -156,7 +160,7 @@ impl Theme {
         let (canvas, surface, raised, text, muted, accent, success, warning, danger, is_dark) = palette;
         let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(if is_dark { surface } else { surface }).into() };
         let base_overlay = if is_dark { hsla(0.0, 0.0, 1.0, 0.06) } else { hsla(0.0, 0.0, 0.0, 0.06) };
-        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
+        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), elevated: rgb(raised).into(), elevated_surface: rgb(surface).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
     }
 
     pub fn dark() -> Self {
@@ -172,6 +176,8 @@ impl Theme {
             sidebar_item_background: hsla(0.0, 0.0, 0.941, 0.06),
             surface: rgb(0x1A1A1A).into(),
             raised: rgb(0x232323).into(),
+            elevated: rgb(0x232323).into(),
+            elevated_surface: rgb(0x1A1A1A).into(),
             composer: rgb(0x212121).into(),
             inset: rgb(0x151515).into(),
             terminal: rgb(0x151515).into(),
@@ -219,6 +225,8 @@ impl Theme {
             sidebar_item_background: hsla(0.0, 0.0, 0.078, 0.06),
             surface: rgb(0xF6F5F6).into(),
             raised: rgb(0xECECEC).into(),
+            elevated: rgb(0xECECEC).into(),
+            elevated_surface: rgb(0xF6F5F6).into(),
             composer: rgb(0xFFFFFF).into(),
             inset: rgb(0xE6E6E6).into(),
             terminal: rgb(0xFFFFFF).into(),
@@ -268,6 +276,8 @@ impl Theme {
                 self.inset = Hsla { a: alpha_inset, ..self.inset };
                 self.surface = Hsla { a: alpha_surface, ..self.surface };
                 self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
+                self.elevated = Hsla { a: 1.0, ..self.elevated };
+                self.elevated_surface = Hsla { a: 1.0, ..self.elevated_surface };
                 self.terminal = transparent_black();
             }
             WindowStyle::Image => {
@@ -281,6 +291,8 @@ impl Theme {
                 self.inset = Hsla { a: alpha_inset, ..self.inset };
                 self.surface = Hsla { a: alpha_surface, ..self.surface };
                 self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
+                self.elevated = Hsla { a: 1.0, ..self.elevated };
+                self.elevated_surface = Hsla { a: 1.0, ..self.elevated_surface };
                 self.terminal = transparent_black();
             }
             WindowStyle::Solid => {}

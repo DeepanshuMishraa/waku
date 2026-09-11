@@ -1090,7 +1090,7 @@ impl Insulator {
                     .p(px(5.0))
                     .rounded_tl(px(12.0))
                     .rounded_bl(px(12.0))
-                    .bg(theme.canvas)
+                    .bg(theme.elevated_surface)
                     .border_r_1()
                     .border_color(theme.border);
 
@@ -1233,7 +1233,7 @@ impl Insulator {
                             .h(px(34.0))
                             .px(px(10.0))
                             .rounded(px(9.0))
-                            .bg(theme.raised)
+                            .bg(theme.elevated_surface)
                             .flex()
                             .items_center()
                             .gap(px(8.0))
@@ -1411,7 +1411,7 @@ impl Insulator {
                 if let Some(ref model_meta) = footer_model_meta {
                     if !model_meta.reasoning_efforts.is_empty() {
                         let mut pills = div()
-                            .bg(theme.canvas)
+                            .bg(theme.elevated_surface)
                             .rounded(px(7.0))
                             .p(px(2.0))
                             .border_1()
@@ -1590,7 +1590,7 @@ impl Insulator {
 
                 // 3. Permissions / Security Mode row
                 let mut perm_pills = div()
-                    .bg(theme.canvas)
+                    .bg(theme.elevated_surface)
                     .rounded(px(7.0))
                     .p(px(2.5))
                     .border_1()
@@ -1681,7 +1681,7 @@ impl Insulator {
                 // 4. Agent Presets (DeepSeek only)
                 if !footer_presets.is_empty() {
                     let mut preset_pills = div()
-                        .bg(theme.canvas)
+                        .bg(theme.elevated_surface)
                         .rounded(px(7.0))
                         .p(px(2.5))
                         .border_1()
@@ -1755,7 +1755,7 @@ impl Insulator {
                     .flex_none()
                     .border_t_1()
                     .border_color(theme.border)
-                    .bg(theme.surface)
+                    .bg(theme.elevated_surface)
                     .px(px(16.0))
                     .py(px(12.0))
                     .flex()
@@ -1770,7 +1770,7 @@ impl Insulator {
                     .overflow_hidden()
                     .border_1()
                     .border_color(theme.border_strong)
-                    .bg(theme.raised)
+                    .bg(theme.elevated)
                     .shadow_lg()
                     .flex()
                     // The filter field keeps focus and the selected row is only
@@ -1814,7 +1814,7 @@ impl Insulator {
                             .flex_col()
                             .rounded_tr(px(12.0))
                             .rounded_br(px(12.0))
-                            .bg(theme.surface)
+                            .bg(theme.elevated)
                             .child(search_input)
                             .child(
                                 div()
@@ -4313,7 +4313,7 @@ fn model_picker_empty_state(
         .overflow_hidden()
         .border_1()
         .border_color(theme.border_strong)
-        .bg(theme.raised)
+        .bg(theme.elevated)
         .shadow_lg()
         .flex()
         .flex_col()

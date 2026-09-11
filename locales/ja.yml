@@ -841,6 +841,7 @@ files.unable_to_edit: "このファイルを編集できません：%{error}"
 files.could_not_save_opening: "%{path} を保存できませんでした：まだ開いています"
 files.could_not_save_read_only: "%{path} を保存できませんでした：このファイルは編集できません"
 files.could_not_save: "%{path} を保存できませんでした：%{error}"
+files.saved: "%{path} を保存しました"
 files.preview_markdown: Markdown をプレビュー
 files.edit_markdown_source: ソースを編集
 files.resize_tree: ファイルツリーの幅を変更

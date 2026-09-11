@@ -799,6 +799,7 @@ files.unable_to_edit: "无法编辑此文件：%{error}"
 files.could_not_save_opening: "无法保存 %{path}：文件仍在打开"
 files.could_not_save_read_only: "无法保存 %{path}：文件不可编辑"
 files.could_not_save: "无法保存 %{path}：%{error}"
+files.saved: "已保存 %{path}"
 files.preview_markdown: 预览 Markdown
 files.edit_markdown_source: 编辑源码
 files.resize_tree: 调整文件树宽度

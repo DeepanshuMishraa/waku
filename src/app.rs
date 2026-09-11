@@ -806,6 +806,8 @@ struct RightPanelFileEditor {
     /// started earlier cannot apply over a newer truth — a save in particular,
     /// which makes any read already in flight describe the pre-save file.
     read_epoch: u64,
+    /// Generation counter for debounced autosaving. Bumped on edits and manual saves.
+    save_generation: u64,
 }
 
 struct RightPanelSessionState {

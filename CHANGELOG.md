@@ -16,6 +16,12 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.3]
+
+- Keep popovers, context menus, and pickers opaque in Liquid Glass and Image window styles for readability
+- Fix settings view background opacity in Image and Liquid Glass window styles
+- Add file editor autosave and immediate Command-S (`⌘S`) save with toast feedback
+
 ## [0.1.2]
 
 - Ensure workspace sessions persist across project switches and home screen
