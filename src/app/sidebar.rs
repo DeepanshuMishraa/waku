@@ -256,6 +256,7 @@ const SIDEBAR_SESSION_CARD_HEIGHT: f32 = 32.0;
 const SIDEBAR_SESSION_ROW_GAP: f32 = 2.0;
 const SIDEBAR_SESSION_ROW_HEIGHT: f32 = SIDEBAR_SESSION_CARD_HEIGHT + SIDEBAR_SESSION_ROW_GAP;
 const SIDEBAR_ACTION_ROW_HEIGHT: f32 = 34.0;
+const SIDEBAR_ACTION_ICON_SIZE: f32 = 15.0;
 const SIDEBAR_SEARCH_BOTTOM_GAP: f32 = 6.0;
 const SIDEBAR_GROUP_HEADER_HEIGHT: f32 = 34.0;
 const SIDEBAR_GROUP_HEADER_BOTTOM_GAP: f32 = 2.0;
@@ -861,7 +862,7 @@ impl Insulator {
                     .flex()
                     .items_center()
                     .justify_center()
-                    .child(icon(icon_path, 15.0, theme.text_secondary)),
+                    .child(icon(icon_path, SIDEBAR_ACTION_ICON_SIZE, theme.text_secondary)),
             )
             .child(
                 div()
@@ -1097,7 +1098,11 @@ impl Insulator {
                     .hover(|element| element.bg(theme.overlay))
                     .active(|element| element.bg(theme.overlay_strong))
                     .tooltip(Tooltip::text(tr_cow!("common.settings")))
-                    .child(icon("icons/settings.svg", 14.0, theme.text_tertiary))
+                    .child(icon(
+                        "icons/settings.svg",
+                        SIDEBAR_ACTION_ICON_SIZE,
+                        theme.text_tertiary,
+                    ))
                     .on_click(cx.listener(|this, _, window, cx| {
                         this.open_settings_action(&OpenSettings, window, cx);
                     })),
@@ -3879,4 +3884,3 @@ mod tests {
         assert_eq!(github_url_for_project(&non_git), None);
     }
 }
-
