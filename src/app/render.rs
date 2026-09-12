@@ -447,15 +447,7 @@ impl Render for Insulator {
                         element.border_l_1().border_color(theme.sidebar_border)
                     })
                     .child(self.render_header(window, cx))
-                    // Keep the tab strip visible for empty draft chats too.
-                    // Hiding it made selecting a newly-created tab look like a
-                    // separate new-chat page and left no way to see its tab
-                    // context while composing the first message.
-                    .when(
-                        (self.main_tabs_open || !self.main_tabs.is_empty())
-                            && self.selected_session().is_some(),
-                        |element| element.child(self.render_session_tabs(cx)),
-                    )
+
                     .child(if let Some(path) = active_file.as_ref() {
                         self.render_right_panel_file(path.clone(), file_editor_width, window, cx)
                             .into_any_element()

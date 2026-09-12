@@ -2548,6 +2548,8 @@ impl Insulator {
                 )
             })
             .flatten();
+        let show_tabs = (self.main_tabs_open || !self.main_tabs.is_empty())
+            && self.selected_session().is_some();
         div()
             .id("window-header")
             .h(px(48.0))
@@ -2555,6 +2557,8 @@ impl Insulator {
             .flex()
             .items_center()
             .gap(px(8.0))
+            .border_b_1()
+            .border_color(theme.border)
             .children(left_window_controls)
             // The header starts where the sidebar ends, so until the sidebar
             // is wide enough to host the traffic lights itself the header has
@@ -2610,45 +2614,37 @@ impl Insulator {
                             ),
                     )
             })
-            .child(
-                self.window_drag_region(
+            .when(show_tabs, |element| {
+                element.child(self.render_session_tabs(cx))
+            })
+            .when(!show_tabs, |element| {
+                element.children(title.map(|title| {
                     div()
-                        .id("header-title-drag-region")
-                        .h_full()
                         .min_w_0()
-                        .flex_shrink(1.0)
-                        .flex()
-                        .items_center()
-                        .gap(px(7.0))
-                        .children(title.map(|title| {
-                            div()
-                                .min_w_0()
-                                .truncate()
-                                .text_size(sp(13.0))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(theme.text)
-                                .child(SharedString::from(title))
-                        }))
-                        .children(agent_preset_label.map(|label| {
-                            div()
-                                .h(px(22.0))
-                                .max_w(px(180.0))
-                                .px(px(6.0))
-                                .rounded(px(6.0))
-                                .flex_none()
-                                .flex()
-                                .items_center()
-                                .gap(px(4.0))
-                                .bg(theme.overlay)
-                                .text_size(sp(12.5))
-                                .font_weight(FontWeight::MEDIUM)
-                                .text_color(theme.text_secondary)
-                                .child(icon("icons/bot.svg", 10.5, theme.text_tertiary))
-                                .child(div().min_w_0().truncate().child(SharedString::from(label)))
-                        })),
-                    cx,
-                ),
-            )
+                        .truncate()
+                        .text_size(sp(13.0))
+                        .font_weight(FontWeight::MEDIUM)
+                        .text_color(theme.text)
+                        .child(SharedString::from(title))
+                }))
+            })
+            .children(agent_preset_label.map(|label| {
+                div()
+                    .h(px(22.0))
+                    .max_w(px(180.0))
+                    .px(px(6.0))
+                    .rounded(px(6.0))
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(4.0))
+                    .bg(theme.overlay)
+                    .text_size(sp(12.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.text_secondary)
+                    .child(icon("icons/bot.svg", 10.5, theme.text_tertiary))
+                    .child(div().min_w_0().truncate().child(SharedString::from(label)))
+            }))
             .child(
                 self.window_drag_region(
                     div().id("header-center-drag-region").h_full().flex_1(),
@@ -2725,6 +2721,9 @@ impl Insulator {
                                 element.border_b_2().border_color(theme.accent)
                             })
                             .hover(|element| element.bg(theme.overlay))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
                             .on_click(move |_, _, cx| {
                                 let _ = tab_insulator.update(cx, |insulator, cx| {
                                     insulator.activate_main_tab_at_index(index, cx);
@@ -2798,6 +2797,9 @@ impl Insulator {
                                 element.border_b_2().border_color(theme.accent)
                             })
                             .hover(|element| element.bg(theme.overlay))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
                             .on_click(move |_, _, cx| {
                                 let _ = activate_insulator.update(cx, |insulator, cx| {
                                     insulator.activate_main_tab_at_index(index, cx);
@@ -2861,6 +2863,9 @@ impl Insulator {
                                 element.border_b_2().border_color(theme.accent)
                             })
                             .hover(|element| element.bg(theme.overlay))
+                            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                                cx.stop_propagation();
+                            })
                             .on_click(move |_, _, cx| {
                                 let _ = activate_insulator.update(cx, |insulator, cx| {
                                     insulator.activate_main_tab_at_index(index, cx);
@@ -2916,6 +2921,9 @@ impl Insulator {
             .hover(|element| element.bg(theme.overlay))
             .active(|element| element.bg(theme.overlay_strong))
             .tooltip(|window, cx| Tooltip::new(tr!("session.new_task")).build(window, cx))
+            .on_mouse_down(MouseButton::Left, |_, _, cx| {
+                cx.stop_propagation();
+            })
             .on_click(move |_, window, cx| {
                 let _ = new_tab_insulator.update(cx, |insulator, cx| {
                     insulator.main_tabs_open = true;
@@ -2938,27 +2946,22 @@ impl Insulator {
 
         div()
             .id("session-tabs")
-            .h(px(35.0))
-            .flex_none()
+            .h_full()
+            .min_w_0()
+            .flex_shrink(1.0)
             .flex()
             .items_center()
-            .border_b_1()
-            .border_color(theme.border)
-            .when(self.state.window_style == WindowStyle::Solid, |element| {
-                element.bg(theme.surface)
-            })
-            .px(px(6.0))
             .child(
                 div()
                     .id("session-tabs-wrapper")
                     .relative()
                     .min_w_0()
-                    .flex_1()
+                    .flex_shrink(1.0)
                     .h_full()
                     .child(
                         h_flex()
                             .id("session-tabs-scroll")
-                            .size_full()
+                            .h_full()
                             .overflow_x_scroll()
                             .track_scroll(&self.main_tabs_scroll_handle)
                             .on_scroll_wheel(cx.listener(|this, _, _, cx| {
