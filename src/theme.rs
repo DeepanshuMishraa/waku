@@ -291,10 +291,14 @@ impl Theme {
                     ..self.canvas
                 },
                 WindowStyle::Solid => self.sidebar,
-                WindowStyle::Transparent => Hsla { a: 0.0, ..self.surface },
+                WindowStyle::Transparent => self.surface,
             }
         };
-        let visibility = if transparency.is_finite() {
+        // Keep the sidebar surface in the render tree. Transparent mode uses
+        // the window's raw background, not the liquid-glass blur layer.
+        let visibility = if style == WindowStyle::Transparent {
+            1.0
+        } else if transparency.is_finite() {
             1.0 - transparency.clamp(0.0, 100.0) / 100.0
         } else {
             1.0 - insulator_client::persistence::DEFAULT_SIDEBAR_TRANSPARENCY / 100.0
@@ -305,7 +309,7 @@ impl Theme {
         }
     }
 
-    pub fn for_window_style(mut self, style: WindowStyle) -> Self {
+    pub fn for_window_style(mut self, style: WindowStyle, transparency: f32) -> Self {
         match style {
             WindowStyle::LiquidGlass => {
                 let alpha_raised = if self.is_dark { 0.22 } else { 0.32 };
@@ -412,16 +416,55 @@ impl Theme {
                 self.terminal = transparent_black();
             }
             WindowStyle::Transparent => {
-                let alpha_raised = if self.is_dark { 0.18 } else { 0.28 };
-                let alpha_composer = if self.is_dark { 0.20 } else { 0.32 };
-                let alpha_inset = if self.is_dark { 0.14 } else { 0.24 };
-                let alpha_surface = if self.is_dark { 0.10 } else { 0.18 };
-                self.raised = Hsla { a: alpha_raised, ..self.raised };
-                self.composer = Hsla { a: alpha_composer, ..self.composer };
-                self.inset = Hsla { a: alpha_inset, ..self.inset };
-                self.surface = Hsla { a: alpha_surface, ..self.surface };
-                self.canvas = Hsla { a: 0.0, ..self.canvas };
-                self.terminal = transparent_black();
+                // Transparent mode uses native vibrancy. Reduce the app's
+                // tint as the setting increases while keeping blur active.
+                let transparency = transparency.clamp(0.0, 100.0) / 100.0;
+                let surface_visibility = 1.0 - 0.75 * transparency;
+                // At 0% every app surface is opaque. As transparency rises,
+                // the surfaces reveal the still-blurred desktop behind them.
+                let alpha_raised =
+                    1.0 - (1.0 - if self.is_dark { 0.32 } else { 0.52 }) * transparency;
+                let alpha_composer =
+                    1.0 - (1.0 - if self.is_dark { 0.36 } else { 0.58 }) * transparency;
+                let alpha_inset =
+                    1.0 - (1.0 - if self.is_dark { 0.26 } else { 0.44 }) * transparency;
+                let alpha_surface =
+                    1.0 - (1.0 - if self.is_dark { 0.22 } else { 0.34 }) * transparency;
+                self.raised = Hsla {
+                    a: alpha_raised * surface_visibility,
+                    ..self.raised
+                };
+                self.composer = Hsla {
+                    a: alpha_composer * surface_visibility,
+                    ..self.composer
+                };
+                self.inset = Hsla {
+                    a: alpha_inset * surface_visibility,
+                    ..self.inset
+                };
+                self.surface = Hsla {
+                    a: alpha_surface * surface_visibility,
+                    ..self.surface
+                };
+                self.canvas = Hsla {
+                    a: 1.0 - 0.92 * transparency,
+                    ..self.canvas
+                };
+                self.elevated = Hsla {
+                    a: 1.0 - (1.0 - if self.is_dark { 0.82 } else { 0.88 }) * transparency,
+                    ..self.elevated
+                };
+                self.elevated_surface = Hsla {
+                    a: 1.0 - (1.0 - if self.is_dark { 0.78 } else { 0.84 }) * transparency,
+                    ..self.elevated_surface
+                };
+                self.terminal = Hsla {
+                    h: self.terminal.h,
+                    s: self.terminal.s,
+                    l: self.terminal.l,
+                    a: if self.is_dark { 0.82 } else { 0.88 },
+                };
+                self.sidebar_border = transparent_black();
             }
             WindowStyle::Solid => {}
         }
@@ -471,7 +514,8 @@ pub fn apply_theme_preference(
     } else {
         ColorTheme::default_for_dark(is_dark)
     };
-    let theme = Theme::from_color_theme(color_theme).for_window_style(window_style);
+    let theme = Theme::from_color_theme(color_theme)
+        .for_window_style(window_style, sidebar_transparency);
     let sidebar_color = theme.sidebar_drag_background;
     set_active_theme(theme, cx);
     crate::platform::configure_sidebar_material(
@@ -487,6 +531,7 @@ pub fn update_active_theme(
     preference: ThemePreference,
     color_theme: ColorTheme,
     window_style: WindowStyle,
+    sidebar_transparency: f32,
     cx: &mut App,
 ) {
     let is_dark = if window_style == WindowStyle::LiquidGlass {
@@ -499,6 +544,7 @@ pub fn update_active_theme(
     } else {
         ColorTheme::default_for_dark(is_dark)
     };
-    let theme = Theme::from_color_theme(color_theme).for_window_style(window_style);
+    let theme = Theme::from_color_theme(color_theme)
+        .for_window_style(window_style, sidebar_transparency);
     set_active_theme(theme, cx);
 }

@@ -733,6 +733,9 @@ pub fn configure_sidebar_material(
                 continue;
             };
             effect_view.setHidden(false);
+            // Transparent mode keeps native vibrancy at full strength. The
+            // slider changes the translucent app tint, not the blur itself.
+            effect_view.setAlphaValue(1.0);
             effect_view.setMaterial(NSVisualEffectMaterial::Sidebar);
             effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
             effect_view.setState(NSVisualEffectState::Active);
@@ -742,13 +745,23 @@ pub fn configure_sidebar_material(
             return;
         }
 
-        if window_style == insulator_protocol::theme::WindowStyle::Transparent {
-            let visibility = 1.0 - sidebar_transparency.clamp(0.0, 100.0) / 100.0;
-            for subview in content_view.subviews().iter() {
-                if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
-                    effect_view.setAlphaValue(f64::from(visibility));
-                }
+        // A style switch back from Transparent must restore the effect view;
+        // otherwise its previous slider value leaves the sidebar invisible.
+        for subview in content_view.subviews().iter() {
+            if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
+                effect_view.setAlphaValue(1.0);
             }
+        }
+
+        // One native material covers the whole window in Transparent mode.
+        // A second sidebar-only tint makes the two regions look like they have
+        // different blur strengths, so leave that extra layer hidden.
+        if window_style == insulator_protocol::theme::WindowStyle::Transparent {
+            SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+                if let Some(tint_view) = slot.as_ref() {
+                    tint_view.setHidden(true);
+                }
+            });
             return;
         }
 
@@ -800,11 +813,16 @@ pub fn configure_sidebar_material(_: &Window, _: bool, _: Hsla, _: f32) {}
 pub fn set_sidebar_material_transparency(sidebar_color: Hsla, sidebar_transparency: f32) {
     use objc2_app_kit::NSColor;
 
-    let color = sidebar_color.to_rgb();
-    let alpha = if sidebar_transparency.is_finite() {
-        1.0 - sidebar_transparency.clamp(0.0, 100.0) / 100.0
+    let transparency = if sidebar_transparency.is_finite() {
+        sidebar_transparency.clamp(0.0, 100.0)
     } else {
-        0.92
+        insulator_client::persistence::DEFAULT_SIDEBAR_TRANSPARENCY
+    };
+    let color = sidebar_color.to_rgb();
+    let alpha = if transparency.is_finite() {
+        1.0 - transparency.clamp(0.0, 100.0) / 100.0
+    } else {
+        1.0 - insulator_client::persistence::DEFAULT_SIDEBAR_TRANSPARENCY / 100.0
     };
     let tint = NSColor::colorWithSRGBRed_green_blue_alpha(
         f64::from(color.r),

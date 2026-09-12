@@ -338,7 +338,7 @@ impl Insulator {
                     WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
                     WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                     WindowStyle::Solid => theme.surface,
-                    WindowStyle::Transparent => gpui::transparent_black(),
+                    WindowStyle::Transparent => theme.surface,
                 })
                 .children(right_window_controls.map(|controls| {
                     self.render_settings_drag_region("settings-skills-titlebar", cx)
@@ -416,7 +416,7 @@ impl Insulator {
                 WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
                 WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                 WindowStyle::Solid => theme.surface,
-                WindowStyle::Transparent => gpui::transparent_black(),
+                WindowStyle::Transparent => theme.surface,
             })
             .child(
                 self.render_settings_drag_region("settings-content-titlebar", cx)
@@ -1884,7 +1884,11 @@ impl Insulator {
                                     .text_size(sp(13.5))
                                     .font_weight(FontWeight::MEDIUM)
                                     .text_color(theme.text)
-                                    .child("Sidebar transparency"),
+                                    .child(if selected_window_style == WindowStyle::Transparent {
+                                        "Window transparency"
+                                    } else {
+                                        "Sidebar transparency"
+                                    }),
                             )
                             .child(
                                 div()
@@ -1892,7 +1896,11 @@ impl Insulator {
                                     .text_size(sp(12.5))
                                     .line_height(sp(18.0))
                                     .text_color(theme.text_secondary)
-                                    .child("Adjust how much of the background shows through."),
+                                    .child(if selected_window_style == WindowStyle::Transparent {
+                                        "Adjust how much of the window background shows through."
+                                    } else {
+                                        "Adjust how much of the sidebar background shows through."
+                                    }),
                             ),
                     )
                     .child(
@@ -2276,6 +2284,13 @@ impl Insulator {
             return;
         }
         self.state.sidebar_transparency = transparency;
+        crate::theme::update_active_theme(
+            self.state.theme,
+            self.state.color_theme,
+            self.state.window_style,
+            transparency,
+            cx,
+        );
         self.sidebar_transparency_slider.update(cx, |slider, cx| {
             if (slider.value().start() - transparency).abs() >= f32::EPSILON {
                 slider.set_value(transparency, cx);
@@ -3439,7 +3454,13 @@ impl Insulator {
         self.state.window_style = WindowStyle::Image;
         self.window_style_restart_dialog = None;
         self.reset_default_sidebar_transparency(self.state.color_theme.is_dark(), WindowStyle::Image, cx);
-        crate::theme::update_active_theme(self.state.theme, self.state.color_theme, WindowStyle::Image, cx);
+        crate::theme::update_active_theme(
+            self.state.theme,
+            self.state.color_theme,
+            WindowStyle::Image,
+            self.state.sidebar_transparency,
+            cx,
+        );
         crate::platform::reapply_window_style(WindowStyle::Image, self.state.color_theme, self.state.background_image_path.as_deref());
         self.save();
         cx.notify();

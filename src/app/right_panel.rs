@@ -2888,7 +2888,7 @@ impl Insulator {
                 WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
                 WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                 WindowStyle::Solid => theme.surface,
-                WindowStyle::Transparent => gpui::transparent_black(),
+                WindowStyle::Transparent => theme.surface,
             })
             .relative()
             .child(self.render_right_panel_header(window, cx))
