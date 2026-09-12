@@ -66,6 +66,29 @@ fn selectable_row_indexes(rows: &[AutocompleteRow]) -> Vec<usize> {
         .collect()
 }
 
+fn scroll_target_for_row_navigation(
+    rows: &[AutocompleteRow],
+    selectable: &[usize],
+    next_pos: usize,
+    key: &str,
+) -> usize {
+    let next = selectable.get(next_pos).copied().unwrap_or(0);
+    if next_pos == 0 {
+        // When landing on the first selectable item, always scroll to the very top (item 0)
+        // so that any top header (such as "References") remains fully visible.
+        0
+    } else if key == "up"
+        && next > 0
+        && matches!(rows.get(next - 1), Some(AutocompleteRow::Header(_)))
+    {
+        // When navigating up into a section, scroll to the section's header so both
+        // the header and the highlighted item stay in view.
+        next - 1
+    } else {
+        next
+    }
+}
+
 /// Filter results for one (kind, query, source index) — the popup's rows are
 /// recomputed on a keystroke, not on every frame the caret blinks.
 struct ResultsMemo {
@@ -114,7 +137,109 @@ impl AutocompleteUi {
     }
 }
 
+#[derive(Clone, Debug, Eq, PartialEq)]
+struct PiReferenceFileFingerprint {
+    modified: Option<std::time::SystemTime>,
+    length: Option<u64>,
+}
+
+fn pi_reference_config_path(root: &std::path::Path, global: bool) -> std::path::PathBuf {
+    let canonical = if global {
+        dirs::home_dir()
+            .map(|home| home.join(".pi/agent/references.json"))
+            .unwrap_or_default()
+    } else {
+        root.join(".pi/references.json")
+    };
+    if canonical.is_file() {
+        canonical
+    } else if global {
+        dirs::home_dir()
+            .map(|home| home.join(".pi/agent/pi-refs.json"))
+            .unwrap_or_default()
+    } else {
+        root.join(".pi/pi-refs.json")
+    }
+}
+
+fn pi_reference_file_fingerprint(path: &std::path::Path) -> PiReferenceFileFingerprint {
+    let metadata = std::fs::metadata(path).ok();
+    PiReferenceFileFingerprint {
+        modified: metadata.as_ref().and_then(|metadata| metadata.modified().ok()),
+        length: metadata.map(|metadata| metadata.len()),
+    }
+}
+
+fn pi_reference_fingerprint(root: &std::path::Path) -> (
+    PiReferenceFileFingerprint,
+    PiReferenceFileFingerprint,
+) {
+    (
+        pi_reference_file_fingerprint(&pi_reference_config_path(root, true)),
+        pi_reference_file_fingerprint(&pi_reference_config_path(root, false)),
+    )
+}
+
 impl Insulator {
+    /// Keep Pi references current while the composer is open. The poll runs
+    /// off the UI thread; rendering only sees the already-loaded cache.
+    pub(super) fn start_pi_reference_watch(&mut self, cx: &mut Context<Self>) {
+        cx.spawn(async move |insulator, cx| {
+            let mut previous: Option<(
+                std::path::PathBuf,
+                (
+                    PiReferenceFileFingerprint,
+                    PiReferenceFileFingerprint,
+                ),
+            )> = None;
+            loop {
+                let root = match insulator.update(cx, |insulator, _| {
+                    insulator
+                        .selected_session()
+                        .filter(|session| session.provider == ProviderKind::Pi)
+                        .and_then(|_| {
+                            insulator
+                                .selected_workspace_path()
+                                .map(std::path::Path::to_path_buf)
+                        })
+                }) {
+                    Ok(root) => root,
+                    Err(_) => return,
+                };
+                let Some(root) = root else {
+                    previous = None;
+                    cx.background_executor()
+                        .timer(std::time::Duration::from_millis(500))
+                        .await;
+                    continue;
+                };
+                let (root, fingerprint) = cx
+                    .background_executor()
+                    .spawn(async move {
+                        let fingerprint = pi_reference_fingerprint(&root);
+                        (root, fingerprint)
+                    })
+                    .await;
+                let changed = previous
+                    .as_ref()
+                    .is_some_and(|(previous_root, previous_fingerprint)| {
+                        previous_root == &root && previous_fingerprint != &fingerprint
+                    });
+                previous = Some((root, fingerprint));
+                if changed {
+                    let _ = insulator.update(cx, |insulator, cx| {
+                        insulator.invalidate_composer_sources(cx);
+                        cx.notify();
+                    });
+                }
+                cx.background_executor()
+                    .timer(std::time::Duration::from_millis(500))
+                    .await;
+            }
+        })
+        .detach();
+    }
+
     /// Refresh the drawn command and file indexes for the selected session.
     ///
     /// A cache hit lands immediately; a miss starts discovery on the
@@ -374,18 +499,21 @@ impl Insulator {
         };
         let rows = self.autocomplete_rows(&trigger);
         let selectable = selectable_row_indexes(&rows);
+        if selectable.is_empty() {
+            return;
+        }
         let ui = &self.composer_autocomplete;
         let current = selectable
             .iter()
             .position(|index| *index == ui.highlight.get())
             .unwrap_or(0);
-        let Some(next) = next_picker_highlight(Some(current), selectable.len(), key)
-            .and_then(|index| selectable.get(index).copied())
-        else {
+        let Some(next_pos) = next_picker_highlight(Some(current), selectable.len(), key) else {
             return;
         };
+        let next = selectable[next_pos];
         ui.highlight.set(next);
-        ui.scroll.scroll_to_item(next);
+        let scroll_target = scroll_target_for_row_navigation(&rows, &selectable, next_pos, key);
+        ui.scroll.scroll_to_item(scroll_target);
         cx.notify();
     }
 
@@ -461,11 +589,14 @@ impl Insulator {
         // draws has no bounds yet; the popup appears one frame later.
         let card_bounds = self.composer_autocomplete.card_bounds.get()?;
         let theme = Theme::current(cx);
-        let highlight = self
-            .composer_autocomplete
-            .highlight
-            .get()
-            .min(rows.len().saturating_sub(1));
+        let selectable = selectable_row_indexes(&rows);
+        let highlight = if selectable.contains(&self.composer_autocomplete.highlight.get()) {
+            self.composer_autocomplete.highlight.get()
+        } else {
+            let first = selectable.first().copied().unwrap_or(0);
+            self.composer_autocomplete.highlight.set(first);
+            first
+        };
 
         let mut list = div()
             .id("composer-autocomplete-list")
@@ -805,5 +936,57 @@ mod tests {
                  discovery belongs in refresh_composer_sources"
             );
         }
+    }
+
+    #[test]
+    fn scroll_target_keeps_headers_visible() {
+        use super::*;
+
+        let rows = vec![
+            AutocompleteRow::Header("References".into()),
+            AutocompleteRow::Reference(Scored {
+                positions: vec![],
+                item: ReferenceEntry {
+                    alias: "effect".into(),
+                    description: Some("Effect-TS".into()),
+                },
+            }),
+            AutocompleteRow::Reference(Scored {
+                positions: vec![],
+                item: ReferenceEntry {
+                    alias: "opencode".into(),
+                    description: Some("tui".into()),
+                },
+            }),
+            AutocompleteRow::Header("Files".into()),
+            AutocompleteRow::File(Scored {
+                positions: vec![],
+                item: FileEntry {
+                    path: ".gitignore".into(),
+                    is_dir: false,
+                },
+            }),
+        ];
+        let selectable = selectable_row_indexes(&rows);
+        assert_eq!(selectable, vec![1, 2, 4]);
+
+        // Navigating to first item (pos 0) always scrolls to 0 (top header)
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 0, "up"), 0);
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 0, "down"), 0);
+
+        // Navigating down to pos 1 (opencode) scrolls to 2
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 1, "down"), 2);
+
+        // Navigating down to pos 2 (.gitignore) scrolls to 4
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 2, "down"), 4);
+
+        // Navigating up to pos 2 (.gitignore, preceded by "Files" header at index 3) scrolls to 3
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 2, "up"), 3);
+
+        // Navigating up to pos 1 (opencode, preceded by "effect" at index 1) scrolls to 2
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 1, "up"), 2);
+
+        // Navigating up to pos 0 (effect, preceded by "References" header at index 0) scrolls to 0
+        assert_eq!(scroll_target_for_row_navigation(&rows, &selectable, 0, "up"), 0);
     }
 }

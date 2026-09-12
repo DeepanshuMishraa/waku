@@ -463,6 +463,13 @@ impl Insulator {
                     }
                 }
             }
+            DriverEvent::PlanApproved => {
+                self.pi_plan_modes
+                    .insert(session_id, super::composer::PiPlanMode::Off);
+                if self.state.selected_session == Some(session_id) {
+                    self.show_success_toast("Plan approved. Now working on it.");
+                }
+            }
             DriverEvent::ExtensionNotification { message, level } => {
                 if self.state.selected_session == Some(session_id) {
                     match level {
@@ -481,11 +488,9 @@ impl Insulator {
                     ("pi-plan", false) if current == super::composer::PiPlanMode::Plan => {
                         Some(super::composer::PiPlanMode::Off)
                     }
-                    ("plannotator", false)
-                        if current == super::composer::PiPlanMode::Plannotator =>
-                    {
-                        Some(super::composer::PiPlanMode::Off)
-                    }
+                    // Plannotator clears its status while executing when no
+                    // checklist is present. That is still plan mode; only
+                    // the explicit picker action changes the requested mode.
                     _ => None,
                 };
                 if let Some(mode) = mode {

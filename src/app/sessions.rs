@@ -20,18 +20,16 @@ impl Insulator {
 
     pub(super) fn select_project(&mut self, project_id: Uuid, cx: &mut Context<Self>) {
         self.state.selected_project = Some(project_id);
-        self.ensure_workspace_sessions();
         self.create_session_for(project_id, self.state.last_provider, cx);
     }
 
     pub(super) fn select_session(&mut self, session_id: Uuid, cx: &mut Context<Self>) {
-        if self.main_tabs_open || !self.main_tabs.is_empty() {
-            self.active_main_file_tab = None;
-            self.active_main_review_tab = false;
-            let tab = MainTab::Chat(session_id);
-            if !self.main_tabs.contains(&tab) {
-                self.main_tabs.push(tab);
-            }
+        self.main_tabs_open = true;
+        self.active_main_file_tab = None;
+        self.active_main_review_tab = false;
+        let tab = MainTab::Chat(session_id);
+        if !self.main_tabs.contains(&tab) {
+            self.main_tabs.push(tab);
         }
         self.request_session_activation(session_id, SessionActivationTransition::Visit, cx);
     }
@@ -431,7 +429,9 @@ impl Insulator {
             } else if projectless {
                 self.create_projectless_session(cx);
             } else {
-                self.create_session_for(project_id, self.state.last_provider, cx);
+                self.state.selected_project = Some(project_id);
+                self.save();
+                cx.notify();
             }
         } else {
             self.save();
@@ -520,26 +520,6 @@ impl Insulator {
         }
         self.select_session(id, cx);
         Some(id)
-    }
-
-    pub(super) fn ensure_workspace_sessions(&mut self) {
-        let projectless_root = crate::projectless::workspace_root();
-        let mut new_sessions = Vec::new();
-        for project in &self.state.projects {
-            if project.is_projectless()
-                || projectless_root
-                    .as_ref()
-                    .is_some_and(|root| project.path.starts_with(root))
-            {
-                continue;
-            }
-            if !self.state.sessions.iter().any(|s| s.project_id == project.id) {
-                new_sessions.push(self.state.new_session(project.id, self.state.last_provider));
-            }
-        }
-        for session in new_sessions {
-            self.state.push_session(session);
-        }
     }
 
     pub(super) fn new_session_action(
@@ -1226,6 +1206,7 @@ impl Insulator {
     /// Discovery is not requested here: launch already requested it for every
     /// installed provider, so tabs only ever switch between loaded lists.
     pub(super) fn select_model_picker_tab(&mut self, tab: ModelPickerTab, cx: &mut Context<Self>) {
+        self.model_picker_submenu = ModelPickerSubmenu::None;
         if self.model_picker_tab != tab {
             self.model_picker_tab = tab;
             if let ModelPickerTab::Provider(provider) = tab {

@@ -1075,7 +1075,7 @@ fn layout_missing(layout: &TextLayout) -> bool {
 
 /// The registry entry containing `position`, else the nearest by vertical
 /// distance so a drag through a gutter or between blocks clamps sensibly.
-fn registry_point(
+pub fn registry_point(
     registry: &SelectionRegistry<TextGeometry>,
     position: Point<Pixels>,
 ) -> Option<(usize, usize)> {
@@ -1116,12 +1116,26 @@ fn registry_point(
 /// so three closures replace three-per-element and a mouse move costs one
 /// registry scan instead of one dispatch per visible paragraph.
 pub fn install_selection_input(window: &mut Window, state: &TranscriptSelection) {
+    install_selection_input_with_scroll(window, state, |_, _, _| false);
+}
+
+pub fn install_selection_input_with_scroll<F>(
+    window: &mut Window,
+    state: &TranscriptSelection,
+    mut on_drag_scroll: F,
+)
+where
+    F: 'static + FnMut(Point<Pixels>, &mut Window, &mut gpui::App) -> bool,
+{
     window.on_mouse_event({
         let state = state.clone();
         move |event: &MouseDownEvent, phase, window, _| {
             if phase != DispatchPhase::Bubble || event.button != MouseButton::Left {
                 return;
             }
+            state
+                .last_drag_position
+                .set(Some((f32::from(event.position.x), f32::from(event.position.y))));
             let registry = state.registry.borrow();
             let hit = registry.entries().iter().enumerate().find(|(_, entry)| {
                 !entry.geometry.is_missing() && entry.geometry.bounds().contains(&event.position)
@@ -1164,28 +1178,53 @@ pub fn install_selection_input(window: &mut Window, state: &TranscriptSelection)
 
     window.on_mouse_event({
         let state = state.clone();
-        move |event: &MouseMoveEvent, phase, window, _| {
+        move |event: &MouseMoveEvent, phase, window, cx| {
             if phase != DispatchPhase::Bubble || !event.dragging() {
                 return;
             }
+            state
+                .last_drag_position
+                .set(Some((f32::from(event.position.x), f32::from(event.position.y))));
+            let scrolled = on_drag_scroll(event.position, window, cx);
+            if scrolled {
+                window.refresh();
+            }
             let registry = state.registry.borrow();
-            let anchor = {
+            let anchor_info = {
                 let selection = state.selection.borrow();
                 selection
                     .anchor()
                     .cloned()
                     .and_then(|key| selection.drag_anchor(&key).map(|offset| (key, offset)))
-                    .and_then(|(key, offset)| registry.position(&key).map(|index| (index, offset)))
             };
-            // The anchor scrolling out of the frame keeps the existing spans
-            // rather than collapsing the selection.
-            let Some((anchor_index, anchor_offset)) = anchor else {
+            let Some((anchor_key, anchor_offset)) = anchor_info else {
                 return;
             };
             let Some(head) = registry_point(&registry, event.position) else {
                 return;
             };
-            let spans = registry.resolve((anchor_index, anchor_offset), head);
+            let anchor_pos = registry.position(&anchor_key);
+            let spans = match anchor_pos {
+                Some(anchor_index) => {
+                    let direction = if head.0 > anchor_index
+                        || (head.0 == anchor_index && head.1 >= anchor_offset)
+                    {
+                        crate::md::selection::DragDirection::Forward
+                    } else {
+                        crate::md::selection::DragDirection::Backward
+                    };
+                    state.selection.borrow_mut().set_direction(direction);
+                    registry.resolve((anchor_index, anchor_offset), head)
+                }
+                None => {
+                    let selection = state.selection.borrow();
+                    if let Some(direction) = selection.direction() {
+                        registry.resolve_offscreen(head, direction, selection.spans())
+                    } else {
+                        return;
+                    }
+                }
+            };
             drop(registry);
             if state.selection.borrow_mut().set_spans(spans) {
                 window.refresh();
@@ -1199,6 +1238,7 @@ pub fn install_selection_input(window: &mut Window, state: &TranscriptSelection)
             if phase != DispatchPhase::Bubble {
                 return;
             }
+            state.last_drag_position.set(None);
             let key = state.selection.borrow().anchor().cloned();
             if let Some(key) = key {
                 state.selection.borrow_mut().end_drag(&key);

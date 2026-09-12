@@ -160,7 +160,12 @@ impl Theme {
         let (canvas, surface, raised, text, muted, accent, success, warning, danger, is_dark) = palette;
         let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(if is_dark { surface } else { surface }).into() };
         let base_overlay = if is_dark { hsla(0.0, 0.0, 1.0, 0.06) } else { hsla(0.0, 0.0, 0.0, 0.06) };
-        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), elevated: rgb(raised).into(), elevated_surface: rgb(surface).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
+        let elevated_color = if is_dark && raised == 0x44475a {
+            rgb(0x282a36).into()
+        } else {
+            rgb(raised).into()
+        };
+        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), elevated: elevated_color, elevated_surface: rgb(surface).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
     }
 
     pub fn dark() -> Self {
@@ -276,8 +281,45 @@ impl Theme {
                 self.inset = Hsla { a: alpha_inset, ..self.inset };
                 self.surface = Hsla { a: alpha_surface, ..self.surface };
                 self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
-                self.elevated = Hsla { a: 1.0, ..self.elevated };
-                self.elevated_surface = Hsla { a: 1.0, ..self.elevated_surface };
+                if self.is_dark {
+                    self.elevated = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.22),
+                        l: (self.canvas.l * 0.75 + 0.05).clamp(0.10, 0.16),
+                        a: 0.78,
+                    };
+                    self.elevated_surface = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.22),
+                        l: (self.canvas.l * 0.5 + 0.02).clamp(0.06, 0.11),
+                        a: 0.82,
+                    };
+                    self.border_strong = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.15),
+                        l: 0.90,
+                        a: 0.14,
+                    };
+                } else {
+                    self.elevated = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.15),
+                        l: 0.96,
+                        a: 0.80,
+                    };
+                    self.elevated_surface = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.15),
+                        l: 0.92,
+                        a: 0.84,
+                    };
+                    self.border_strong = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.12),
+                        l: 0.10,
+                        a: 0.12,
+                    };
+                }
                 self.terminal = transparent_black();
             }
             WindowStyle::Image => {
@@ -291,8 +333,45 @@ impl Theme {
                 self.inset = Hsla { a: alpha_inset, ..self.inset };
                 self.surface = Hsla { a: alpha_surface, ..self.surface };
                 self.canvas = Hsla { a: alpha_canvas, ..self.canvas };
-                self.elevated = Hsla { a: 1.0, ..self.elevated };
-                self.elevated_surface = Hsla { a: 1.0, ..self.elevated_surface };
+                if self.is_dark {
+                    self.elevated = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.22),
+                        l: (self.canvas.l * 0.75 + 0.05).clamp(0.10, 0.16),
+                        a: 0.80,
+                    };
+                    self.elevated_surface = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.22),
+                        l: (self.canvas.l * 0.5 + 0.02).clamp(0.06, 0.11),
+                        a: 0.84,
+                    };
+                    self.border_strong = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.15),
+                        l: 0.90,
+                        a: 0.16,
+                    };
+                } else {
+                    self.elevated = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.15),
+                        l: 0.96,
+                        a: 0.82,
+                    };
+                    self.elevated_surface = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.15),
+                        l: 0.92,
+                        a: 0.86,
+                    };
+                    self.border_strong = Hsla {
+                        h: self.canvas.h,
+                        s: self.canvas.s.min(0.12),
+                        l: 0.10,
+                        a: 0.14,
+                    };
+                }
                 self.terminal = transparent_black();
             }
             WindowStyle::Solid => {}

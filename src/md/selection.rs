@@ -14,7 +14,7 @@
 //! This half is pure and gpui-free so it can be unit-tested; the geometry and
 //! mouse listeners live in [`super::render`].
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::ops::Range;
 use std::rc::Rc;
 
@@ -50,6 +50,12 @@ pub struct Span {
     pub block_break: bool,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DragDirection {
+    Forward,
+    Backward,
+}
+
 /// The selection state for one transcript.
 #[derive(Debug, Default)]
 pub struct Selection {
@@ -58,6 +64,7 @@ pub struct Selection {
     /// Byte offset of the anchor within its element.
     anchor_offset: usize,
     dragging: bool,
+    direction: Option<DragDirection>,
     /// Resolved spans in document order. Empty until a drag moves.
     spans: Vec<Span>,
 }
@@ -67,11 +74,28 @@ impl Selection {
         self.spans.iter().all(|span| span.range.is_empty())
     }
 
+    pub fn is_dragging(&self) -> bool {
+        self.dragging
+    }
+
+    pub fn direction(&self) -> Option<DragDirection> {
+        self.direction
+    }
+
+    pub fn set_direction(&mut self, direction: DragDirection) {
+        self.direction = Some(direction);
+    }
+
+    pub fn spans(&self) -> &[Span] {
+        &self.spans
+    }
+
     /// Begin a drag anchored at `offset` in `key`.
     pub fn begin(&mut self, key: TextKey, offset: usize) {
         self.anchor = Some(key);
         self.anchor_offset = offset;
         self.dragging = true;
+        self.direction = None;
         self.spans.clear();
     }
 
@@ -80,6 +104,7 @@ impl Selection {
         self.anchor = Some(key.clone());
         self.anchor_offset = range.start;
         self.dragging = true;
+        self.direction = None;
         self.spans = vec![Span {
             key,
             range,
@@ -112,6 +137,7 @@ impl Selection {
             return None;
         }
         self.dragging = false;
+        self.direction = None;
         if self.is_empty() {
             self.clear();
             return None;
@@ -123,6 +149,7 @@ impl Selection {
         self.anchor = None;
         self.anchor_offset = 0;
         self.dragging = false;
+        self.direction = None;
         self.spans.clear();
     }
 
@@ -241,6 +268,89 @@ impl<G> SelectionRegistry<G> {
         }
         spans
     }
+
+    /// Resolve spans when the anchor has scrolled out of view.
+    ///
+    /// If `direction` is Forward (anchor is before the visible entries):
+    /// All entries in the registry up to `head` are selected.
+    /// Existing spans in `current_spans` that came before the first visible entry are preserved.
+    ///
+    /// If `direction` is Backward (anchor is after the visible entries):
+    /// All entries in the registry from `head` to the end are selected.
+    /// Existing spans in `current_spans` that came after the last visible entry are preserved.
+    pub fn resolve_offscreen(
+        &self,
+        head: (usize, usize),
+        direction: DragDirection,
+        current_spans: &[Span],
+    ) -> Vec<Span> {
+        if self.entries.is_empty() {
+            return current_spans.to_vec();
+        }
+        match direction {
+            DragDirection::Forward => {
+                let first_key = &self.entries[0].key;
+                let keep_count = current_spans
+                    .iter()
+                    .position(|s| s.key == *first_key)
+                    .unwrap_or(current_spans.len());
+                let mut spans = current_spans[..keep_count].to_vec();
+
+                let last = head.0.min(self.entries.len().saturating_sub(1));
+                for index in 0..=last {
+                    let entry = &self.entries[index];
+                    let from = 0;
+                    let to = if index == head.0 {
+                        head.1
+                    } else {
+                        entry.text.len()
+                    };
+                    let from = clamp_boundary(&entry.text, from);
+                    let to = clamp_boundary(&entry.text, to);
+                    let crossed_empty = entry.text.is_empty() && index < head.0;
+                    if from < to || crossed_empty {
+                        spans.push(Span {
+                            key: entry.key.clone(),
+                            range: from..to,
+                            text: entry.text.clone(),
+                            block_break: entry.block_break && !spans.is_empty(),
+                        });
+                    }
+                }
+                spans
+            }
+            DragDirection::Backward => {
+                let last_key = &self.entries[self.entries.len() - 1].key;
+                let keep_start = current_spans
+                    .iter()
+                    .rposition(|s| s.key == *last_key)
+                    .map(|pos| pos + 1)
+                    .unwrap_or(0);
+                let trailing_spans = &current_spans[keep_start..];
+
+                let mut spans = Vec::new();
+                let start = head.0.min(self.entries.len().saturating_sub(1));
+                for index in start..self.entries.len() {
+                    let entry = &self.entries[index];
+                    let from = if index == start { head.1 } else { 0 };
+                    let to = entry.text.len();
+                    let from = clamp_boundary(&entry.text, from);
+                    let to = clamp_boundary(&entry.text, to);
+                    let crossed_empty = entry.text.is_empty() && index > start;
+                    if from < to || crossed_empty {
+                        spans.push(Span {
+                            key: entry.key.clone(),
+                            range: from..to,
+                            text: entry.text.clone(),
+                            block_break: entry.block_break && !spans.is_empty(),
+                        });
+                    }
+                }
+                spans.extend_from_slice(trailing_spans);
+                spans
+            }
+        }
+    }
 }
 
 /// Clamp a byte offset into `text` and snap it down to a char boundary. Mouse
@@ -257,6 +367,7 @@ fn clamp_boundary(text: &str, offset: usize) -> usize {
 pub struct SelectionState<G = ()> {
     pub selection: Rc<RefCell<Selection>>,
     pub registry: Rc<RefCell<SelectionRegistry<G>>>,
+    pub last_drag_position: Rc<Cell<Option<(f32, f32)>>>,
 }
 
 impl<G> Clone for SelectionState<G> {
@@ -264,6 +375,7 @@ impl<G> Clone for SelectionState<G> {
         Self {
             selection: self.selection.clone(),
             registry: self.registry.clone(),
+            last_drag_position: self.last_drag_position.clone(),
         }
     }
 }
@@ -273,6 +385,7 @@ impl<G> Default for SelectionState<G> {
         Self {
             selection: Rc::default(),
             registry: Rc::default(),
+            last_drag_position: Rc::default(),
         }
     }
 }
@@ -282,6 +395,7 @@ impl<G> SelectionState<G> {
     pub fn clear(&self) {
         self.selection.borrow_mut().clear();
         self.registry.borrow_mut().clear();
+        self.last_drag_position.set(None);
     }
 }
 
@@ -500,5 +614,69 @@ mod tests {
         registry.clear();
         assert!(registry.is_empty());
         assert_eq!(registry.position(&TextKey::new("row-a", 0)), None);
+    }
+
+    fn registry_with_keys(entries: &[(&str, usize, &str)]) -> SelectionRegistry {
+        let mut registry = SelectionRegistry::default();
+        for (row, elem, text) in entries {
+            registry.push(RegisteredText {
+                key: TextKey::new(*row, *elem),
+                text: Rc::from(*text),
+                block_break: *elem > 0,
+                geometry: (),
+            });
+        }
+        registry
+    }
+
+    #[test]
+    fn resolve_offscreen_forward_and_backward() {
+        let initial_reg = registry_with_keys(&[
+            ("r1", 0, "alpha"),
+            ("r2", 0, "beta"),
+            ("r3", 0, "gamma"),
+        ]);
+        let initial_spans = initial_reg.resolve((0, 0), (1, 4));
+        assert_eq!(selected(&initial_reg, &initial_spans), vec!["alpha", "beta"]);
+
+        // Scrolled down: r1 is offscreen, visible is r2, r3, r4
+        let scrolled_reg = registry_with_keys(&[
+            ("r2", 0, "beta"),
+            ("r3", 0, "gamma"),
+            ("r4", 0, "delta"),
+        ]);
+        let offscreen_spans = scrolled_reg.resolve_offscreen(
+            (1, 3),
+            DragDirection::Forward,
+            &initial_spans,
+        );
+        assert_eq!(
+            selected(&scrolled_reg, &offscreen_spans),
+            vec!["alpha", "beta", "gam"]
+        );
+
+        // Backward drag: started at r4, dragged backward to r3
+        let reg_end = registry_with_keys(&[
+            ("r2", 0, "beta"),
+            ("r3", 0, "gamma"),
+            ("r4", 0, "delta"),
+        ]);
+        let end_spans = reg_end.resolve((2, 5), (1, 1));
+        assert_eq!(selected(&reg_end, &end_spans), vec!["amma", "delta"]);
+
+        // Scrolled up: r3 and r4 are offscreen, visible is r1, r2
+        let scrolled_up_reg = registry_with_keys(&[
+            ("r1", 0, "alpha"),
+            ("r2", 0, "beta"),
+        ]);
+        let backward_spans = scrolled_up_reg.resolve_offscreen(
+            (0, 2),
+            DragDirection::Backward,
+            &end_spans,
+        );
+        assert_eq!(
+            selected(&scrolled_up_reg, &backward_spans),
+            vec!["pha", "beta", "amma", "delta"]
+        );
     }
 }

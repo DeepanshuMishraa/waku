@@ -924,7 +924,6 @@ impl Insulator {
         self.active_main_review_tab = false;
         self.main_tabs.clear();
         self.main_tabs_open = false;
-        self.ensure_workspace_sessions();
         self.save();
         cx.notify();
     }
@@ -1421,7 +1420,7 @@ impl Insulator {
                 if is_projectless {
                     session.has_started() || self.state.selected_session == Some(session.id)
                 } else {
-                    true
+                    session.has_started()
                 }
             })
             .collect::<Vec<_>>();
@@ -1745,6 +1744,7 @@ impl Insulator {
                 .filter(|session| {
                     session.conversation_root_id.is_none()
                         && session.project_id == project_id
+                        && session.has_started()
                 })
                 .count()
         } else if matches!(group, SidebarGroup::Projectless) {
@@ -1772,8 +1772,7 @@ impl Insulator {
                 .filter(|session| {
                     session.conversation_root_id.is_none()
                         && session.chat_status == status
-                        && (session.has_started()
-                            || self.state.selected_session == Some(session.id))
+                        && session.has_started()
                 })
                 .count()
         } else {

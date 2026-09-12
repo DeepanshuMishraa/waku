@@ -837,9 +837,7 @@ impl Insulator {
                     .map(|m| m.id.as_str())
             });
         let selected_model_name = self.model_display_name(provider, selected_model);
-        let locked_provider = session
-            .filter(|session| !session.messages.is_empty())
-            .map(|session| session.provider);
+        let locked_provider: Option<ProviderKind> = None;
         let picker_enabled = session.map(|session| session.can_choose_model(provider)).unwrap_or(true);
 
         let current_model_meta = self
@@ -1006,6 +1004,7 @@ impl Insulator {
                                 provider
                             };
                         this.model_picker_tab = ModelPickerTab::Recents;
+                        this.model_picker_submenu = ModelPickerSubmenu::None;
                         // Opening re-runs the tab's catalog discovery so models
                         // authored since launch appear without a restart; the
                         // other rails refresh when selected, not all at once.
@@ -1014,6 +1013,7 @@ impl Insulator {
                         reset_search.update(cx, |search, cx| search.clear(cx));
                         this.reveal_selected_picker_model();
                     } else {
+                        this.model_picker_submenu = ModelPickerSubmenu::None;
                         let focus_handle = this.composer.read(cx).focus();
                         window.focus(&focus_handle, cx);
                     }
@@ -1061,6 +1061,8 @@ impl Insulator {
             .filter(|index| *index < available_models.len());
         let scroll = self.model_picker_scroll.clone();
         let scrollbar_state = self.model_picker_scrollbar.clone();
+        let tabs_scroll = self.model_picker_tabs_scroll.clone();
+        let tabs_scrollbar_state = self.model_picker_tabs_scrollbar.clone();
 
         let trigger_label = if let Some(ref effort) = effort_label {
             format!("{selected_model_name}  {effort}")
@@ -1097,6 +1099,7 @@ impl Insulator {
         let footer_mode = selected_mode;
         let footer_presets = agent_presets.clone();
         let footer_preset_id = selected_preset_id.clone();
+        let footer_submenu = self.model_picker_submenu;
 
         popover(
             trigger.caret(true).selected(handle.is_open()),
@@ -1110,51 +1113,64 @@ impl Insulator {
                 let footer_tier = footer_tier.clone();
                 let footer_presets = footer_presets.clone();
                 let footer_preset_id = footer_preset_id.clone();
+                let footer_submenu = footer_submenu;
+                let tabs_scroll = tabs_scroll.clone();
+                let tabs_scrollbar_state = tabs_scrollbar_state.clone();
 
                 if no_providers {
                     return model_picker_empty_state(&theme, &empty_focus, popover, weak.clone());
                 }
 
-                let mut sidebar = div()
-                    .w(px(50.0))
-                    .h_full()
-                    .flex_none()
+                let rail_tabs = visible_picker_tabs(&probes, &disabled_providers, locked_provider);
+                let show_tabs = rail_tabs.len() > 1 && !searching;
+                let mut tabs_list = div()
+                    .id("model-picker-tabs-bar")
+                    .w_full()
+                    .min_w_0()
+                    .px(px(8.0))
+                    .py(px(5.0))
                     .flex()
-                    .flex_col()
                     .items_center()
                     .gap(px(4.0))
-                    .p(px(5.0))
-                    .rounded_tl(px(12.0))
-                    .rounded_bl(px(12.0))
-                    .bg(theme.elevated_surface)
-                    .border_r_1()
-                    .border_color(theme.border);
+                    .overflow_x_scroll()
+                    .track_scroll(&tabs_scroll);
 
-                let recents_selected = selected_tab == ModelPickerTab::Recents && !searching;
+                let recents_selected = selected_tab == ModelPickerTab::Recents;
                 let recents_weak = weak.clone();
-                sidebar = sidebar.child(
+                tabs_list = tabs_list.child(
                     div()
                         .id("model-tab-recents")
-                        .w(px(38.0))
-                        .h(px(38.0))
-                        .rounded(px(7.0))
+                        .flex_shrink_0()
+                        .whitespace_nowrap()
+                        .px(px(8.0))
+                        .py(px(3.0))
+                        .rounded(px(6.0))
+                        .cursor_default()
                         .flex()
                         .items_center()
-                        .justify_center()
-                        .cursor_default()
+                        .gap(px(4.0))
+                        .text_size(sp(11.5))
                         .when(recents_selected, |element| {
-                            element.bg(theme.overlay_strong)
+                            element
+                                .bg(theme.overlay_strong)
+                                .text_color(theme.text)
+                                .font_weight(FontWeight::SEMIBOLD)
                         })
-                        .hover(|element| element.bg(theme.overlay))
+                        .when(!recents_selected, |element| {
+                            element
+                                .text_color(theme.text_tertiary)
+                                .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                        })
                         .child(icon(
                             "icons/history.svg",
-                            17.0,
+                            12.0,
                             if recents_selected {
                                 theme.text
                             } else {
                                 theme.text_tertiary
                             },
                         ))
+                        .child("Recents")
                         .on_click(move |_, _, cx| {
                             let _ = recents_weak.update(cx, |this, cx| {
                                 this.select_model_picker_tab(ModelPickerTab::Recents, cx);
@@ -1162,127 +1178,134 @@ impl Insulator {
                         }),
                 );
 
-                let favorites_selected = selected_tab == ModelPickerTab::Favorites && !searching;
+                let favorites_selected = selected_tab == ModelPickerTab::Favorites;
                 let favorite_weak = weak.clone();
-                sidebar = sidebar
-                    .child(
-                        div()
-                            .id("model-tab-favorites")
-                            .w(px(38.0))
-                            .h(px(38.0))
-                            .rounded(px(7.0))
-                            .flex()
-                            .items_center()
-                            .justify_center()
-                            .cursor_default()
-                            .when(favorites_selected, |element| {
-                                element.bg(theme.overlay_strong)
-                            })
-                            .hover(|element| element.bg(theme.overlay))
-                            .child(icon(
-                                "icons/star.svg",
-                                17.0,
-                                if favorites_selected {
-                                    theme.text
-                                } else {
-                                    theme.text_tertiary
-                                },
-                            ))
-                            .on_click(move |_, _, cx| {
-                                let _ = favorite_weak.update(cx, |this, cx| {
-                                    this.select_model_picker_tab(ModelPickerTab::Favorites, cx);
-                                });
-                            }),
-                    )
-                    .child(div().w(px(34.0)).h(px(1.0)).my(px(3.0)).bg(theme.border));
+                tabs_list = tabs_list.child(
+                    div()
+                        .id("model-tab-favorites")
+                        .flex_shrink_0()
+                        .whitespace_nowrap()
+                        .px(px(8.0))
+                        .py(px(3.0))
+                        .rounded(px(6.0))
+                        .cursor_default()
+                        .flex()
+                        .items_center()
+                        .gap(px(4.0))
+                        .text_size(sp(11.5))
+                        .when(favorites_selected, |element| {
+                            element
+                                .bg(theme.overlay_strong)
+                                .text_color(theme.text)
+                                .font_weight(FontWeight::SEMIBOLD)
+                        })
+                        .when(!favorites_selected, |element| {
+                            element
+                                .text_color(theme.text_tertiary)
+                                .hover(|el| el.bg(theme.overlay).text_color(theme.text))
+                        })
+                        .child(icon(
+                            "icons/star.svg",
+                            12.0,
+                            if favorites_selected {
+                                theme.text
+                            } else {
+                                theme.text_tertiary
+                            },
+                        ))
+                        .child("Favorites")
+                        .on_click(move |_, _, cx| {
+                            let _ = favorite_weak.update(cx, |this, cx| {
+                                this.select_model_picker_tab(ModelPickerTab::Favorites, cx);
+                            });
+                        }),
+                );
 
-                // One predicate with the `tab` cycle, so clicking and cycling
-                // agree on which tabs are usable.
-                let rail_tabs = visible_picker_tabs(&probes, &disabled_providers, locked_provider);
-                for kind in ProviderKind::ALL {
-                    // A provider with no CLI on the machine, or one switched
-                    // off in the Providers settings, leaves the rail entirely
-                    // rather than sitting there dimmed: a tab that can never
-                    // open only advertises a choice settings already ruled
-                    // out. Being locked out by the current session is a
-                    // different claim — that tab stays, dimmed, because it is
-                    // true only until the next session.
-                    if !picker_rail_shows_provider(
-                        &probes,
-                        &disabled_providers,
-                        locked_provider,
-                        kind,
-                    ) {
-                        continue;
-                    }
-                    let usable = rail_tabs.contains(&ModelPickerTab::Provider(kind));
-                    let selected = selected_tab == ModelPickerTab::Provider(kind) && !searching;
+                for &tab in &rail_tabs {
+                    let ModelPickerTab::Provider(kind) = tab else { continue };
+                    let selected = selected_tab == ModelPickerTab::Provider(kind);
                     let tab_weak = weak.clone();
-                    sidebar = sidebar.child(
+                    tabs_list = tabs_list.child(
                         div()
                             .id(SharedString::from(format!("model-tab-{}", kind.id())))
-                            .w(px(38.0))
-                            .h(px(38.0))
-                            .rounded(px(7.0))
+                            .flex_shrink_0()
+                            .whitespace_nowrap()
+                            .px(px(8.0))
+                            .py(px(3.0))
+                            .rounded(px(6.0))
+                            .cursor_default()
                             .flex()
                             .items_center()
-                            .justify_center()
-                            .cursor_default()
-                            .when(selected, |element| element.bg(theme.overlay_strong))
-                            .when(!usable, |element| element.opacity(0.35))
-                            .when(usable, |element| {
-                                element.hover(|element| element.bg(theme.overlay)).on_click(
-                                    move |_, _, cx| {
-                                        let _ = tab_weak.update(cx, |this, cx| {
-                                            this.select_model_picker_tab(
-                                                ModelPickerTab::Provider(kind),
-                                                cx,
-                                            );
-                                        });
-                                    },
-                                )
+                            .gap(px(4.0))
+                            .text_size(sp(11.5))
+                            .when(selected, |element| {
+                                element
+                                    .bg(theme.overlay_strong)
+                                    .text_color(theme.text)
+                                    .font_weight(FontWeight::SEMIBOLD)
+                            })
+                            .when(!selected, |element| {
+                                element
+                                    .text_color(theme.text_tertiary)
+                                    .hover(|el| el.bg(theme.overlay).text_color(theme.text))
                             })
                             .child(provider_mark(
                                 &theme,
                                 kind,
-                                18.0,
+                                11.5,
                                 provider_color(&theme, kind).opacity(if selected {
                                     1.0
                                 } else {
                                     0.82
                                 }),
-                            )),
+                            ))
+                            .child(SharedString::from(kind.short_name()))
+                            .on_click(move |_, _, cx| {
+                                let _ = tab_weak.update(cx, |this, cx| {
+                                    this.select_model_picker_tab(
+                                        ModelPickerTab::Provider(kind),
+                                        cx,
+                                    );
+                                });
+                            }),
                     );
                 }
 
+                let tabs_bar = div()
+                    .id("model-picker-tabs-wrapper")
+                    .relative()
+                    .w_full()
+                    .min_w_0()
+                    .border_b_1()
+                    .border_color(theme.border)
+                    .flex_none()
+                    .child(tabs_list)
+                    .child(scrollbar::horizontal(
+                        &tabs_scroll,
+                        &tabs_scrollbar_state,
+                    ));
+
                 let search_input = div()
-                    .h(px(52.0))
+                    .h(px(40.0))
                     .px(px(12.0))
-                    .pt(px(10.0))
-                    .pb(px(8.0))
+                    .border_b_1()
+                    .border_color(theme.border)
                     .flex_none()
                     .flex()
                     .items_center()
-                    .child(
-                        div()
-                            .w_full()
-                            .h(px(34.0))
-                            .px(px(10.0))
-                            .rounded(px(9.0))
-                            .bg(theme.elevated_surface)
-                            .flex()
-                            .items_center()
-                            .gap(px(8.0))
-                            .child(icon("icons/search.svg", 15.0, theme.text_secondary))
-                            .child(div().flex_1().min_w_0().child(search.clone())),
-                    );
+                    .gap(px(8.0))
+                    .child(icon("icons/search.svg", 14.0, theme.text_tertiary))
+                    .child(div().flex_1().min_w_0().child(search.clone()));
 
                 let mut rows = div()
                     .id("model-picker-list")
                     .size_full()
                     .overflow_y_scroll()
                     .track_scroll(&scroll)
-                    .p(px(9.0));
+                    .p(px(6.0))
+                    .flex()
+                    .flex_col()
+                    .gap(px(2.0));
                 if available_models.is_empty() {
                     let label = if searching {
                         tr!("models.none_found")
@@ -1301,11 +1324,11 @@ impl Insulator {
                     };
                     rows = rows.child(
                         div()
-                            .h_full()
+                            .py(px(24.0))
                             .flex()
                             .items_center()
                             .justify_center()
-                            .text_size(sp(12.5))
+                            .text_size(sp(12.0))
                             .text_color(theme.text_ghost)
                             .child(label),
                     );
@@ -1332,21 +1355,18 @@ impl Insulator {
                                 kind.id(),
                                 model.id
                             )))
-                            .h(px(58.0))
-                            .px(px(12.0))
-                            .rounded(px(9.0))
+                            .h(px(34.0))
+                            .w_full()
+                            .px(px(10.0))
+                            .rounded(px(6.0))
                             .flex()
                             .items_center()
-                            .gap(px(10.0))
+                            .justify_between()
+                            .gap(px(8.0))
                             .cursor_default()
-                            // Reserved on every row so highlighting one cannot
-                            // resize it and shift the list by a pixel.
                             .border_1()
                             .border_color(gpui::transparent_black())
                             .when(is_selected, |element| element.bg(theme.overlay_strong))
-                            // The keyboard cursor reads as a ring rather than a
-                            // fill, so it stays legible on the current model's
-                            // already-filled row.
                             .when(is_highlighted, |element| {
                                 element.bg(theme.overlay).border_color(theme.accent)
                             })
@@ -1356,72 +1376,97 @@ impl Insulator {
                                 div()
                                     .min_w_0()
                                     .flex_1()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(6.0))
                                     .child(
                                         div()
                                             .truncate()
-                                            .text_size(sp(13.0))
-                                            .font_weight(FontWeight::SEMIBOLD)
+                                            .text_size(sp(12.5))
+                                            .font_weight(if is_selected {
+                                                FontWeight::SEMIBOLD
+                                            } else {
+                                                FontWeight::MEDIUM
+                                            })
                                             .text_color(theme.text)
                                             .child(SharedString::from(model.name.clone())),
                                     )
-                                    .child(
-                                        div()
-                                            .mt(px(4.0))
-                                            .flex()
-                                            .items_center()
-                                            .gap(px(6.0))
-                                            .child(provider_mark(
-                                                &theme,
-                                                kind,
-                                                10.5,
-                                                provider_color(&theme, kind).opacity(0.85),
-                                            ))
-                                            .child(
+                                    .when(
+                                        selected_tab == ModelPickerTab::Recents
+                                            || selected_tab == ModelPickerTab::Favorites
+                                            || searching
+                                            || model.sub_provider.is_some(),
+                                        |element| {
+                                            element.child(
                                                 div()
-                                                    .truncate()
-                                                    .text_size(sp(12.5))
-                                                    .text_color(theme.text_tertiary)
-                                                    .child(SharedString::from(subtitle)),
-                                            ),
+                                                    .flex_shrink_0()
+                                                    .flex()
+                                                    .items_center()
+                                                    .gap(px(4.0))
+                                                    .child(provider_mark(
+                                                        &theme,
+                                                        kind,
+                                                        9.5,
+                                                        provider_color(&theme, kind).opacity(0.8),
+                                                    ))
+                                                    .child(
+                                                        div()
+                                                            .truncate()
+                                                            .text_size(sp(11.0))
+                                                            .text_color(theme.text_tertiary)
+                                                            .child(SharedString::from(subtitle)),
+                                                    ),
+                                            )
+                                        },
                                     ),
                             )
                             .child(
                                 div()
-                                    .id(SharedString::from(format!(
-                                        "favorite-model-{}-{}",
-                                        kind.id(),
-                                        model.id
-                                    )))
-                                    .w(px(28.0))
-                                    .h(px(28.0))
-                                    .rounded(px(6.0))
+                                    .flex_none()
                                     .flex()
                                     .items_center()
-                                    .justify_center()
-                                    .hover(|element| element.bg(theme.overlay_strong))
-                                    .child(icon(
-                                        if is_favorite {
-                                            "icons/star-filled.svg"
-                                        } else {
-                                            "icons/star.svg"
-                                        },
-                                        14.0,
-                                        if is_favorite {
-                                            theme.favorite
-                                        } else {
-                                            theme.text_ghost
-                                        },
-                                    ))
-                                    .on_click(move |_, _, cx| {
-                                        cx.stop_propagation();
-                                        let _ = favorite_weak.update(cx, |this, cx| {
-                                            this.toggle_favorite_model(
-                                                kind,
-                                                favorite_model_id.clone(),
-                                                cx,
-                                            );
-                                        });
-                                    }),
+                                    .gap(px(6.0))
+                                    .when(is_selected, |element| {
+                                        element.child(icon("icons/check.svg", 12.0, theme.accent))
+                                    })
+                                    .child(
+                                        div()
+                                            .id(SharedString::from(format!(
+                                                "favorite-model-{}-{}",
+                                                kind.id(),
+                                                model.id
+                                            )))
+                                            .w(px(22.0))
+                                            .h(px(22.0))
+                                            .rounded(px(4.0))
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .hover(|element| element.bg(theme.overlay_strong))
+                                            .child(icon(
+                                                if is_favorite {
+                                                    "icons/star-filled.svg"
+                                                } else {
+                                                    "icons/star.svg"
+                                                },
+                                                12.0,
+                                                if is_favorite {
+                                                    theme.favorite
+                                                } else {
+                                                    theme.text_ghost
+                                                },
+                                            ))
+                                            .on_click(move |_, _, cx| {
+                                                cx.stop_propagation();
+                                                let _ = favorite_weak.update(cx, |this, cx| {
+                                                    this.toggle_favorite_model(
+                                                        kind,
+                                                        favorite_model_id.clone(),
+                                                        cx,
+                                                    );
+                                                });
+                                            }),
+                                    ),
                             )
                             .on_click(move |_, window, cx| {
                                 let _ = select_weak.update(cx, |this, cx| {
@@ -1441,379 +1486,731 @@ impl Insulator {
                 let previous_tab_weak = weak.clone();
                 let confirm_weak = weak.clone();
                 let confirm_popover = popover.clone();
-                let mut footer_rows = Vec::new();
+                let mut footer_controls = Vec::new();
+                let active_submenu = footer_submenu;
+                let submenu_bg = if theme.is_dark {
+                    Hsla {
+                        a: 1.0,
+                        l: 0.14_f32.max(theme.elevated.l),
+                        ..theme.elevated
+                    }
+                } else {
+                    Hsla {
+                        a: 1.0,
+                        l: 0.98,
+                        ..theme.elevated
+                    }
+                };
 
-                // 1. Reasoning Effort row
+                // 1. Reasoning menu button
                 if let Some(ref model_meta) = footer_model_meta {
                     if !model_meta.reasoning_efforts.is_empty() {
-                        let mut pills = div()
-                            .bg(theme.elevated_surface)
-                            .rounded(px(7.0))
-                            .p(px(2.0))
-                            .border_1()
-                            .border_color(theme.border)
-                            .flex()
-                            .items_center()
-                            .gap(px(2.0));
-                        for option in &model_meta.reasoning_efforts {
-                            let is_selected =
-                                footer_effort.as_deref() == Some(option.id.as_str());
-                            let opt_id = option.id.clone();
-                            let opt_label = option.label.clone();
-                            let opt_desc = option.description.clone();
-                            let weak = weak.clone();
-                            let mut pill = div()
-                                .id(SharedString::from(format!("effort-pill-{}", option.id)))
-                                .px(px(8.0))
-                                .py(px(2.5))
-                                .rounded(px(5.0))
-                                .cursor_default()
-                                .text_size(sp(11.5))
-                                .line_height(sp(13.0))
-                                .when(is_selected, |el| {
-                                    el.bg(theme.overlay_strong)
-                                        .text_color(theme.text)
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .shadow_xs()
-                                })
-                                .when(!is_selected, |el| {
-                                    el.text_color(theme.text_tertiary)
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .hover(|el| el.bg(theme.overlay).text_color(theme.text))
-                                })
-                                .child(SharedString::from(opt_label))
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    let _ = weak.update(cx, |this, cx| {
-                                        this.set_reasoning_effort(opt_id.clone(), cx);
-                                    });
-                                });
-                            if let Some(desc) = opt_desc {
-                                pill = pill.tooltip(Tooltip::text(SharedString::from(desc)));
-                            }
-                            pills = pills.child(pill);
-                        }
+                        let is_open = active_submenu == ModelPickerSubmenu::Reasoning;
+                        let reasoning_label = footer_effort
+                            .as_deref()
+                            .and_then(|id| {
+                                model_meta
+                                    .reasoning_efforts
+                                    .iter()
+                                    .find(|o| o.id == id)
+                                    .map(|o| o.label.as_str())
+                            })
+                            .or_else(|| model_meta.default_reasoning_effort.as_deref())
+                            .unwrap_or("Off");
 
-                        footer_rows.push(
+                        let weak_reasoning = weak.clone();
+                        footer_controls.push(
                             div()
+                                .id("model-picker-reasoning-trigger")
+                                .flex_shrink_0()
+                                .h(px(26.0))
+                                .px(px(8.0))
+                                .rounded(px(6.0))
+                                .cursor_default()
                                 .flex()
                                 .items_center()
-                                .justify_between()
-                                .gap(px(12.0))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(7.0))
-                                        .child(icon("icons/sparkle.svg", 12.5, theme.text_secondary))
-                                        .child(
-                                            div()
-                                                .text_size(sp(12.0))
-                                                .font_weight(FontWeight::MEDIUM)
-                                                .text_color(theme.text_secondary)
-                                                .child(tr!("models.reasoning")),
-                                        ),
-                                )
-                                .child(pills),
-                        );
-                    }
-
-                    // 2. Service Tier / Speed row
-                    if !model_meta.service_tiers.is_empty() {
-                        let mut tier_pills = div()
-                            .bg(theme.canvas)
-                            .rounded(px(7.0))
-                            .p(px(2.5))
-                            .border_1()
-                            .border_color(theme.border)
-                            .flex()
-                            .items_center()
-                            .gap(px(2.5));
-
-                        let standard_selected = footer_tier == "default";
-                        let weak_std = weak.clone();
-                        tier_pills = tier_pills.child(
-                            div()
-                                .id("tier-pill-default")
-                                .px(px(8.0))
-                                .py(px(3.0))
-                                .rounded(px(5.0))
-                                .cursor_default()
-                                .text_size(sp(11.5))
-                                .line_height(sp(13.0))
-                                .when(standard_selected, |el| {
-                                    el.bg(theme.overlay_strong)
-                                        .text_color(theme.text)
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .shadow_xs()
-                                })
-                                .when(!standard_selected, |el| {
-                                    el.text_color(theme.text_tertiary)
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .hover(|el| el.bg(theme.overlay).text_color(theme.text))
-                                })
-                                .child(SharedString::from(tr!("models.standard")))
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    let _ = weak_std.update(cx, |this, cx| {
-                                        this.set_service_tier("default".to_owned(), cx);
-                                    });
-                                }),
-                        );
-
-                        for option in &model_meta.service_tiers {
-                            let is_selected = footer_tier == option.id;
-                            let opt_id = option.id.clone();
-                            let opt_label = option.label.clone();
-                            let opt_desc = option.description.clone();
-                            let weak = weak.clone();
-                            let mut pill = div()
-                                .id(SharedString::from(format!("tier-pill-{}", option.id)))
-                                .px(px(8.0))
-                                .py(px(3.0))
-                                .rounded(px(5.0))
-                                .cursor_default()
-                                .text_size(sp(11.5))
-                                .line_height(sp(13.0))
-                                .when(is_selected, |el| {
-                                    el.bg(theme.overlay_strong)
-                                        .text_color(theme.text)
-                                        .font_weight(FontWeight::SEMIBOLD)
-                                        .shadow_xs()
-                                })
-                                .when(!is_selected, |el| {
-                                    el.text_color(theme.text_tertiary)
-                                        .font_weight(FontWeight::MEDIUM)
-                                        .hover(|el| el.bg(theme.overlay).text_color(theme.text))
-                                })
-                                .child(SharedString::from(opt_label))
-                                .on_click(move |_, _, cx| {
-                                    cx.stop_propagation();
-                                    let _ = weak.update(cx, |this, cx| {
-                                        this.set_service_tier(opt_id.clone(), cx);
-                                    });
-                                });
-                            if let Some(desc) = opt_desc {
-                                pill = pill.tooltip(Tooltip::text(SharedString::from(desc)));
-                            }
-                            tier_pills = tier_pills.child(pill);
-                        }
-
-                        footer_rows.push(
-                            div()
-                                .flex()
-                                .items_center()
-                                .justify_between()
-                                .gap(px(12.0))
-                                .child(
-                                    div()
-                                        .flex()
-                                        .items_center()
-                                        .gap(px(7.0))
-                                        .child(icon("icons/zap.svg", 12.5, theme.text_secondary))
-                                        .child(
-                                            div()
-                                                .text_size(sp(12.0))
-                                                .font_weight(FontWeight::MEDIUM)
-                                                .text_color(theme.text_secondary)
-                                                .child(tr!("models.service_tier")),
-                                        ),
-                                )
-                                .child(tier_pills),
-                        );
-                    }
-                }
-
-                // 3. Permissions / Security Mode row
-                let mut perm_pills = div()
-                    .bg(theme.elevated_surface)
-                    .rounded(px(7.0))
-                    .p(px(2.5))
-                    .border_1()
-                    .border_color(theme.border)
-                    .flex()
-                    .items_center()
-                    .gap(px(2.5));
-                for option in RuntimeMode::ACCESS_OPTIONS {
-                    let is_selected = option == footer_mode;
-                    let opt_desc = option.description();
-                    let opt_label = option.label();
-                    let mode_color = runtime_mode_color(&theme, option);
-                    let weak = weak.clone();
-                    perm_pills = perm_pills.child(
-                        div()
-                            .id(SharedString::from(format!("mode-pill-{:?}", option)))
-                            .px(px(8.0))
-                            .py(px(3.0))
-                            .rounded(px(5.0))
-                            .cursor_default()
-                            .flex()
-                            .items_center()
-                            .gap(px(5.0))
-                            .text_size(sp(11.5))
-                            .line_height(sp(13.0))
-                            .when(is_selected, |el| {
-                                el.bg(theme.overlay_strong)
-                                    .border_1()
-                                    .border_color(mode_color.opacity(0.35))
-                                    .text_color(theme.text)
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .shadow_xs()
-                            })
-                            .when(!is_selected, |el| {
-                                el.border_1()
-                                    .border_color(gpui::transparent_black())
-                                    .text_color(theme.text_tertiary)
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .hover(|el| el.bg(theme.overlay).text_color(theme.text))
-                            })
-                            .tooltip(Tooltip::text(SharedString::from(opt_desc)))
-                            .child(icon(
-                                option.icon(),
-                                11.5,
-                                if is_selected {
-                                    mode_color
+                                .gap(px(5.0))
+                                .border_1()
+                                .border_color(if is_open {
+                                    theme.accent
                                 } else {
-                                    mode_color.opacity(0.65)
-                                },
-                            ))
-                            .child(SharedString::from(opt_label))
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                let _ = weak.update(cx, |this, cx| {
-                                    this.set_runtime_mode(option, cx);
-                                });
-                            }),
-                    );
-                }
-
-                footer_rows.push(
-                    div()
-                        .flex()
-                        .items_center()
-                        .justify_between()
-                        .gap(px(12.0))
-                        .child(
-                            div()
-                                .flex()
-                                .items_center()
-                                .gap(px(7.0))
-                                .child(icon(
-                                    footer_mode.icon(),
-                                    12.5,
-                                    runtime_mode_color(&theme, footer_mode),
-                                ))
+                                    theme.border_strong
+                                })
+                                .bg(if is_open {
+                                    theme.overlay_strong.opacity(1.8)
+                                } else {
+                                    theme.overlay_strong
+                                })
+                                .hover(|el| el.bg(theme.overlay_strong.opacity(1.8)))
+                                .child(icon("icons/sparkle.svg", 11.0, theme.accent))
                                 .child(
                                     div()
-                                        .text_size(sp(12.0))
+                                        .text_size(sp(11.0))
                                         .font_weight(FontWeight::MEDIUM)
                                         .text_color(theme.text_secondary)
-                                        .child(tr!("models.permissions")),
-                                ),
+                                        .child(tr!("models.reasoning")),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(sp(11.0))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(theme.text)
+                                        .child(SharedString::from(reasoning_label.to_owned())),
+                                )
+                                .child(icon("icons/chevron-down.svg", 9.0, theme.text_secondary))
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = weak_reasoning.update(cx, |this, cx| {
+                                        this.toggle_model_picker_submenu(
+                                            ModelPickerSubmenu::Reasoning,
+                                            cx,
+                                        );
+                                    });
+                                })
+                                .into_any_element(),
+                        );
+                    }
+
+                    // 2. Service Tier menu button (if any)
+                    if !model_meta.service_tiers.is_empty() {
+                        let is_open = active_submenu == ModelPickerSubmenu::ServiceTier;
+                        let tier_label = if footer_tier == "default" {
+                            tr!("models.standard")
+                        } else {
+                            model_meta
+                                .service_tiers
+                                .iter()
+                                .find(|o| o.id == footer_tier)
+                                .map(|o| o.label.clone())
+                                .unwrap_or_else(|| footer_tier.clone())
+                        };
+
+                        let weak_tier = weak.clone();
+                        footer_controls.push(
+                            div()
+                                .id("model-picker-tier-trigger")
+                                .flex_shrink_0()
+                                .h(px(26.0))
+                                .px(px(8.0))
+                                .rounded(px(6.0))
+                                .cursor_default()
+                                .flex()
+                                .items_center()
+                                .gap(px(5.0))
+                                .border_1()
+                                .border_color(if is_open {
+                                    theme.accent
+                                } else {
+                                    theme.border_strong
+                                })
+                                .bg(if is_open {
+                                    theme.overlay_strong.opacity(1.8)
+                                } else {
+                                    theme.overlay_strong
+                                })
+                                .hover(|el| el.bg(theme.overlay_strong.opacity(1.8)))
+                                .child(icon("icons/zap.svg", 11.0, theme.accent))
+                                .child(
+                                    div()
+                                        .text_size(sp(11.0))
+                                        .font_weight(FontWeight::MEDIUM)
+                                        .text_color(theme.text_secondary)
+                                        .child(tr!("models.service_tier")),
+                                )
+                                .child(
+                                    div()
+                                        .text_size(sp(11.0))
+                                        .font_weight(FontWeight::SEMIBOLD)
+                                        .text_color(theme.text)
+                                        .child(SharedString::from(tier_label)),
+                                )
+                                .child(icon("icons/chevron-down.svg", 9.0, theme.text_secondary))
+                                .on_click(move |_, _, cx| {
+                                    cx.stop_propagation();
+                                    let _ = weak_tier.update(cx, |this, cx| {
+                                        this.toggle_model_picker_submenu(
+                                            ModelPickerSubmenu::ServiceTier,
+                                            cx,
+                                        );
+                                    });
+                                })
+                                .into_any_element(),
+                        );
+                    }
+                }
+
+                // 3. Permissions / RuntimeMode menu button
+                let is_perms_open = active_submenu == ModelPickerSubmenu::Permissions;
+                let mode_color = runtime_mode_color(&theme, footer_mode);
+                let weak_perms = weak.clone();
+                footer_controls.push(
+                    div()
+                        .id("model-picker-perms-trigger")
+                        .flex_shrink_0()
+                        .h(px(26.0))
+                        .px(px(8.0))
+                        .rounded(px(6.0))
+                        .cursor_default()
+                        .flex()
+                        .items_center()
+                        .gap(px(5.0))
+                        .border_1()
+                        .border_color(if is_perms_open {
+                            mode_color
+                        } else {
+                            theme.border_strong
+                        })
+                        .bg(if is_perms_open {
+                            theme.overlay_strong.opacity(1.8)
+                        } else {
+                            theme.overlay_strong
+                        })
+                        .hover(|el| el.bg(theme.overlay_strong.opacity(1.8)))
+                        .child(icon(footer_mode.icon(), 11.0, mode_color))
+                        .child(
+                            div()
+                                .text_size(sp(11.0))
+                                .font_weight(FontWeight::MEDIUM)
+                                .text_color(theme.text_secondary)
+                                .child(tr!("models.permissions")),
                         )
-                        .child(perm_pills),
+                        .child(
+                            div()
+                                .text_size(sp(11.0))
+                                .font_weight(FontWeight::SEMIBOLD)
+                                .text_color(theme.text)
+                                .child(footer_mode.label()),
+                        )
+                        .child(icon("icons/chevron-down.svg", 9.0, theme.text_secondary))
+                        .on_click(move |_, _, cx| {
+                            cx.stop_propagation();
+                            let _ = weak_perms.update(cx, |this, cx| {
+                                this.toggle_model_picker_submenu(
+                                    ModelPickerSubmenu::Permissions,
+                                    cx,
+                                );
+                            });
+                        })
+                        .into_any_element(),
                 );
 
                 // 4. Agent Presets (DeepSeek only)
                 if !footer_presets.is_empty() {
-                    let mut preset_pills = div()
-                        .bg(theme.elevated_surface)
-                        .rounded(px(7.0))
-                        .p(px(2.5))
-                        .border_1()
-                        .border_color(theme.border)
-                        .flex()
-                        .items_center()
-                        .gap(px(2.5));
-                    for preset in &footer_presets {
-                        let is_selected = footer_preset_id.as_deref() == Some(preset.id.as_str());
-                        let preset_id = preset.id.clone();
-                        let preset_name = preset.display_name();
-                        let preset_desc = preset.display_description();
-                        let weak = weak.clone();
-                        let mut pill = div()
-                            .id(SharedString::from(format!("preset-pill-{}", preset.id)))
-                            .px(px(8.0))
-                            .py(px(3.0))
-                            .rounded(px(5.0))
-                            .cursor_default()
-                            .text_size(sp(11.5))
-                            .line_height(sp(13.0))
-                            .when(is_selected, |el| {
-                                el.bg(theme.overlay_strong)
-                                    .text_color(theme.text)
-                                    .font_weight(FontWeight::SEMIBOLD)
-                                    .shadow_xs()
-                            })
-                            .when(!is_selected, |el| {
-                                el.text_color(theme.text_tertiary)
-                                    .font_weight(FontWeight::MEDIUM)
-                                    .hover(|el| el.bg(theme.overlay).text_color(theme.text))
-                            })
-                            .child(SharedString::from(preset_name))
-                            .on_click(move |_, _, cx| {
-                                cx.stop_propagation();
-                                let _ = weak.update(cx, |this, cx| {
-                                    this.set_agent_preset(preset_id.clone(), cx);
-                                });
-                            });
-                        if let Some(desc) = preset_desc {
-                            pill = pill.tooltip(Tooltip::text(SharedString::from(desc)));
-                        }
-                        preset_pills = preset_pills.child(pill);
-                    }
+                    let is_preset_open = active_submenu == ModelPickerSubmenu::AgentPreset;
+                    let preset_label = footer_preset_id
+                        .as_deref()
+                        .and_then(|id| {
+                            footer_presets
+                                .iter()
+                                .find(|p| p.id == id)
+                                .map(|p| p.display_name())
+                        })
+                        .unwrap_or_else(|| {
+                            footer_presets
+                                .first()
+                                .map(|p| p.display_name())
+                                .unwrap_or_else(|| "Preset".to_string())
+                        });
 
-                    footer_rows.push(
+                    let weak_preset = weak.clone();
+                    footer_controls.push(
                         div()
+                            .id("model-picker-preset-trigger")
+                            .flex_shrink_0()
+                            .h(px(26.0))
+                            .px(px(8.0))
+                            .rounded(px(6.0))
+                            .cursor_default()
                             .flex()
                             .items_center()
-                            .justify_between()
-                            .gap(px(12.0))
+                            .gap(px(5.0))
+                            .border_1()
+                            .border_color(if is_preset_open {
+                                theme.accent
+                            } else {
+                                theme.border_strong
+                            })
+                            .bg(if is_preset_open {
+                                theme.overlay_strong.opacity(1.8)
+                            } else {
+                                theme.overlay_strong
+                            })
+                            .hover(|el| el.bg(theme.overlay_strong.opacity(1.8)))
+                            .child(icon("icons/bot.svg", 11.0, theme.accent))
                             .child(
                                 div()
-                                    .flex()
-                                    .items_center()
-                                    .gap(px(7.0))
-                                    .child(icon("icons/bot.svg", 12.5, theme.text_secondary))
-                                    .child(
-                                        div()
-                                            .text_size(sp(12.0))
-                                            .font_weight(FontWeight::MEDIUM)
-                                            .text_color(theme.text_secondary)
-                                            .child("Preset"),
-                                    ),
+                                    .text_size(sp(11.0))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text_secondary)
+                                    .child("Preset"),
                             )
-                            .child(preset_pills),
+                            .child(
+                                div()
+                                    .text_size(sp(11.0))
+                                    .font_weight(FontWeight::SEMIBOLD)
+                                    .text_color(theme.text)
+                                    .child(SharedString::from(preset_label)),
+                            )
+                            .child(icon("icons/chevron-down.svg", 9.0, theme.text_secondary))
+                            .on_click(move |_, _, cx| {
+                                cx.stop_propagation();
+                                let _ = weak_preset.update(cx, |this, cx| {
+                                    this.toggle_model_picker_submenu(
+                                        ModelPickerSubmenu::AgentPreset,
+                                        cx,
+                                    );
+                                });
+                            })
+                            .into_any_element(),
                     );
                 }
 
-                let footer = div()
-                    .flex_none()
-                    .border_t_1()
-                    .border_color(theme.border)
-                    .bg(theme.elevated_surface)
-                    .px(px(16.0))
-                    .py(px(12.0))
-                    .flex()
-                    .flex_col()
-                    .gap(px(10.0))
-                    .children(footer_rows);
+                // Build submenu floating card when a menu is open
+                let active_submenu_card: Option<AnyElement> = match active_submenu {
+                    ModelPickerSubmenu::Reasoning => {
+                        footer_model_meta.as_ref().map(|model_meta| {
+                            let mut items = div()
+                                .id("submenu-reasoning-items")
+                                .w(px(280.0))
+                                .max_h(px(220.0))
+                                .overflow_y_scroll()
+                                .p(px(4.0))
+                                .flex()
+                                .flex_col()
+                                .gap(px(2.0));
+
+                            for option in &model_meta.reasoning_efforts {
+                                let is_selected =
+                                    footer_effort.as_deref() == Some(option.id.as_str());
+                                let opt_id = option.id.clone();
+                                let opt_desc = option.description.clone();
+                                let opt_label = option.label.clone();
+                                let weak = weak.clone();
+                                items = items.child(
+                                    div()
+                                        .id(SharedString::from(format!("effort-item-{}", option.id)))
+                                        .w_full()
+                                        .px(px(8.0))
+                                        .py(px(5.0))
+                                        .rounded(px(5.0))
+                                        .cursor_default()
+                                        .flex()
+                                        .items_center()
+                                        .justify_between()
+                                        .gap(px(8.0))
+                                        .when(is_selected, |el| el.bg(theme.overlay_strong))
+                                        .when(!is_selected, |el| el.hover(|el| el.bg(theme.overlay)))
+                                        .child(
+                                            div()
+                                                .flex()
+                                                .items_center()
+                                                .gap(px(6.0))
+                                                .child(
+                                                    div()
+                                                        .w(px(14.0))
+                                                        .flex_none()
+                                                        .flex()
+                                                        .items_center()
+                                                        .justify_center()
+                                                        .when(is_selected, |el| {
+                                                            el.child(icon(
+                                                                "icons/check.svg",
+                                                                12.0,
+                                                                theme.accent,
+                                                            ))
+                                                        }),
+                                                )
+                                                .child(
+                                                    div()
+                                                        .text_size(sp(12.0))
+                                                        .font_weight(if is_selected {
+                                                            FontWeight::SEMIBOLD
+                                                        } else {
+                                                            FontWeight::MEDIUM
+                                                        })
+                                                        .text_color(theme.text)
+                                                        .child(SharedString::from(opt_label)),
+                                                ),
+                                        )
+                                        .when_some(opt_desc, |el, desc| {
+                                            el.child(
+                                                div()
+                                                    .truncate()
+                                                    .text_size(sp(10.5))
+                                                    .text_color(theme.text_secondary)
+                                                    .child(SharedString::from(desc)),
+                                            )
+                                        })
+                                        .on_click(move |_, _, cx| {
+                                            cx.stop_propagation();
+                                            let _ = weak.update(cx, |this, cx| {
+                                                this.set_reasoning_effort(opt_id.clone(), cx);
+                                                this.model_picker_submenu = ModelPickerSubmenu::None;
+                                            });
+                                        }),
+                                );
+                            }
+                            div()
+                                .absolute()
+                                .bottom(px(46.0))
+                                .left(px(8.0))
+                                .rounded(px(8.0))
+                                .border_1()
+                                .border_color(theme.border_strong)
+                                .bg(submenu_bg)
+                                .shadow_xl()
+                                .child(items)
+                                .into_any_element()
+                        })
+                    }
+                    ModelPickerSubmenu::Permissions => {
+                        let mut items = div()
+                            .id("submenu-perms-items")
+                            .w(px(290.0))
+                            .max_h(px(220.0))
+                            .overflow_y_scroll()
+                            .p(px(4.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0));
+
+                        for option in RuntimeMode::ACCESS_OPTIONS {
+                            let is_selected = option == footer_mode;
+                            let mode_color = runtime_mode_color(&theme, option);
+                            let opt_desc = option.description();
+                            let opt_label = option.label();
+                            let opt_icon = option.icon();
+                            let weak = weak.clone();
+                            items = items.child(
+                                div()
+                                    .id(SharedString::from(format!("mode-item-{:?}", option)))
+                                    .w_full()
+                                    .px(px(8.0))
+                                    .py(px(5.0))
+                                    .rounded(px(5.0))
+                                    .cursor_default()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .when(is_selected, |el| el.bg(theme.overlay_strong))
+                                    .when(!is_selected, |el| el.hover(|el| el.bg(theme.overlay)))
+                                    .child(
+                                        div()
+                                            .w(px(14.0))
+                                            .flex_none()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .when(is_selected, |el| {
+                                                el.child(icon(
+                                                    "icons/check.svg",
+                                                    12.0,
+                                                    theme.accent,
+                                                ))
+                                            }),
+                                    )
+                                    .child(icon(opt_icon, 13.0, mode_color))
+                                    .child(
+                                        div()
+                                            .flex()
+                                            .flex_col()
+                                            .min_w_0()
+                                            .child(
+                                                div()
+                                                    .text_size(sp(12.0))
+                                                    .font_weight(if is_selected {
+                                                        FontWeight::SEMIBOLD
+                                                    } else {
+                                                        FontWeight::MEDIUM
+                                                    })
+                                                    .text_color(theme.text)
+                                                    .child(opt_label),
+                                            )
+                                            .child(
+                                                div()
+                                                    .truncate()
+                                                    .text_size(sp(10.5))
+                                                    .text_color(theme.text_secondary)
+                                                    .child(SharedString::from(opt_desc)),
+                                            ),
+                                    )
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = weak.update(cx, |this, cx| {
+                                            this.set_runtime_mode(option, cx);
+                                            this.model_picker_submenu = ModelPickerSubmenu::None;
+                                        });
+                                    }),
+                            );
+                        }
+                        Some(
+                            div()
+                                .absolute()
+                                .bottom(px(46.0))
+                                .right(px(8.0))
+                                .rounded(px(8.0))
+                                .border_1()
+                                .border_color(theme.border_strong)
+                                .bg(submenu_bg)
+                                .shadow_xl()
+                                .child(items)
+                                .into_any_element(),
+                        )
+                    }
+                    ModelPickerSubmenu::ServiceTier => {
+                        footer_model_meta.as_ref().map(|model_meta| {
+                            let mut items = div()
+                                .id("submenu-tier-items")
+                                .w(px(240.0))
+                                .max_h(px(200.0))
+                                .overflow_y_scroll()
+                                .p(px(4.0))
+                                .flex()
+                                .flex_col()
+                                .gap(px(2.0));
+
+                            let standard_selected = footer_tier == "default";
+                            let weak_std = weak.clone();
+                            items = items.child(
+                                div()
+                                    .id("tier-item-default")
+                                    .w_full()
+                                    .px(px(8.0))
+                                    .py(px(5.0))
+                                    .rounded(px(5.0))
+                                    .cursor_default()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .when(standard_selected, |el| el.bg(theme.overlay_strong))
+                                    .when(!standard_selected, |el| el.hover(|el| el.bg(theme.overlay)))
+                                    .child(
+                                        div()
+                                            .w(px(14.0))
+                                            .flex_none()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .when(standard_selected, |el| {
+                                                el.child(icon(
+                                                    "icons/check.svg",
+                                                    12.0,
+                                                    theme.accent,
+                                                ))
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(sp(12.0))
+                                            .font_weight(if standard_selected {
+                                                FontWeight::SEMIBOLD
+                                            } else {
+                                                FontWeight::MEDIUM
+                                            })
+                                            .text_color(theme.text)
+                                            .child(SharedString::from(tr!("models.standard"))),
+                                    )
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = weak_std.update(cx, |this, cx| {
+                                            this.set_service_tier("default".to_owned(), cx);
+                                            this.model_picker_submenu = ModelPickerSubmenu::None;
+                                        });
+                                    }),
+                            );
+
+                            for option in &model_meta.service_tiers {
+                                let is_selected = footer_tier == option.id;
+                                let opt_id = option.id.clone();
+                                let opt_label = option.label.clone();
+                                let weak_tier = weak.clone();
+                                items = items.child(
+                                    div()
+                                        .id(SharedString::from(format!("tier-item-{}", option.id)))
+                                        .w_full()
+                                        .px(px(8.0))
+                                        .py(px(5.0))
+                                        .rounded(px(5.0))
+                                        .cursor_default()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(8.0))
+                                        .when(is_selected, |el| el.bg(theme.overlay_strong))
+                                        .when(!is_selected, |el| el.hover(|el| el.bg(theme.overlay)))
+                                        .child(
+                                            div()
+                                                .w(px(14.0))
+                                                .flex_none()
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .when(is_selected, |el| {
+                                                el.child(icon(
+                                                    "icons/check.svg",
+                                                    12.0,
+                                                    theme.accent,
+                                                ))
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(sp(12.0))
+                                            .font_weight(if is_selected {
+                                                FontWeight::SEMIBOLD
+                                            } else {
+                                                FontWeight::MEDIUM
+                                            })
+                                            .text_color(theme.text)
+                                            .child(SharedString::from(opt_label)),
+                                    )
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = weak_tier.update(cx, |this, cx| {
+                                            this.set_service_tier(opt_id.clone(), cx);
+                                            this.model_picker_submenu = ModelPickerSubmenu::None;
+                                        });
+                                    }),
+                            );
+                        }
+                        div()
+                            .absolute()
+                            .bottom(px(46.0))
+                            .left(px(8.0))
+                            .rounded(px(8.0))
+                            .border_1()
+                            .border_color(theme.border_strong)
+                            .bg(submenu_bg)
+                            .shadow_xl()
+                            .child(items)
+                            .into_any_element()
+                    })
+                }
+                    ModelPickerSubmenu::AgentPreset => {
+                        let mut items = div()
+                            .id("submenu-preset-items")
+                            .w(px(240.0))
+                            .max_h(px(200.0))
+                            .overflow_y_scroll()
+                            .p(px(4.0))
+                            .flex()
+                            .flex_col()
+                            .gap(px(2.0));
+
+                        for preset in &footer_presets {
+                            let is_selected =
+                                footer_preset_id.as_deref() == Some(preset.id.as_str());
+                            let preset_id = preset.id.clone();
+                            let preset_name = preset.display_name();
+                            let weak = weak.clone();
+                            items = items.child(
+                                div()
+                                    .id(SharedString::from(format!(
+                                        "preset-item-{}",
+                                        preset.id
+                                    )))
+                                    .w_full()
+                                    .px(px(8.0))
+                                    .py(px(5.0))
+                                    .rounded(px(5.0))
+                                    .cursor_default()
+                                    .flex()
+                                    .items_center()
+                                    .gap(px(8.0))
+                                    .when(is_selected, |el| el.bg(theme.overlay_strong))
+                                    .when(!is_selected, |el| el.hover(|el| el.bg(theme.overlay)))
+                                    .child(
+                                        div()
+                                            .w(px(14.0))
+                                            .flex_none()
+                                            .flex()
+                                            .items_center()
+                                            .justify_center()
+                                            .when(is_selected, |el| {
+                                                el.child(icon(
+                                                    "icons/check.svg",
+                                                    12.0,
+                                                    theme.accent,
+                                                ))
+                                            }),
+                                    )
+                                    .child(
+                                        div()
+                                            .text_size(sp(12.0))
+                                            .font_weight(if is_selected {
+                                                FontWeight::SEMIBOLD
+                                            } else {
+                                                FontWeight::MEDIUM
+                                            })
+                                            .text_color(theme.text)
+                                            .child(SharedString::from(preset_name)),
+                                    )
+                                    .on_click(move |_, _, cx| {
+                                        cx.stop_propagation();
+                                        let _ = weak.update(cx, |this, cx| {
+                                            this.set_agent_preset(preset_id.clone(), cx);
+                                            this.model_picker_submenu = ModelPickerSubmenu::None;
+                                        });
+                                    }),
+                            );
+                        }
+                        Some(
+                            div()
+                                .absolute()
+                                .bottom(px(46.0))
+                                .right(px(8.0))
+                                .rounded(px(8.0))
+                                .border_1()
+                                .border_color(theme.border_strong)
+                                .bg(submenu_bg)
+                                .shadow_xl()
+                                .child(items)
+                                .into_any_element(),
+                        )
+                    }
+                    ModelPickerSubmenu::None => None,
+                };
+
+                let footer = (!footer_controls.is_empty()).then(|| {
+                    div()
+                        .id("model-picker-footer-bar")
+                        .flex_none()
+                        .border_t_1()
+                        .border_color(theme.border_strong)
+                        .bg(if theme.is_dark {
+                            Hsla {
+                                a: 0.96,
+                                l: 0.11_f32.max(theme.elevated_surface.l),
+                                ..theme.elevated_surface
+                            }
+                        } else {
+                            Hsla {
+                                a: 0.96,
+                                l: 0.94_f32.min(theme.elevated_surface.l),
+                                ..theme.elevated_surface
+                            }
+                        })
+                        .px(px(8.0))
+                        .py(px(6.0))
+                        .flex()
+                        .items_center()
+                        .gap(px(6.0))
+                        .overflow_x_scroll()
+                        .children(footer_controls)
+                });
 
                 div()
-                    .w(px(640.0))
-                    .h(px(470.0))
-                    .rounded(px(13.0))
+                    .relative()
+                    .w(px(430.0))
+                    .h(px(420.0))
+                    .rounded(px(12.0))
                     .overflow_hidden()
                     .border_1()
                     .border_color(theme.border_strong)
                     .bg(theme.elevated)
-                    .shadow_lg()
+                    .shadow_xl()
+                    .font_family(crate::theme::active_ui_font_family())
                     .flex()
-                    // The filter field keeps focus and the selected row is only
-                    // drawn, never focused — the same split Zed's picker uses.
-                    // These arrive as actions bound to `InsulatorMenu > TextInput`,
-                    // which is the only way to claim a key out from under a
-                    // focused text field.
+                    .flex_col()
                     .on_action(move |_: &SelectNextEntry, _, cx| {
                         let _ = next_weak.update(cx, |this, cx| {
                             this.move_model_picker_highlight("down", &next_models, cx);
@@ -1841,27 +2238,19 @@ impl Insulator {
                         confirm_popover.close(window, cx);
                         window.refresh();
                     })
-                    .child(sidebar)
+                    .child(search_input)
+                    .when(show_tabs, |card| card.child(tabs_bar))
                     .child(
                         div()
-                            .min_w_0()
+                            .w_full()
                             .flex_1()
-                            .flex()
-                            .flex_col()
-                            .rounded_tr(px(12.0))
-                            .rounded_br(px(12.0))
-                            .bg(theme.elevated)
-                            .child(search_input)
-                            .child(
-                                div()
-                                    .flex_1()
-                                    .min_h_0()
-                                    .relative()
-                                    .child(rows)
-                                    .child(scrollbar::vertical(&scroll, &scrollbar_state)),
-                            )
-                            .child(footer),
+                            .min_h_0()
+                            .relative()
+                            .child(rows)
+                            .child(scrollbar::vertical(&scroll, &scrollbar_state)),
                     )
+                    .children(footer)
+                    .children(active_submenu_card)
                     .into_any_element()
             },
         )
@@ -1895,10 +2284,7 @@ impl Insulator {
         if !self.model_search.read(cx).content().trim().is_empty() {
             return;
         }
-        let locked_provider = self
-            .selected_session()
-            .filter(|session| !session.messages.is_empty())
-            .map(|session| session.provider);
+        let locked_provider: Option<ProviderKind> = None;
         let tabs = visible_picker_tabs(
             &self.probes,
             &self.state.disabled_providers,
@@ -1909,6 +2295,19 @@ impl Insulator {
             return;
         };
         self.select_model_picker_tab(tabs[next], cx);
+    }
+
+    pub(super) fn toggle_model_picker_submenu(
+        &mut self,
+        submenu: ModelPickerSubmenu,
+        cx: &mut Context<Self>,
+    ) {
+        if self.model_picker_submenu == submenu {
+            self.model_picker_submenu = ModelPickerSubmenu::None;
+        } else {
+            self.model_picker_submenu = submenu;
+        }
+        cx.notify();
     }
 
     /// Bring the current model's row into view whenever the picker shows the
@@ -1930,9 +2329,7 @@ impl Insulator {
                     .and_then(ProviderProbe::preferred_model)
                     .map(|m| m.id.as_str())
             });
-        let locked_provider = session
-            .filter(|session| !session.messages.is_empty())
-            .map(|session| session.provider);
+        let locked_provider: Option<ProviderKind> = None;
         let index = visible_picker_models(
             &self.probes,
             &self.state.recent_models,
@@ -1989,9 +2386,6 @@ impl Insulator {
             .slash_command_index
             .iter()
             .any(|command| command.name == "plannotator-plan-mode");
-        if !has_plan && !has_plannotator {
-            return None;
-        }
         let selected = self.pi_plan_modes.get(&session.id).copied().unwrap_or_default();
         let theme = Theme::current(cx);
         let weak = cx.entity().downgrade();
@@ -3727,7 +4121,7 @@ impl Insulator {
                                 .rounded(px(9.0))
                                 .border_1()
                                 .border_color(theme.border_strong)
-                                .bg(theme.surface)
+                                .bg(theme.elevated_surface)
                                 .flex()
                                 .items_center()
                                 .child(div().flex_1().min_w_0().child(create_input.clone())),
@@ -3909,7 +4303,9 @@ impl Insulator {
                                         .h(px(34.0))
                                         .px(px(10.0))
                                         .rounded(px(9.0))
-                                        .bg(theme.surface)
+                                        .border_1()
+                                        .border_color(theme.border)
+                                        .bg(theme.elevated_surface)
                                         .flex()
                                         .items_center()
                                         .gap(px(8.0))
@@ -3944,7 +4340,7 @@ impl Insulator {
                     .overflow_hidden()
                     .border_1()
                     .border_color(theme.border_strong)
-                    .bg(theme.raised)
+                    .bg(theme.elevated)
                     .shadow_lg()
                     .flex()
                     .flex_col()
@@ -4417,9 +4813,9 @@ pub(super) fn visible_picker_tabs(
 ) -> Vec<ModelPickerTab> {
     let mut tabs = vec![ModelPickerTab::Recents, ModelPickerTab::Favorites];
     tabs.extend(ProviderKind::ALL.into_iter().filter_map(|kind| {
-        let drawn = picker_rail_shows_provider(probes, disabled_providers, locked_provider, kind);
         let allowed = locked_provider.is_none() || locked_provider == Some(kind);
-        (drawn && allowed).then_some(ModelPickerTab::Provider(kind))
+        let drawn = picker_rail_shows_provider(probes, disabled_providers, locked_provider, kind);
+        (allowed && drawn).then_some(ModelPickerTab::Provider(kind))
     }));
     tabs
 }
@@ -4545,10 +4941,13 @@ pub(super) fn picker_rail_shows_provider(
     locked_provider: Option<ProviderKind>,
     kind: ProviderKind,
 ) -> bool {
+    if locked_provider == Some(kind) {
+        return true;
+    }
     let installed = probes
         .iter()
         .any(|probe| probe.provider == kind && probe.installed);
-    let switched_off = disabled_providers.contains(&kind) && locked_provider != Some(kind);
+    let switched_off = disabled_providers.contains(&kind);
     installed && !switched_off
 }
 
@@ -4596,7 +4995,7 @@ pub(super) fn visible_picker_models(
     let searching = !normalized_query.is_empty();
     let mut models = probes
         .iter()
-        .filter(|probe| probe.installed)
+        .filter(|probe| probe.installed || locked_provider == Some(probe.provider))
         .flat_map(|probe| {
             probe
                 .models
@@ -4604,10 +5003,12 @@ pub(super) fn visible_picker_models(
                 .cloned()
                 .map(move |model| (probe.provider, model))
         })
-        .filter(|(kind, _)| locked_provider.is_none() || locked_provider == Some(*kind))
-        // Switched-off providers keep serving the session already locked to
-        // them, but offer nothing to new work — including favorites and recents.
-        .filter(|(kind, _)| !disabled_providers.contains(kind) || locked_provider == Some(*kind))
+        .filter(|(kind, _)| {
+            locked_provider.map_or_else(
+                || !disabled_providers.contains(kind),
+                |locked| locked == *kind,
+            )
+        })
         .filter(|(kind, model)| {
             if searching {
                 let searchable = format!(
@@ -4636,13 +5037,11 @@ pub(super) fn visible_picker_models(
 
     if !searching && selected_tab == ModelPickerTab::Recents {
         for recent in recents {
-            let provider_allowed = (locked_provider.is_none()
-                || locked_provider == Some(recent.provider))
-                && (!disabled_providers.contains(&recent.provider)
-                    || locked_provider == Some(recent.provider));
-            let provider_installed =
-                probes.iter().any(|p| p.provider == recent.provider && p.installed);
-            if provider_allowed && provider_installed {
+            let provider_allowed = locked_provider.map_or_else(
+                || !disabled_providers.contains(&recent.provider),
+                |locked| locked == recent.provider,
+            );
+            if provider_allowed {
                 if !models
                     .iter()
                     .any(|(kind, model)| *kind == recent.provider && model.id == recent.model)

@@ -562,7 +562,7 @@ impl Insulator {
                             theme.text_ghost
                         })
                         .bg(if include_unstaged {
-                            theme.composer
+                            theme.accent
                         } else {
                             gpui::transparent_black()
                         })
@@ -570,7 +570,7 @@ impl Insulator {
                         .items_center()
                         .justify_center()
                         .when(include_unstaged, |checkbox| {
-                            checkbox.child(icon("icons/check.svg", 12.0, theme.text))
+                            checkbox.child(icon("icons/check.svg", 12.0, theme.on_inverse))
                         }),
                 )
                 .child(
@@ -701,7 +701,7 @@ impl Insulator {
             .rounded(px(18.0))
             .border_1()
             .border_color(theme.border_strong)
-            .bg(theme.composer)
+            .bg(theme.elevated)
             .shadow_xl()
             .flex()
             .flex_col()
@@ -754,9 +754,9 @@ impl Insulator {
             );
 
         let scrim = if theme.is_dark {
-            gpui::hsla(0.0, 0.0, 0.0, 0.34)
+            gpui::hsla(0.0, 0.0, 0.0, 0.55)
         } else {
-            gpui::hsla(0.0, 0.0, 0.0, 0.16)
+            gpui::hsla(0.0, 0.0, 0.0, 0.30)
         };
         let layer = div()
             .id("commit-dialog-layer")

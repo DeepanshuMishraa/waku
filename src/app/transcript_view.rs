@@ -212,6 +212,7 @@ impl Insulator {
             self.transcript_is_scrolled.set(false);
         }
         let entity = cx.entity().downgrade();
+        let view_id = cx.entity().entity_id();
         let scrollbar_handle = transcript_rows.clone();
         let viewport_bounds = transcript_rows.viewport_bounds();
         let transcript_scrollable = viewport_bounds.size.height > Pixels::ZERO
@@ -350,7 +351,7 @@ impl Insulator {
             // exactly the text elements this frame put on screen, in order.
             .child(md::render::frame_reset(self.transcript_selection.clone()))
             .child(
-                list(transcript_rows, move |index, window, cx| {
+                list(transcript_rows.clone(), move |index, window, cx| {
                     entity
                         .upgrade()
                         .map(|entity| {
@@ -367,7 +368,7 @@ impl Insulator {
                 &scrollbar_handle,
                 &self.transcript_scrollbar,
             ))
-            .child(self.transcript_selection_input())
+            .child(self.transcript_selection_input(transcript_rows.clone(), view_id))
             .children(search_bar)
             .into_any_element()
     }
@@ -441,18 +442,140 @@ impl Insulator {
         }
     }
 
-    /// A zero-size canvas that installs the frame's selection mouse listeners.
-    /// One set for the whole transcript: the registry already knows every
-    /// painted element's geometry, so per-element listeners would be redundant.
-    fn transcript_selection_input(&self) -> impl IntoElement {
+    /// A canvas covering the transcript that installs selection mouse listeners and
+    /// autoscrolls the viewport when a drag selection nears or passes the top or bottom edges.
+    fn transcript_selection_input(
+        &self,
+        transcript_rows: ListState,
+        view_id: gpui::EntityId,
+    ) -> impl IntoElement {
         let selection = self.transcript_selection.clone();
+        let transcript_anchor_following = self.transcript_anchor_following.clone();
+        let transcript_is_scrolled = self.transcript_is_scrolled.clone();
+
         canvas(
             |_, _, _| (),
-            move |_, _, window, _| md::render::install_selection_input(window, &selection),
+            move |bounds, _, window, cx| {
+                let rows = transcript_rows.clone();
+                let following = transcript_anchor_following.clone();
+                let is_scrolled = transcript_is_scrolled.clone();
+
+                if selection.selection.borrow().is_dragging() {
+                    if let Some((x, y)) = selection.last_drag_position.get() {
+                        let pos = point(px(x), px(y));
+                        let edge_zone = px(40.0);
+                        let current = rows.scroll_px_offset_for_scrollbar().y;
+                        let max_offset = rows.max_offset_for_scrollbar().y;
+                        let mut scrolled = false;
+
+                        if pos.y < bounds.top() + edge_zone {
+                            let dist = (bounds.top() + edge_zone - pos.y).max(Pixels::ZERO);
+                            let speed = (f32::from(dist) * 0.4 + 4.0).clamp(3.0, 35.0);
+                            let next = (current + px(speed)).min(Pixels::ZERO);
+                            if next != current {
+                                rows.set_offset_from_scrollbar(point(Pixels::ZERO, next));
+                                scrolled = true;
+                            }
+                        } else if pos.y > bounds.bottom() - edge_zone {
+                            let dist = (pos.y - (bounds.bottom() - edge_zone)).max(Pixels::ZERO);
+                            let speed = (f32::from(dist) * 0.4 + 4.0).clamp(3.0, 35.0);
+                            let next = (current - px(speed)).max(-max_offset);
+                            if next != current {
+                                rows.set_offset_from_scrollbar(point(Pixels::ZERO, next));
+                                scrolled = true;
+                            }
+                        }
+
+                        if scrolled {
+                            following.set(false);
+                            is_scrolled.set(true);
+                            crate::ui::motion::pulse_lease(view_id, cx);
+
+                            let registry = selection.registry.borrow();
+                            let anchor_info = {
+                                let sel = selection.selection.borrow();
+                                sel.anchor().cloned().and_then(|key| {
+                                    sel.drag_anchor(&key).map(|offset| (key, offset))
+                                })
+                            };
+                            if let Some((anchor_key, anchor_offset)) = anchor_info {
+                                if let Some(head) = md::render::registry_point(&registry, pos) {
+                                    let anchor_pos = registry.position(&anchor_key);
+                                    let spans = match anchor_pos {
+                                        Some(anchor_index) => {
+                                            let direction = if head.0 > anchor_index
+                                                || (head.0 == anchor_index && head.1 >= anchor_offset)
+                                            {
+                                                crate::md::selection::DragDirection::Forward
+                                            } else {
+                                                crate::md::selection::DragDirection::Backward
+                                            };
+                                            selection.selection.borrow_mut().set_direction(direction);
+                                            registry.resolve((anchor_index, anchor_offset), head)
+                                        }
+                                        None => {
+                                            let sel = selection.selection.borrow();
+                                            if let Some(direction) = sel.direction() {
+                                                registry.resolve_offscreen(head, direction, sel.spans())
+                                            } else {
+                                                Vec::new()
+                                            }
+                                        }
+                                    };
+                                    drop(registry);
+                                    if !spans.is_empty() {
+                                        selection.selection.borrow_mut().set_spans(spans);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                let rows_for_scroll = transcript_rows.clone();
+                let following_for_scroll = transcript_anchor_following.clone();
+                let is_scrolled_for_scroll = transcript_is_scrolled.clone();
+                md::render::install_selection_input_with_scroll(
+                    window,
+                    &selection,
+                    move |pos, _window, cx| {
+                        let edge_zone = px(40.0);
+                        let current = rows_for_scroll.scroll_px_offset_for_scrollbar().y;
+                        let max_offset = rows_for_scroll.max_offset_for_scrollbar().y;
+                        let mut scrolled = false;
+
+                        if pos.y < bounds.top() + edge_zone {
+                            let dist = (bounds.top() + edge_zone - pos.y).max(Pixels::ZERO);
+                            let speed = (f32::from(dist) * 0.4 + 4.0).clamp(3.0, 35.0);
+                            let next = (current + px(speed)).min(Pixels::ZERO);
+                            if next != current {
+                                rows_for_scroll.set_offset_from_scrollbar(point(Pixels::ZERO, next));
+                                scrolled = true;
+                            }
+                        } else if pos.y > bounds.bottom() - edge_zone {
+                            let dist = (pos.y - (bounds.bottom() - edge_zone)).max(Pixels::ZERO);
+                            let speed = (f32::from(dist) * 0.4 + 4.0).clamp(3.0, 35.0);
+                            let next = (current - px(speed)).max(-max_offset);
+                            if next != current {
+                                rows_for_scroll.set_offset_from_scrollbar(point(Pixels::ZERO, next));
+                                scrolled = true;
+                            }
+                        }
+
+                        if scrolled {
+                            following_for_scroll.set(false);
+                            is_scrolled_for_scroll.set(true);
+                            crate::ui::motion::pulse_lease(view_id, cx);
+                        }
+                        scrolled
+                    },
+                );
+            },
         )
         .absolute()
-        .w(px(0.0))
-        .h(px(0.0))
+        .top_0()
+        .left_0()
+        .size_full()
     }
 
     pub(super) fn toast_selection_input(&self) -> impl IntoElement {
@@ -611,7 +734,7 @@ impl Render for ConversationNavigationRail {
                 .rounded(px(14.0))
                 .border_1()
                 .border_color(theme.border_strong)
-                .bg(theme.raised)
+                .bg(theme.elevated)
                 .shadow_lg()
                 .px(px(15.0))
                 .py(px(12.0))

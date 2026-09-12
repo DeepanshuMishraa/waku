@@ -3937,6 +3937,7 @@ impl Insulator {
         // its line-number gutter down instead of covering the first lines.
         div()
             .key_context("FileEditorPane")
+            .on_action(cx.listener(Self::save_right_panel_file_action))
             .flex_1()
             .min_h_0()
             .flex()
@@ -4104,7 +4105,7 @@ impl Insulator {
         };
         if let Some(editor) = self.right_panel_file_editors.get(&relative_path) {
             if !editor.dirty && editor.writable {
-                self.show_toast(tr!("files.saved", path = relative_path));
+                self.show_success_toast(tr!("files.saved", path = relative_path));
                 cx.notify();
                 return;
             }
@@ -4209,7 +4210,7 @@ impl Insulator {
                             editor.dirty = current != content;
                         }
                         if show_toast {
-                            insulator.show_toast(tr!("files.saved", path = relative_path_str.clone()));
+                            insulator.show_success_toast(tr!("files.saved", path = relative_path_str.clone()));
                         }
                     }
                     Err(error) => insulator.show_toast(tr!(

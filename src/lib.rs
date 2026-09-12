@@ -276,6 +276,10 @@ pub fn run() {
                 KeyBinding::new("secondary-alt-f", OpenFindReplace, Some("Insulator")),
                 KeyBinding::new("secondary-g", FindNext, Some("Insulator")),
                 KeyBinding::new("secondary-shift-g", FindPrevious, Some("Insulator")),
+                // Scoped to the editor pane so Cmd-S reaches the file editor
+                // even when the focused TextInput consumes its key context.
+                KeyBinding::new("secondary-s", SaveFile, Some("FileEditorPane")),
+                KeyBinding::new("secondary-s", SaveFile, Some("FileEditorPane > TextInput")),
                 // Scoped to the editor pane: escape closes the bar there and
                 // falls through to CancelTurn anywhere else.
                 KeyBinding::new("escape", CloseFind, Some("FileEditorPane")),

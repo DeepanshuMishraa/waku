@@ -1284,8 +1284,8 @@ impl AgentSession {
         true
     }
 
-    pub fn can_choose_model(&self, provider: ProviderKind) -> bool {
-        !self.status.is_busy() && (self.messages.is_empty() || self.provider == provider)
+    pub fn can_choose_model(&self, _provider: ProviderKind) -> bool {
+        !self.status.is_busy()
     }
 
     pub fn migrate_legacy_state(&mut self) {
@@ -1987,6 +1987,7 @@ pub enum DriverEvent {
         message: String,
         level: ExtensionNotificationLevel,
     },
+    PlanApproved,
     ExtensionStatus {
         key: String,
         text: Option<String>,
@@ -4154,7 +4155,7 @@ mod tests {
     }
 
     #[test]
-    fn model_selection_keeps_started_sessions_on_their_provider() {
+    fn model_selection_allows_started_sessions_to_switch_provider_when_idle() {
         let project = Project::from_path(PathBuf::from("/tmp/insulator"));
         let mut session = AgentSession::new(project.id, ProviderKind::Codex);
 
@@ -4162,7 +4163,7 @@ mod tests {
 
         session.push_message(MessageRole::User, "first turn");
         assert!(session.can_choose_model(ProviderKind::Codex));
-        assert!(!session.can_choose_model(ProviderKind::Claude));
+        assert!(session.can_choose_model(ProviderKind::Claude));
     }
 
     #[test]

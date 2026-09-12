@@ -815,9 +815,9 @@ fn walked_files(root: &Path, cap: usize) -> Vec<String> {
     files
 }
 
-/// Load canonical pi-references aliases. Project aliases override global ones.
-/// Invalid files and entries are ignored here; the extension reports their
-/// actionable errors when Pi starts.
+/// Load pi-references aliases. Canonical configs win over legacy filenames;
+/// project aliases override global ones. Invalid files and entries are ignored
+/// here; the extension reports their actionable errors when Pi starts.
 pub fn list_pi_references(root: &Path) -> Vec<ReferenceEntry> {
     fn read(path: &Path) -> Vec<ReferenceEntry> {
         let Ok(contents) = std::fs::read_to_string(path) else {
@@ -877,11 +877,23 @@ pub fn list_pi_references(root: &Path) -> Vec<ReferenceEntry> {
 
     let mut references = std::collections::BTreeMap::new();
     if let Some(home) = dirs::home_dir() {
-        for reference in read(&home.join(".pi/agent/references.json")) {
+        let canonical = home.join(".pi/agent/references.json");
+        let path = if canonical.is_file() {
+            canonical
+        } else {
+            home.join(".pi/agent/pi-refs.json")
+        };
+        for reference in read(&path) {
             references.insert(reference.alias.clone(), reference);
         }
     }
-    for reference in read(&root.join(".pi/references.json")) {
+    let canonical = root.join(".pi/references.json");
+    let path = if canonical.is_file() {
+        canonical
+    } else {
+        root.join(".pi/pi-refs.json")
+    };
+    for reference in read(&path) {
         references.insert(reference.alias.clone(), reference);
     }
     references.into_values().collect()

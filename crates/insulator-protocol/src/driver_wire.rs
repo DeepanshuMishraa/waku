@@ -87,6 +87,7 @@ pub fn event_to_wire(event: DriverEvent) -> anyhow::Result<WireDriverEvent> {
             "extensionNotification",
             json!({"message": message, "level": level}),
         ),
+        DriverEvent::PlanApproved => ("planApproved", Value::Null),
         DriverEvent::ExtensionStatus { key, text } => (
             "extensionStatus",
             json!({"key": key, "text": text}),
@@ -184,6 +185,7 @@ pub fn event_from_wire(event: WireDriverEvent) -> anyhow::Result<DriverEvent> {
                 level: notification.level,
             }
         }
+        "planApproved" => DriverEvent::PlanApproved,
         "extensionStatus" => {
             let status: ExtensionStatusWire = serde_json::from_value(payload)?;
             DriverEvent::ExtensionStatus {

@@ -150,6 +150,7 @@ enum CommandMessage {
     Prompt(String),
     Steer(String),
     ProviderControl(Vec<String>),
+    FollowUp(String),
     Cancel,
     ExtensionResponse { id: String, response: Value },
     Options(SessionOptions),
@@ -575,6 +576,19 @@ impl PiDriver {
                                     )));
                                     break;
                                 }
+                            }
+                        }
+                        CommandMessage::FollowUp(message) => {
+                            if let Err(error) = send_request(
+                                &mut stdin,
+                                &writer_pending,
+                                &mut next_request_id,
+                                json!({"type": "follow_up", "message": message}),
+                            ) {
+                                let _ = writer_events.send(DriverEvent::Error(format!(
+                                    "{} follow-up command failed: {error}",
+                                    flavor.display_name()
+                                )));
                             }
                         }
                         CommandMessage::Cancel => {
@@ -1308,6 +1322,7 @@ struct PiStreamState {
     message_saw_reasoning: bool,
     failed: bool,
     tools: HashMap<String, (ActivityKind, String)>,
+    plan_paths: HashMap<String, String>,
 }
 
 fn handle_pi_message(
@@ -1535,6 +1550,11 @@ fn handle_pi_message_with_dialogs(
                 && let Some(id) = id.as_ref()
             {
                 state.tools.insert(id.clone(), (kind, title.clone()));
+                if tool_name == Some("plannotator_submit_plan")
+                    && let Some(path) = value.pointer("/args/filePath").and_then(Value::as_str)
+                {
+                    state.plan_paths.insert(id.clone(), path.to_owned());
+                }
             }
             let arguments = (event_type == "tool_execution_start")
                 .then(|| value.get("args"))
@@ -1558,6 +1578,24 @@ fn handle_pi_message_with_dialogs(
             );
             let _ = events.send(DriverEvent::RichActivity(item));
             if complete && let Some(id) = id {
+                let plan_path = state.plan_paths.remove(&id);
+                if !failed
+                    && tool_name == Some("plannotator_submit_plan")
+                    && value
+                        .pointer("/result/details/approved")
+                        .and_then(Value::as_bool)
+                        == Some(true)
+                {
+                    let _ = events.send(DriverEvent::PlanApproved);
+                    let message = plan_path.map_or_else(
+                        || "The Plannotator plan was approved. Continue by implementing it now."
+                            .to_owned(),
+                        |path| format!(
+                            "The Plannotator plan `{path}` was approved. Read it and implement every step now."
+                        ),
+                    );
+                    let _ = commands.send(CommandMessage::FollowUp(message));
+                }
                 state.tools.remove(&id);
             }
         }
@@ -1978,6 +2016,7 @@ mod tests {
             flavor: PiFlavor::Pi,
             commands,
             computer_use: None,
+            pending_extension_dialogs: Default::default(),
         };
         let options = |mode| SessionOptions {
             mode,

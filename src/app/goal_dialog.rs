@@ -397,7 +397,7 @@ impl Insulator {
             .rounded(px(18.0))
             .border_1()
             .border_color(theme.border_strong)
-            .bg(theme.composer)
+            .bg(theme.elevated)
             .shadow_xl()
             .flex()
             .flex_col()
@@ -508,9 +508,9 @@ impl Insulator {
             .child(actions_column);
 
         let scrim = if theme.is_dark {
-            gpui::hsla(0.0, 0.0, 0.0, 0.34)
+            gpui::hsla(0.0, 0.0, 0.0, 0.55)
         } else {
-            gpui::hsla(0.0, 0.0, 0.0, 0.16)
+            gpui::hsla(0.0, 0.0, 0.0, 0.30)
         };
         let layer = div()
             .id("goal-dialog-layer")

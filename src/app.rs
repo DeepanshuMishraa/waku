@@ -204,6 +204,16 @@ enum ModelPickerTab {
 }
 
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+enum ModelPickerSubmenu {
+    #[default]
+    None,
+    Reasoning,
+    Permissions,
+    ServiceTier,
+    AgentPreset,
+}
+
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
 enum BranchPickerMode {
     #[default]
     Browse,
@@ -1285,11 +1295,14 @@ pub struct Insulator {
     /// nothing to offer) and hides the control.
     open_in_apps: Rc<Vec<crate::platform::ExternalApp>>,
     model_picker_tab: ModelPickerTab,
+    model_picker_submenu: ModelPickerSubmenu,
     /// Keyboard cursor over the model picker's filtered rows. `None` means the
     /// keyboard has not moved yet, so `enter` takes the first row.
     model_picker_highlight: Option<usize>,
     model_picker_scroll: ScrollHandle,
     model_picker_scrollbar: Rc<ScrollbarState>,
+    model_picker_tabs_scroll: ScrollHandle,
+    model_picker_tabs_scrollbar: Rc<ScrollbarState>,
     /// Focus for the picker's no-providers state. The panel takes focus on
     /// open so `escape` has a focused descendant to dispatch up from, and
     /// normally that is the filter field — which the empty state does not
@@ -2913,11 +2926,12 @@ impl Insulator {
                     }
                 })
             };
+            let initial_selected_session = state.selected_session;
 
             Self {
                 daemon,
                 daemon_hostname,
-                    session_hydrations: HashSet::new(),
+                session_hydrations: HashSet::new(),
                 pending_session_activation: None,
                 state,
                 store,
@@ -3008,9 +3022,12 @@ impl Insulator {
                 computer_use_app_icon_loads: RefCell::new(HashSet::new()),
                 open_in_apps: Rc::new(Vec::new()),
                 model_picker_tab,
+                model_picker_submenu: ModelPickerSubmenu::None,
                 model_picker_highlight: None,
                 model_picker_scroll: ScrollHandle::new(),
                 model_picker_scrollbar: ScrollbarState::new(),
+                model_picker_tabs_scroll: ScrollHandle::new(),
+                model_picker_tabs_scrollbar: ScrollbarState::new(),
                 model_picker_empty_focus,
                 branch_picker_mode: BranchPickerMode::Browse,
                 branch_picker_highlight: None,
@@ -3076,8 +3093,10 @@ impl Insulator {
                 sidebar_group_compose_focuses: RefCell::new(HashMap::new()),
                 sidebar_show_more_focuses: RefCell::new(HashMap::new()),
                 sidebar_visible,
-                main_tabs_open: false,
-                main_tabs: Vec::new(),
+                main_tabs_open: initial_selected_session.is_some(),
+                main_tabs: initial_selected_session
+                    .map(|id| vec![MainTab::Chat(id)])
+                    .unwrap_or_default(),
                 active_main_file_tab: None,
                 active_main_review_tab: false,
                 main_tabs_scroll_handle: ScrollHandle::new(),
@@ -3263,6 +3282,7 @@ impl Insulator {
             // The autocomplete indexes prefetch alongside, so typing `/` or
             // `@` into the very first prompt already has data to draw.
             this.refresh_composer_sources(cx);
+            this.start_pi_reference_watch(cx);
             // Re-detect providers after resolving the user's login-shell
             // environment off-thread. Detection then starts model and version
             // discovery for every CLI it finds, including nvm/fnm-managed

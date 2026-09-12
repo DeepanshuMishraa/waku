@@ -753,7 +753,7 @@ fn perform_provider_rewind(
         }
         // Unreachable through the UI, which hides rewinding for providers that
         // answer `supports_conversation_rollback` with false.
-        ProviderKind::Fx | ProviderKind::Kimi | ProviderKind::OpenCode2 => {
+        ProviderKind::Fx | ProviderKind::Kimi => {
             Err(anyhow::anyhow!(tr!(
                 "errors.provider_turn_branching_unsupported",
                 provider = provider.display_name()
@@ -1227,7 +1227,6 @@ impl Insulator {
             self.task_switcher.remove(*session_id);
         }
         self.state.projects = snapshot.projects;
-        self.ensure_workspace_sessions();
 
         let attach = self
             .state
@@ -1282,7 +1281,11 @@ impl Insulator {
                 .or_else(|| self.state.projects.first().map(|project| project.id))
             {
                 self.state.selected_project = Some(project_id);
-                self.create_session_for(project_id, self.state.last_provider, cx);
+                self.main_tabs_open = false;
+                self.active_main_file_tab = None;
+                self.active_main_review_tab = false;
+                self.save();
+                cx.notify();
             }
         }
     }
@@ -3619,6 +3622,11 @@ impl Insulator {
             self.reload_clean_right_panel_file_editors(cx);
             self.ensure_right_panel_terminals(cx);
         }
+        // A fresh Pi process starts with both planning extensions off. Apply
+        // the remembered mode only when installing that process; replaying the
+        // toggle before every prompt would turn Plannotator off on the second
+        // message because its command is intentionally a toggle.
+        let starts_driver = prepared_driver.is_some();
         let driver = match prepared_driver {
             None => self
                 .runtimes
@@ -3673,7 +3681,7 @@ impl Insulator {
         let mut failed_to_start = false;
         match driver {
             Ok(driver) => {
-                if provider == ProviderKind::Pi {
+                if provider == ProviderKind::Pi && starts_driver {
                     let target = self.pi_plan_modes.get(&session_id).copied().unwrap_or_default();
                     driver.provider_control(super::composer::pi_plan_mode_commands(
                         super::composer::PiPlanMode::Off,
