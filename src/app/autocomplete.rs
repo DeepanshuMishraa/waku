@@ -22,7 +22,7 @@ use gpui::{
 use nucleo_matcher::Matcher;
 
 use crate::composer_complete::{
-    self, FILE_INDEX_CAP, FileEntry, Scored, SlashCommand, Trigger, TriggerKind,
+    self, FILE_INDEX_CAP, FileEntry, ReferenceEntry, Scored, SlashCommand, Trigger, TriggerKind,
     highlight_byte_ranges,
 };
 use crate::ui::menu::{ConfirmEntry, DismissMenu, SelectNextEntry, SelectPreviousEntry};
@@ -53,8 +53,17 @@ pub fn init(cx: &mut App) {
 }
 
 pub(super) enum AutocompleteRow {
+    Header(SharedString),
     Command(Scored<SlashCommand>),
+    Reference(Scored<ReferenceEntry>),
     File(Scored<FileEntry>),
+}
+
+fn selectable_row_indexes(rows: &[AutocompleteRow]) -> Vec<usize> {
+    rows.iter()
+        .enumerate()
+        .filter_map(|(index, row)| (!matches!(row, AutocompleteRow::Header(_))).then_some(index))
+        .collect()
 }
 
 /// Filter results for one (kind, query, source index) — the popup's rows are
@@ -120,6 +129,7 @@ impl Insulator {
             self.slash_command_index_key = None;
             self.slash_command_index_loading = false;
             self.mention_file_index = Rc::new(Vec::new());
+            self.mention_reference_index = Rc::new(Vec::new());
             self.mention_file_index_path = None;
             self.mention_file_index_loading = false;
             return;
@@ -191,8 +201,13 @@ impl Insulator {
         }
 
         match self.mention_files.read(&project_path) {
-            Query::Ready(files) => {
-                self.mention_file_index = files.as_ref().clone().into();
+            Query::Ready(value) => {
+                self.mention_file_index = value.0.clone().into();
+                self.mention_reference_index = if provider == ProviderKind::Pi {
+                    value.1.clone().into()
+                } else {
+                    Rc::new(Vec::new())
+                };
                 self.mention_file_index_path = Some(project_path);
                 self.mention_file_index_loading = false;
             }
@@ -200,6 +215,7 @@ impl Insulator {
                 self.mention_file_index_loading = true;
                 if self.mention_file_index_path.as_ref() != Some(&project_path) {
                     self.mention_file_index = Rc::new(Vec::new());
+                    self.mention_reference_index = Rc::new(Vec::new());
                     self.mention_file_index_path = None;
                 }
             }
@@ -207,6 +223,7 @@ impl Insulator {
                 self.mention_file_index_loading = true;
                 if self.mention_file_index_path.as_ref() != Some(&project_path) {
                     self.mention_file_index = Rc::new(Vec::new());
+                    self.mention_reference_index = Rc::new(Vec::new());
                     self.mention_file_index_path = None;
                 }
                 let path = project_path.clone();
@@ -221,10 +238,11 @@ impl Insulator {
                                     cap: FILE_INDEX_CAP,
                                 },
                             ) {
-                                Ok(insulator_client::WorkspaceResult::ProjectFiles { entries }) => {
-                                    entries
-                                }
-                                Ok(_) | Err(_) => Vec::new(),
+                                Ok(insulator_client::WorkspaceResult::ProjectFiles {
+                                    entries,
+                                    references,
+                                }) => (entries, references),
+                                Ok(_) | Err(_) => (Vec::new(), Vec::new()),
                             }
                         })
                         .await;
@@ -289,7 +307,10 @@ impl Insulator {
     fn autocomplete_rows(&self, trigger: &Trigger) -> Rc<Vec<AutocompleteRow>> {
         let source = match trigger.kind {
             TriggerKind::Command => Rc::as_ptr(&self.slash_command_index) as usize,
-            TriggerKind::File => Rc::as_ptr(&self.mention_file_index) as usize,
+            TriggerKind::File => {
+                (Rc::as_ptr(&self.mention_file_index) as usize)
+                    ^ (Rc::as_ptr(&self.mention_reference_index) as usize).rotate_left(1)
+            }
         };
         {
             let memo = self.composer_autocomplete.results.borrow();
@@ -309,14 +330,28 @@ impl Insulator {
             .into_iter()
             .map(AutocompleteRow::Command)
             .collect::<Vec<_>>(),
-            TriggerKind::File => composer_complete::filter_files(
-                &self.mention_file_index,
-                &trigger.query,
-                &mut matcher,
-            )
-            .into_iter()
-            .map(AutocompleteRow::File)
-            .collect(),
+            TriggerKind::File => {
+                let references = composer_complete::filter_references(
+                    &self.mention_reference_index,
+                    &trigger.query,
+                    &mut matcher,
+                );
+                let files = composer_complete::filter_files(
+                    &self.mention_file_index,
+                    &trigger.query,
+                    &mut matcher,
+                );
+                let mut rows = Vec::with_capacity(references.len() + files.len() + 2);
+                if !references.is_empty() {
+                    rows.push(AutocompleteRow::Header("References".into()));
+                    rows.extend(references.into_iter().map(AutocompleteRow::Reference));
+                }
+                if !files.is_empty() {
+                    rows.push(AutocompleteRow::Header("Files".into()));
+                    rows.extend(files.into_iter().map(AutocompleteRow::File));
+                }
+                rows
+            }
         };
         let rows = Rc::new(rows);
         *self.composer_autocomplete.results.borrow_mut() = Some(ResultsMemo {
@@ -338,9 +373,15 @@ impl Insulator {
             return;
         };
         let rows = self.autocomplete_rows(&trigger);
+        let selectable = selectable_row_indexes(&rows);
         let ui = &self.composer_autocomplete;
-        let current = ui.highlight.get().min(rows.len().saturating_sub(1));
-        let Some(next) = next_picker_highlight(Some(current), rows.len(), key) else {
+        let current = selectable
+            .iter()
+            .position(|index| *index == ui.highlight.get())
+            .unwrap_or(0);
+        let Some(next) = next_picker_highlight(Some(current), selectable.len(), key)
+            .and_then(|index| selectable.get(index).copied())
+        else {
             return;
         };
         ui.highlight.set(next);
@@ -362,10 +403,12 @@ impl Insulator {
         };
         let rows = self.autocomplete_rows(&trigger);
         let index = index.unwrap_or_else(|| {
-            self.composer_autocomplete
-                .highlight
-                .get()
-                .min(rows.len().saturating_sub(1))
+            let highlighted = self.composer_autocomplete.highlight.get();
+            selectable_row_indexes(&rows)
+                .into_iter()
+                .find(|index| *index == highlighted)
+                .or_else(|| selectable_row_indexes(&rows).into_iter().next())
+                .unwrap_or(0)
         });
         let Some(row) = rows.get(index) else {
             return;
@@ -375,7 +418,9 @@ impl Insulator {
                 let composer_text = composer_complete::command_composer_text(&scored.item);
                 format!("{composer_text} ")
             }
+            AutocompleteRow::Reference(scored) => format!("@{} ", scored.item.alias),
             AutocompleteRow::File(scored) => format!("@{} ", scored.item.path),
+            AutocompleteRow::Header(_) => return,
         };
         if matches!(row, AutocompleteRow::Command(_)) {
             let mut submission = self.composer.read(cx).content(cx).to_owned();
@@ -496,6 +541,19 @@ impl Insulator {
         let highlighted = highlight == index;
         let mut font = window.text_style().font();
         font.family = SharedString::from(crate::theme::active_ui_font_family());
+        if let AutocompleteRow::Header(label) = row {
+            return div()
+                .id(index)
+                .h(px(24.0))
+                .px(px(8.0))
+                .flex()
+                .items_center()
+                .text_size(sp(11.0))
+                .font_weight(FontWeight::SEMIBOLD)
+                .text_color(theme.text_ghost)
+                .child(label.clone())
+                .into_any_element();
+        }
         let base = div()
             .id(index)
             .h(px(30.0))
@@ -514,6 +572,7 @@ impl Insulator {
                 }),
             );
         match row {
+            AutocompleteRow::Header(_) => unreachable!("headers return before selectable rows"),
             AutocompleteRow::Command(scored) => {
                 let command = &scored.item;
                 let composer_text = composer_complete::command_composer_text(command);
@@ -578,6 +637,39 @@ impl Insulator {
                             .text_color(theme.text_tertiary)
                             .child(command.scope.label()),
                     )
+                    .into_any_element()
+            }
+            AutocompleteRow::Reference(scored) => {
+                let reference = &scored.item;
+                base.child(icon("icons/git-branch.svg", 13.0, theme.text_tertiary))
+                    .child(
+                        div()
+                            .flex_none()
+                            .max_w(px(260.0))
+                            .truncate()
+                            .text_size(sp(12.5))
+                            .child(matched_text(
+                                format!("@{}", reference.alias),
+                                highlight_byte_ranges(&reference.alias, &scored.positions, 0)
+                                    .into_iter()
+                                    .map(|range| range.start + 1..range.end + 1)
+                                    .collect(),
+                                theme.text,
+                                theme.accent,
+                                font,
+                            )),
+                    )
+                    .when_some(reference.description.clone(), |element, description| {
+                        element.child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
+                                .truncate()
+                                .text_size(sp(12.5))
+                                .text_color(theme.text_tertiary)
+                                .child(description),
+                        )
+                    })
                     .into_any_element()
             }
             AutocompleteRow::File(scored) => {

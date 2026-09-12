@@ -48,3 +48,9 @@ pub struct FileEntry {
     pub path: String,
     pub is_dir: bool,
 }
+
+#[derive(Clone, Debug, Deserialize, Eq, PartialEq, Serialize, TS)]
+pub struct ReferenceEntry {
+    pub alias: String,
+    pub description: Option<String>,
+}

@@ -98,6 +98,10 @@ impl DriverHandle {
         self.inner.steer(prompt);
     }
 
+    pub fn provider_control(&self, commands: Vec<String>) {
+        self.inner.provider_control(commands);
+    }
+
     pub fn cancel(&self) {
         self.inner.cancel();
     }
@@ -158,6 +162,7 @@ pub trait DriverControl: Send + Sync {
     /// the outcome asynchronously through `DriverEvent::SteerAccepted` or
     /// `DriverEvent::SteerRejected`.
     fn steer(&self, _prompt: String) {}
+    fn provider_control(&self, _commands: Vec<String>) {}
     fn cancel(&self);
     fn cancel_computer_use(&self) {}
     fn refresh_background_work(&self) {}

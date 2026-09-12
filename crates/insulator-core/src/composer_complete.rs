@@ -13,7 +13,7 @@ use std::path::{Path, PathBuf};
 use crate::model::{ProviderKind, ReportedCommand};
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Matcher, Utf32Str};
-pub use insulator_protocol::composer::{CommandScope, FileEntry, SlashCommand};
+pub use insulator_protocol::composer::{CommandScope, FileEntry, ReferenceEntry, SlashCommand};
 
 /// How many rows a filter pass returns. The popup shows a screenful and the
 /// keyboard walks the rest; past this the tail is noise, not choice.
@@ -47,9 +47,9 @@ pub struct Trigger {
 /// The trigger at `cursor`, if the text under it is one.
 ///
 /// A slash command must be the first token of its line — `/` mid-sentence is
-/// prose. An `@` mention starts at any whitespace boundary, so `see @src/` in
-/// the middle of a prompt still completes, while `user@host` does not: its `@`
-/// is inside a token, not at the start of one.
+/// prose. An `@` mention starts after whitespace or opening punctuation, so
+/// `see @src/` in the middle of a prompt still completes, while `user@host`
+/// does not: its `@` is inside a token.
 pub fn detect_trigger(text: &str, cursor: usize) -> Option<Trigger> {
     let cursor = cursor.min(text.len());
     if !text.is_char_boundary(cursor) {
@@ -68,17 +68,20 @@ pub fn detect_trigger(text: &str, cursor: usize) -> Option<Trigger> {
         return None;
     }
 
-    let token_start = text[..cursor]
-        .rfind(char::is_whitespace)
-        .map_or(0, |index| {
-            index + text[index..].chars().next().unwrap().len_utf8()
-        });
-    let token = &text[token_start..cursor];
-    let query = token.strip_prefix('@')?;
+    let mention_start = text[..cursor].rfind('@')?;
+    let boundary = text[..mention_start].chars().next_back();
+    if boundary.is_some_and(|character| {
+        !character.is_whitespace() && !matches!(character, '(' | '[' | '{' | '"' | '\'')
+    }) || text[mention_start + 1..cursor]
+        .chars()
+        .any(char::is_whitespace)
+    {
+        return None;
+    }
     Some(Trigger {
         kind: TriggerKind::File,
-        query: query.to_owned(),
-        range: token_start..cursor,
+        query: text[mention_start + 1..cursor].to_owned(),
+        range: mention_start..cursor,
     })
 }
 
@@ -812,6 +815,78 @@ fn walked_files(root: &Path, cap: usize) -> Vec<String> {
     files
 }
 
+/// Load canonical pi-references aliases. Project aliases override global ones.
+/// Invalid files and entries are ignored here; the extension reports their
+/// actionable errors when Pi starts.
+pub fn list_pi_references(root: &Path) -> Vec<ReferenceEntry> {
+    fn read(path: &Path) -> Vec<ReferenceEntry> {
+        let Ok(contents) = std::fs::read_to_string(path) else {
+            return Vec::new();
+        };
+        let Ok(value) = serde_json::from_str::<serde_json::Value>(&contents) else {
+            return Vec::new();
+        };
+        value
+            .get("references")
+            .and_then(serde_json::Value::as_object)
+            .into_iter()
+            .flatten()
+            .filter_map(|(alias, entry)| {
+                if alias.is_empty()
+                    || alias
+                        .chars()
+                        .any(|character| character.is_whitespace() || "/`,".contains(character))
+                {
+                    return None;
+                }
+                let valid = match entry {
+                    serde_json::Value::String(value) => !value.is_empty(),
+                    serde_json::Value::Object(object) => {
+                        let path = object.get("path").and_then(serde_json::Value::as_str);
+                        let repository = object
+                            .get("repository")
+                            .and_then(serde_json::Value::as_str);
+                        matches!((path, repository), (Some(_), None) | (None, Some(_)))
+                            && object
+                                .get("branch")
+                                .map_or(true, serde_json::Value::is_string)
+                            && object
+                                .get("description")
+                                .map_or(true, serde_json::Value::is_string)
+                            && object
+                                .get("hidden")
+                                .map_or(true, serde_json::Value::is_boolean)
+                            && !(path.is_some() && object.contains_key("branch"))
+                    }
+                    _ => false,
+                };
+                let hidden = entry
+                    .get("hidden")
+                    .and_then(serde_json::Value::as_bool)
+                    .unwrap_or(false);
+                (valid && !hidden).then(|| ReferenceEntry {
+                    alias: alias.clone(),
+                    description: entry
+                        .get("description")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned),
+                })
+            })
+            .collect()
+    }
+
+    let mut references = std::collections::BTreeMap::new();
+    if let Some(home) = dirs::home_dir() {
+        for reference in read(&home.join(".pi/agent/references.json")) {
+            references.insert(reference.alias.clone(), reference);
+        }
+    }
+    for reference in read(&root.join(".pi/references.json")) {
+        references.insert(reference.alias.clone(), reference);
+    }
+    references.into_values().collect()
+}
+
 // ── Fuzzy filtering ────────────────────────────────────────────────────────
 
 /// The matcher every filter call shares, so its internal scoring buffers are
@@ -958,7 +1033,7 @@ mod tests {
     }
 
     #[test]
-    fn at_triggers_on_token_start_only() {
+    fn at_triggers_at_prompt_boundaries() {
         let trigger = detect_trigger("see @src/ap", 11).expect("token-start @ triggers");
         assert_eq!(trigger.kind, TriggerKind::File);
         assert_eq!(trigger.query, "src/ap");
@@ -966,6 +1041,7 @@ mod tests {
 
         let trigger = detect_trigger("@", 1).expect("bare @ triggers");
         assert_eq!(trigger.query, "");
+        assert_eq!(detect_trigger("see (@src", 9).unwrap().range, 5..9);
         assert!(detect_trigger("mail user@host", 14).is_none());
         assert!(detect_trigger("see @src done", 13).is_none());
         // Cursor before the sigil is not inside the token.

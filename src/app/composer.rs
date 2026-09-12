@@ -10,6 +10,42 @@ pub(super) enum ComposerSubmitAction {
     Stop,
 }
 
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub(super) enum PiPlanMode {
+    #[default]
+    Off,
+    Plan,
+    Plannotator,
+}
+
+impl PiPlanMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Off => "No plan",
+            Self::Plan => "Plan mode",
+            Self::Plannotator => "Plannotator plan mode",
+        }
+    }
+}
+
+pub(super) fn pi_plan_mode_commands(current: PiPlanMode, target: PiPlanMode) -> Vec<String> {
+    if current == target {
+        return Vec::new();
+    }
+    let mut commands = Vec::with_capacity(2);
+    match current {
+        PiPlanMode::Off => {}
+        PiPlanMode::Plan => commands.push("/plan".to_owned()),
+        PiPlanMode::Plannotator => commands.push("/plannotator-plan-mode".to_owned()),
+    }
+    match target {
+        PiPlanMode::Off => {}
+        PiPlanMode::Plan => commands.push("/plan".to_owned()),
+        PiPlanMode::Plannotator => commands.push("/plannotator-plan-mode".to_owned()),
+    }
+    commands
+}
+
 pub(super) fn composer_submit_action(
     status: Option<SessionStatus>,
     preparing: bool,
@@ -1926,6 +1962,70 @@ impl Insulator {
         self.choose_model(kind, model_id, cx);
     }
 
+    fn set_pi_plan_mode(&mut self, target: PiPlanMode, cx: &mut Context<Self>) {
+        let Some(session) = self.selected_session() else {
+            return;
+        };
+        if session.provider != ProviderKind::Pi {
+            return;
+        }
+        let session_id = session.id;
+        let current = self.pi_plan_modes.get(&session_id).copied().unwrap_or_default();
+        let commands = pi_plan_mode_commands(current, target);
+        self.pi_plan_modes.insert(session_id, target);
+        if let Some(runtime) = self.runtimes.get(&session_id) {
+            runtime.driver.provider_control(commands);
+        }
+        cx.notify();
+    }
+
+    pub(super) fn render_pi_plan_mode_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
+        let session = self.selected_session()?;
+        if session.provider != ProviderKind::Pi {
+            return None;
+        }
+        let has_plan = self.slash_command_index.iter().any(|command| command.name == "plan");
+        let has_plannotator = self
+            .slash_command_index
+            .iter()
+            .any(|command| command.name == "plannotator-plan-mode");
+        if !has_plan && !has_plannotator {
+            return None;
+        }
+        let selected = self.pi_plan_modes.get(&session.id).copied().unwrap_or_default();
+        let theme = Theme::current(cx);
+        let weak = cx.entity().downgrade();
+        let handle = self.menu_handle("pi-plan-mode", cx);
+        Some(dropdown_menu(
+            MenuChip::new("pi-plan-mode")
+                .icon("icons/list.svg", theme.text_tertiary)
+                .label(selected.label())
+                .caret(false)
+                .selected(handle.is_open()),
+            "pi-plan-mode-menu",
+            &handle,
+            MenuAlign::AboveLeft,
+            move |_| {
+                let mut items = Vec::new();
+                for mode in [PiPlanMode::Off, PiPlanMode::Plan, PiPlanMode::Plannotator] {
+                    if (mode == PiPlanMode::Plan && !has_plan)
+                        || (mode == PiPlanMode::Plannotator && !has_plannotator)
+                    {
+                        continue;
+                    }
+                    let weak = weak.clone();
+                    items.push(
+                        MenuItem::new(mode.label(), move |_, cx| {
+                            let _ = weak.update(cx, |this, cx| this.set_pi_plan_mode(mode, cx));
+                        })
+                        .selected(mode == selected),
+                    );
+                }
+                items
+            },
+        ))
+    }
+
     #[allow(dead_code)]
     pub(super) fn render_model_traits_control(&self, cx: &mut Context<Self>) -> Option<AnyElement> {
         let theme = Theme::current(cx);
@@ -2666,6 +2766,7 @@ impl Insulator {
     ) -> bool {
         self.execute_resume_composer_command(prompt, cx)
             || self.execute_fast_mode_toggle(prompt, cx)
+            || self.execute_pi_plan_command(prompt, cx)
             || self.execute_goal_composer_command(prompt, cx)
     }
 
@@ -2678,6 +2779,36 @@ impl Insulator {
         // after that effect returns so the window action can safely re-enter
         // Insulator and move focus into the Resume picker.
         cx.defer(|cx| cx.dispatch_action(&OpenResumePicker));
+        true
+    }
+
+    fn execute_pi_plan_command(&mut self, prompt: &str, cx: &mut Context<Self>) -> bool {
+        let target = match prompt.trim() {
+            "/plan" if self.slash_command_index.iter().any(|command| command.name == "plan") => {
+                PiPlanMode::Plan
+            }
+            "/plannotator-plan-mode"
+                if self
+                    .slash_command_index
+                    .iter()
+                    .any(|command| command.name == "plannotator-plan-mode") =>
+            {
+                PiPlanMode::Plannotator
+            }
+            _ => return false,
+        };
+        let Some(session) = self.selected_session() else {
+            return false;
+        };
+        if session.provider != ProviderKind::Pi {
+            return false;
+        }
+        let current = self.pi_plan_modes.get(&session.id).copied().unwrap_or_default();
+        self.set_pi_plan_mode(
+            if current == target { PiPlanMode::Off } else { target },
+            cx,
+        );
+        self.composer.update(cx, |input, cx| input.clear(cx));
         true
     }
 
@@ -3312,6 +3443,7 @@ impl Insulator {
                         .text_size(sp(12.5))
                         .line_height(sp(14.0))
                         .child(self.render_provider_model_control(cx))
+                        .children(self.render_pi_plan_mode_control(cx))
                         .children(self.render_goal_control(cx))
                         .child(div().flex_1())
                         .child(match submit_action {

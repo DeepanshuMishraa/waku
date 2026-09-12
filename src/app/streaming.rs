@@ -463,6 +463,40 @@ impl Insulator {
                     }
                 }
             }
+            DriverEvent::ExtensionNotification { message, level } => {
+                if self.state.selected_session == Some(session_id) {
+                    match level {
+                        ExtensionNotificationLevel::Info => self.show_success_toast(message),
+                        ExtensionNotificationLevel::Warning | ExtensionNotificationLevel::Error => {
+                            self.show_toast(message)
+                        }
+                    }
+                }
+            }
+            DriverEvent::ExtensionStatus { key, text } => {
+                let current = self.pi_plan_modes.get(&session_id).copied().unwrap_or_default();
+                let mode = match (key.as_str(), text.is_some()) {
+                    ("pi-plan", true) => Some(super::composer::PiPlanMode::Plan),
+                    ("plannotator", true) => Some(super::composer::PiPlanMode::Plannotator),
+                    ("pi-plan", false) if current == super::composer::PiPlanMode::Plan => {
+                        Some(super::composer::PiPlanMode::Off)
+                    }
+                    ("plannotator", false)
+                        if current == super::composer::PiPlanMode::Plannotator =>
+                    {
+                        Some(super::composer::PiPlanMode::Off)
+                    }
+                    _ => None,
+                };
+                if let Some(mode) = mode {
+                    self.pi_plan_modes.insert(session_id, mode);
+                }
+            }
+            DriverEvent::SetEditorText(text) => {
+                if self.state.selected_session == Some(session_id) {
+                    self.composer.update(cx, |input, cx| input.set_content(text, cx));
+                }
+            }
             DriverEvent::ComputerUseUpdated(state) => {
                 if self.accepts_turn_output(session_id) {
                     Self::upsert_computer_use_preview(runtime, state);

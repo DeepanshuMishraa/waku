@@ -3672,7 +3672,16 @@ impl Insulator {
             .unwrap_or((None, None));
         let mut failed_to_start = false;
         match driver {
-            Ok(driver) => driver.prompt(driver_prompt, turn_id, message_id),
+            Ok(driver) => {
+                if provider == ProviderKind::Pi {
+                    let target = self.pi_plan_modes.get(&session_id).copied().unwrap_or_default();
+                    driver.provider_control(super::composer::pi_plan_mode_commands(
+                        super::composer::PiPlanMode::Off,
+                        target,
+                    ));
+                }
+                driver.prompt(driver_prompt, turn_id, message_id);
+            }
             Err(error) => {
                 failed_to_start = true;
                 let message = tr!("errors.start_agent", error = error);

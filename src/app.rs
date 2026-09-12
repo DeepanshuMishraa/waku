@@ -20,7 +20,7 @@ use gpui::{
 use uuid::Uuid;
 
 use crate::checkpoint;
-use crate::composer_complete::{FileEntry, SlashCommand};
+use crate::composer_complete::{FileEntry, ReferenceEntry, SlashCommand};
 use crate::computer_use::{
     ComputerPermissions, ComputerTarget, ComputerUsePhase, ComputerUseState,
     PendingComputerApproval,
@@ -32,7 +32,8 @@ use crate::md;
 use crate::model::{
     ActivityItem, ActivityKind, AgentSession, BackgroundWorkEvent, BackgroundWorkItem,
     BackgroundWorkKey, BackgroundWorkKind, BackgroundWorkStatus, Checkpoint, CheckpointStatus,
-    ContextUsage, DriverEvent, FavoriteModel, Message, MessageAttachment, MessageRole,
+    ContextUsage, DriverEvent, ExtensionNotificationLevel, FavoriteModel, Message,
+    MessageAttachment, MessageRole,
     PendingPermission, Project, ProviderKind, ProviderModel, ProviderProbe, ProviderResumeCursor,
     ProviderSessionHistory, ProviderSessionSummary, QueuedMessage, ReasoningBlock, RuntimeMode,
     SessionStatus, SessionWorkspace, TranscriptBlock, TurnStatus, UserInputAnswer,
@@ -1332,6 +1333,8 @@ pub struct Insulator {
     /// started them. Keeping the operation on the app also lets every
     /// Environment surface reflect and gate the same in-flight action.
     commit_operation: Option<commit_dialog::CommitOperationState>,
+    /// Requested Pi planning mode per session. Pi extensions own enforcement.
+    pi_plan_modes: HashMap<Uuid, composer::PiPlanMode>,
     /// Slash commands discovered per (provider, project root, CLI override).
     /// Filesystem and CLI probes live off the UI thread; frames read this cache.
     slash_commands: QueryCache<(ProviderKind, PathBuf, Option<String>), Vec<SlashCommand>>,
@@ -1341,9 +1344,10 @@ pub struct Insulator {
     slash_command_index: Rc<Vec<SlashCommand>>,
     slash_command_index_key: Option<(ProviderKind, PathBuf, Option<String>)>,
     slash_command_index_loading: bool,
-    /// Workspace file index per project root, for `@` mentions.
-    mention_files: QueryCache<PathBuf, Vec<FileEntry>>,
+    /// Workspace file and Pi reference indexes per project root, for `@` mentions.
+    mention_files: QueryCache<PathBuf, (Vec<FileEntry>, Vec<ReferenceEntry>)>,
     mention_file_index: Rc<Vec<FileEntry>>,
+    mention_reference_index: Rc<Vec<ReferenceEntry>>,
     mention_file_index_path: Option<PathBuf>,
     mention_file_index_loading: bool,
     /// Set when a driver reports its command registry mid-drain; the drain
@@ -3024,6 +3028,7 @@ impl Insulator {
                 goal_runtime_starts: HashSet::new(),
                 goal_observed_at: HashMap::new(),
                 commit_operation: None,
+                pi_plan_modes: HashMap::new(),
                 // Providers × workspaces; both scans are small, the cache
                 // only exists to keep them off the frame path.
                 slash_commands: QueryCache::new(2 * MAX_CACHED_WORKSPACES),
@@ -3032,6 +3037,7 @@ impl Insulator {
                 slash_command_index_loading: false,
                 mention_files: QueryCache::new(MAX_CACHED_WORKSPACES),
                 mention_file_index: Rc::new(Vec::new()),
+                mention_reference_index: Rc::new(Vec::new()),
                 mention_file_index_path: None,
                 mention_file_index_loading: false,
                 composer_sources_stale: false,

@@ -23,7 +23,10 @@ use super::{activity, computer_use as computer_use_runtime};
 use crate::driver::{
     DriverControl, DriverEventSender, DriverEventSink, DriverStartOptions, SessionOptions,
 };
-use crate::model::{ActivityKind, DriverEvent, ProviderResumeCursor, ReportedCommand, RuntimeMode};
+use crate::model::{
+    ActivityKind, DriverEvent, ExtensionNotificationLevel, ProviderResumeCursor, ReportedCommand,
+    RuntimeMode, UserInputAnswer, UserInputOption, UserInputQuestion,
+};
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(10);
 
@@ -146,8 +149,9 @@ impl PiFlavor {
 enum CommandMessage {
     Prompt(String),
     Steer(String),
+    ProviderControl(Vec<String>),
     Cancel,
-    CancelExtensionRequest(String),
+    ExtensionResponse { id: String, response: Value },
     Options(SessionOptions),
     Rollback {
         turns: usize,
@@ -167,10 +171,21 @@ enum PendingResponse {
 
 type PendingResponses = Arc<Mutex<HashMap<String, PendingResponse>>>;
 
+#[derive(Clone, Copy)]
+enum ExtensionDialogKind {
+    Select,
+    Confirm,
+    Input,
+    Editor,
+}
+
+type PendingExtensionDialogs = Arc<Mutex<HashMap<String, ExtensionDialogKind>>>;
+
 pub struct PiDriver {
     flavor: PiFlavor,
     commands: Sender<CommandMessage>,
     computer_use: Option<computer_use_runtime::ComputerUseRuntime>,
+    pending_extension_dialogs: PendingExtensionDialogs,
 }
 
 fn configure_pi_computer_use_command(
@@ -280,7 +295,9 @@ impl PiDriver {
 
         let (commands, command_rx) = unbounded();
         let pending = Arc::new(Mutex::new(HashMap::new()));
+        let pending_extension_dialogs = Arc::new(Mutex::new(HashMap::new()));
         let reader_pending = pending.clone();
+        let reader_extension_dialogs = pending_extension_dialogs.clone();
         let reader_commands = commands.clone();
         let reader_events = events.clone();
         let reader_thread =
@@ -299,12 +316,13 @@ impl PiDriver {
                                         // envelopes that reassemble into one
                                         // logical message.
                                         match chunks.accept(value) {
-                                            Ok(Some(value)) => handle_pi_message(
+                                            Ok(Some(value)) => handle_pi_message_with_dialogs(
                                                 flavor,
                                                 value,
                                                 &reader_pending,
                                                 &reader_commands,
                                                 &reader_events,
+                                                &reader_extension_dialogs,
                                                 &mut stream_state,
                                             ),
                                             Ok(None) => {}
@@ -543,6 +561,22 @@ impl PiDriver {
                                 }
                             }
                         }
+                        CommandMessage::ProviderControl(commands) => {
+                            for command in commands {
+                                if let Err(error) = send_request(
+                                    &mut stdin,
+                                    &writer_pending,
+                                    &mut next_request_id,
+                                    json!({"type": "prompt", "message": command}),
+                                ) {
+                                    let _ = writer_events.send(DriverEvent::Error(format!(
+                                        "{} control command failed: {error}",
+                                        flavor.display_name()
+                                    )));
+                                    break;
+                                }
+                            }
+                        }
                         CommandMessage::Cancel => {
                             if let Err(error) = send_request(
                                 &mut stdin,
@@ -621,17 +655,17 @@ impl PiDriver {
                                 current_effort = options.reasoning_effort;
                             }
                         }
-                        CommandMessage::CancelExtensionRequest(id) => {
-                            if write_json_line(
-                                &mut stdin,
-                                &json!({
-                                    "type": "extension_ui_response",
-                                    "id": id,
-                                    "cancelled": true
-                                }),
-                            )
-                            .is_err()
+                        CommandMessage::ExtensionResponse { id, response } => {
+                            let mut message = json!({
+                                "type": "extension_ui_response",
+                                "id": id,
+                            });
+                            if let (Some(target), Some(fields)) =
+                                (message.as_object_mut(), response.as_object())
                             {
+                                target.extend(fields.clone());
+                            }
+                            if write_json_line(&mut stdin, &message).is_err() {
                                 break;
                             }
                         }
@@ -723,6 +757,7 @@ impl PiDriver {
             flavor,
             commands,
             computer_use,
+            pending_extension_dialogs,
         })
     }
 }
@@ -740,8 +775,44 @@ impl DriverControl for PiDriver {
         let _ = self.commands.send(CommandMessage::Steer(prompt));
     }
 
+    fn provider_control(&self, commands: Vec<String>) {
+        let _ = self.commands.send(CommandMessage::ProviderControl(commands));
+    }
+
     fn cancel(&self) {
+        for id in self
+            .pending_extension_dialogs
+            .lock()
+            .drain()
+            .map(|(id, _)| id)
+        {
+            let _ = self.commands.send(CommandMessage::ExtensionResponse {
+                id,
+                response: json!({"cancelled": true}),
+            });
+        }
         let _ = self.commands.send(CommandMessage::Cancel);
+    }
+
+    fn respond_user_input(&self, request_id: String, answers: Vec<UserInputAnswer>) {
+        let Some(kind) = self.pending_extension_dialogs.lock().remove(&request_id) else {
+            return;
+        };
+        let answer = answers
+            .into_iter()
+            .flat_map(|answer| answer.answers)
+            .next();
+        let response = match (kind, answer) {
+            (ExtensionDialogKind::Confirm, Some(answer)) => {
+                json!({"confirmed": answer == "Yes"})
+            }
+            (_, Some(answer)) => json!({"value": answer}),
+            (_, None) => json!({"cancelled": true}),
+        };
+        let _ = self.commands.send(CommandMessage::ExtensionResponse {
+            id: request_id,
+            response,
+        });
     }
 
     fn cancel_computer_use(&self) {
@@ -1247,6 +1318,26 @@ fn handle_pi_message(
     events: &impl DriverEventSink,
     state: &mut PiStreamState,
 ) {
+    handle_pi_message_with_dialogs(
+        flavor,
+        value,
+        pending,
+        commands,
+        events,
+        &Arc::new(Mutex::new(HashMap::new())),
+        state,
+    );
+}
+
+fn handle_pi_message_with_dialogs(
+    flavor: PiFlavor,
+    value: Value,
+    pending: &PendingResponses,
+    commands: &Sender<CommandMessage>,
+    events: &impl DriverEventSink,
+    extension_dialogs: &PendingExtensionDialogs,
+    state: &mut PiStreamState,
+) {
     let event_type = value
         .get("type")
         .and_then(Value::as_str)
@@ -1487,11 +1578,111 @@ fn handle_pi_message(
         }
         "extension_ui_request" => {
             let method = value.get("method").and_then(Value::as_str);
-            let id = value.get("id").and_then(Value::as_str);
-            if matches!(method, Some("select" | "confirm" | "input" | "editor"))
-                && let Some(id) = id
-            {
-                let _ = commands.send(CommandMessage::CancelExtensionRequest(id.to_owned()));
+            match method {
+                Some("notify") => {
+                    if let Some(message) = value.get("message").and_then(Value::as_str) {
+                        let level = match value.get("notifyType").and_then(Value::as_str) {
+                            Some("warning") => ExtensionNotificationLevel::Warning,
+                            Some("error") => ExtensionNotificationLevel::Error,
+                            _ => ExtensionNotificationLevel::Info,
+                        };
+                        let _ = events.send(DriverEvent::ExtensionNotification {
+                            message: message.to_owned(),
+                            level,
+                        });
+                    }
+                }
+                Some("setStatus") => {
+                    if let Some(key) = value.get("statusKey").and_then(Value::as_str) {
+                        let _ = events.send(DriverEvent::ExtensionStatus {
+                            key: key.to_owned(),
+                            text: value
+                                .get("statusText")
+                                .and_then(Value::as_str)
+                                .map(str::to_owned),
+                        });
+                    }
+                }
+                Some("set_editor_text") => {
+                    if let Some(text) = value.get("text").and_then(Value::as_str) {
+                        let _ = events.send(DriverEvent::SetEditorText(text.to_owned()));
+                    }
+                }
+                Some("select" | "confirm" | "input" | "editor") => {
+                    let Some(id) = value.get("id").and_then(Value::as_str).map(str::to_owned)
+                    else {
+                        return;
+                    };
+                    let title = value
+                        .get("title")
+                        .and_then(Value::as_str)
+                        .unwrap_or("Pi extension");
+                    let (kind, question, options) = match method {
+                        Some("select") => (
+                            ExtensionDialogKind::Select,
+                            title.to_owned(),
+                            value
+                                .get("options")
+                                .and_then(Value::as_array)
+                                .into_iter()
+                                .flatten()
+                                .filter_map(Value::as_str)
+                                .map(|label| UserInputOption {
+                                    label: label.to_owned(),
+                                    description: None,
+                                })
+                                .collect(),
+                        ),
+                        Some("confirm") => (
+                            ExtensionDialogKind::Confirm,
+                            value
+                                .get("message")
+                                .and_then(Value::as_str)
+                                .unwrap_or(title)
+                                .to_owned(),
+                            vec![
+                                UserInputOption {
+                                    label: "Yes".to_owned(),
+                                    description: None,
+                                },
+                                UserInputOption {
+                                    label: "No".to_owned(),
+                                    description: None,
+                                },
+                            ],
+                        ),
+                        Some("editor") => (
+                            ExtensionDialogKind::Editor,
+                            value
+                                .get("prefill")
+                                .and_then(Value::as_str)
+                                .unwrap_or(title)
+                                .to_owned(),
+                            Vec::new(),
+                        ),
+                        _ => (
+                            ExtensionDialogKind::Input,
+                            value
+                                .get("placeholder")
+                                .and_then(Value::as_str)
+                                .unwrap_or(title)
+                                .to_owned(),
+                            Vec::new(),
+                        ),
+                    };
+                    extension_dialogs.lock().insert(id.clone(), kind);
+                    let _ = events.send(DriverEvent::UserInputRequested {
+                        request_id: id,
+                        questions: vec![UserInputQuestion {
+                            id: "value".to_owned(),
+                            header: title.to_owned(),
+                            question,
+                            options,
+                            multi_select: false,
+                        }],
+                    });
+                }
+                _ => {}
             }
         }
         "extension_error" => {

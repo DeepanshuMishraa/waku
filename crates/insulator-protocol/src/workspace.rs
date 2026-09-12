@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 use uuid::Uuid;
 
-use crate::composer::{FileEntry, SlashCommand};
+use crate::composer::{FileEntry, ReferenceEntry, SlashCommand};
 use crate::git::{AgentInvocation, BranchSnapshot, CommitSnapshot, CreatedWorktree};
 use crate::model::{Checkpoint, ProviderKind};
 
@@ -219,6 +219,7 @@ pub enum WorkspaceResult {
     },
     ProjectFiles {
         entries: Vec<FileEntry>,
+        references: Vec<ReferenceEntry>,
     },
     SlashCommands {
         commands: Vec<SlashCommand>,

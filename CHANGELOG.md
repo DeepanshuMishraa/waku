@@ -16,6 +16,8 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+- Add Pi plan-mode controls, extension UI bridging, and grouped Pi repository/file references in composer autocomplete
+
 ## [0.1.3]
 
 - Keep popovers, context menus, and pickers opaque in Liquid Glass and Image window styles for readability

@@ -1983,6 +1983,15 @@ pub enum DriverEvent {
         request_id: String,
         questions: Vec<UserInputQuestion>,
     },
+    ExtensionNotification {
+        message: String,
+        level: ExtensionNotificationLevel,
+    },
+    ExtensionStatus {
+        key: String,
+        text: Option<String>,
+    },
+    SetEditorText(String),
     ComputerUseUpdated(crate::computer_use::ComputerUseState),
     /// The provider accepted a steering message into the running turn.
     SteerAccepted {
@@ -2193,6 +2202,14 @@ impl<'de> Deserialize<'de> for ReportedCommand {
     {
         ReportedCommandRepr::deserialize(deserializer).map(Into::into)
     }
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize, TS)]
+#[serde(rename_all = "camelCase")]
+pub enum ExtensionNotificationLevel {
+    Info,
+    Warning,
+    Error,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, TS)]

@@ -323,7 +323,15 @@ both go into the cursor, and resume needs the **file path**, not just the id.
 | `tool_execution_start` / `_update` / `_end` | `RichActivity` |
 | `auto_retry_end` | clears or sets the failure flag |
 | `agent_settled` (Pi) / `agent_end` (Oh My Pi) | `TurnFinished`, then resets stream state |
-| `extension_ui_request` | auto-cancelled — Insulator has no UI for extension prompts |
+| `extension_ui_request` | notifications, status, editor text, and dialog prompts bridged into Insulator |
+
+**Pi extensions** — `get_commands` populates slash completion for RPC-compatible
+extensions, skills, and prompt templates. Plan and Plannotator plan mode are
+available from the composer dropdown without adding a transcript turn. Pi's
+TUI-only commands, themes, headers, footers, and custom widgets remain outside
+RPC. `@` completion includes canonical `references.json` aliases in a References
+group and workspace paths in a Files group; repository aliases are still
+expanded by pi-references when the prompt is submitted.
 
 **Access modes** — Full access only, enforced at driver start rather than
 degraded silently: any other selection fails with "currently supports Full

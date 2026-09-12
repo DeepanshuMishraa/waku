@@ -65,6 +65,7 @@ pub fn execute(operation: WorkspaceOperation) -> anyhow::Result<WorkspaceResult>
         }
         WorkspaceOperation::ListProjectFiles { root, cap } => WorkspaceResult::ProjectFiles {
             entries: crate::composer_complete::list_project_files(&root, cap),
+            references: crate::composer_complete::list_pi_references(&root),
         },
         WorkspaceOperation::DiscoverSlashCommands {
             provider,

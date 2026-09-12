@@ -100,6 +100,10 @@ pub enum Command {
     Steer {
         prompt: String,
     },
+    /// Run provider-local controls without creating a transcript turn.
+    ProviderControl {
+        commands: Vec<String>,
+    },
     Cancel,
     CancelComputerUse,
     RefreshBackgroundWork,

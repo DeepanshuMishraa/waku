@@ -4,7 +4,7 @@ use std::ops::Range;
 
 use nucleo_matcher::pattern::{CaseMatching, Normalization, Pattern};
 use nucleo_matcher::{Matcher, Utf32Str};
-pub use insulator_protocol::composer::{CommandScope, FileEntry, SlashCommand};
+pub use insulator_protocol::composer::{CommandScope, FileEntry, ReferenceEntry, SlashCommand};
 use insulator_protocol::model::{ProviderKind, ProviderModelOption, ReportedCommand};
 
 pub const FILTER_CAP: usize = 64;
@@ -40,16 +40,20 @@ pub fn detect_trigger(text: &str, cursor: usize) -> Option<Trigger> {
         }
         return None;
     }
-    let token_start = text[..cursor]
-        .rfind(char::is_whitespace)
-        .map_or(0, |index| {
-            index + text[index..].chars().next().unwrap().len_utf8()
-        });
-    let token = &text[token_start..cursor];
+    let mention_start = text[..cursor].rfind('@')?;
+    let boundary = text[..mention_start].chars().next_back();
+    if boundary.is_some_and(|character| {
+        !character.is_whitespace() && !matches!(character, '(' | '[' | '{' | '"' | '\'')
+    }) || text[mention_start + 1..cursor]
+        .chars()
+        .any(char::is_whitespace)
+    {
+        return None;
+    }
     Some(Trigger {
         kind: TriggerKind::File,
-        query: token.strip_prefix('@')?.to_owned(),
-        range: token_start..cursor,
+        query: text[mention_start + 1..cursor].to_owned(),
+        range: mention_start..cursor,
     })
 }
 
@@ -336,6 +340,24 @@ pub fn filter_commands(
         .collect()
 }
 
+pub fn filter_references(
+    references: &[ReferenceEntry],
+    query: &str,
+    matcher: &mut Matcher,
+) -> Vec<Scored<ReferenceEntry>> {
+    let aliases = references
+        .iter()
+        .map(|reference| reference.alias.as_str())
+        .collect::<Vec<_>>();
+    filter_scored(&aliases, query, matcher, FILTER_CAP)
+        .into_iter()
+        .map(|(index, positions)| Scored {
+            item: references[index].clone(),
+            positions,
+        })
+        .collect()
+}
+
 pub fn filter_files(
     files: &[FileEntry],
     query: &str,
@@ -375,6 +397,14 @@ pub fn highlight_byte_ranges(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn mentions_work_mid_sentence_and_after_opening_punctuation() {
+        assert_eq!(detect_trigger("compare @eff", 12).unwrap().range, 8..12);
+        assert_eq!(detect_trigger("compare (@eff", 13).unwrap().range, 9..13);
+        assert!(detect_trigger("email user@host", 15).is_none());
+        assert!(detect_trigger("use @two words", 14).is_none());
+    }
 
     #[test]
     fn merged_command_picker_puts_builtins_first_and_skills_last() {

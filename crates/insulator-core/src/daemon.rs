@@ -1771,6 +1771,7 @@ fn handle_driver_command(
     match command {
         Command::Prompt { prompt, .. } => driver.prompt(prompt),
         Command::Steer { prompt } => driver.steer(prompt),
+        Command::ProviderControl { commands } => driver.provider_control(commands),
         Command::Cancel => driver.cancel(),
         Command::CancelComputerUse => driver.cancel_computer_use(),
         Command::RefreshBackgroundWork => driver.refresh_background_work(),
@@ -1950,6 +1951,14 @@ fn event_to_wire(event: DriverEvent) -> anyhow::Result<WireDriverEvent> {
                 "questions": questions,
             }),
         ),
+        DriverEvent::ExtensionNotification { message, level } => (
+            "extensionNotification",
+            json!({"message": message, "level": level}),
+        ),
+        DriverEvent::ExtensionStatus { key, text } => {
+            ("extensionStatus", json!({"key": key, "text": text}))
+        }
+        DriverEvent::SetEditorText(text) => ("setEditorText", Value::String(text)),
         DriverEvent::ComputerUseUpdated(state) => (
             "computerUseUpdated",
             serde_json::to_value(ComputerUseWire {
@@ -2035,6 +2044,21 @@ pub fn event_from_wire(event: WireDriverEvent) -> anyhow::Result<DriverEvent> {
                 questions: request.questions,
             }
         }
+        "extensionNotification" => {
+            let notification: ExtensionNotificationWire = serde_json::from_value(payload)?;
+            DriverEvent::ExtensionNotification {
+                message: notification.message,
+                level: notification.level,
+            }
+        }
+        "extensionStatus" => {
+            let status: ExtensionStatusWire = serde_json::from_value(payload)?;
+            DriverEvent::ExtensionStatus {
+                key: status.key,
+                text: status.text,
+            }
+        }
+        "setEditorText" => DriverEvent::SetEditorText(serde_json::from_value(payload)?),
         "computerUseUpdated" => {
             let state: ComputerUseWire = serde_json::from_value(payload)?;
             DriverEvent::ComputerUseUpdated(ComputerUseState {
@@ -2119,6 +2143,19 @@ struct PermissionWire {
 struct UserInputWire {
     request_id: String,
     questions: Vec<crate::model::UserInputQuestion>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionNotificationWire {
+    message: String,
+    level: crate::model::ExtensionNotificationLevel,
+}
+
+#[derive(Deserialize)]
+struct ExtensionStatusWire {
+    key: String,
+    text: Option<String>,
 }
 
 #[derive(Deserialize, Serialize)]

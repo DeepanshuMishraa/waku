@@ -249,6 +249,10 @@ impl DriverControl for RemoteDriverControl {
         self.notify(insulator_client::Command::Steer { prompt });
     }
 
+    fn provider_control(&self, commands: Vec<String>) {
+        self.notify(insulator_client::Command::ProviderControl { commands });
+    }
+
     fn cancel(&self) {
         self.notify(insulator_client::Command::Cancel);
     }
