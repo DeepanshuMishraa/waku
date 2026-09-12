@@ -674,7 +674,12 @@ pub fn titlebar_double_click(window: &Window) {
 /// view above active Sidebar vibrancy; GPUI paints clear sidebar chrome and one
 /// translucent interaction layer above it.
 #[cfg(target_os = "macos")]
-pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hsla) {
+pub fn configure_sidebar_material(
+    window: &Window,
+    dark: bool,
+    sidebar_color: Hsla,
+    sidebar_transparency: f32,
+) {
     use objc2::{MainThreadMarker, MainThreadOnly};
     use objc2_app_kit::{
         NSAutoresizingMaskOptions, NSColor, NSView, NSVisualEffectBlendingMode,
@@ -739,7 +744,9 @@ pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hs
             f64::from(color.r),
             f64::from(color.g),
             f64::from(color.b),
-            0.92,
+            f64::from(
+                1.0 - sidebar_transparency.clamp(0.0, 100.0) / 100.0,
+            ),
         );
 
         SIDEBAR_TINT_VIEW.with_borrow_mut(|slot| {
@@ -774,7 +781,36 @@ pub fn configure_sidebar_material(window: &Window, dark: bool, sidebar_color: Hs
 }
 
 #[cfg(not(target_os = "macos"))]
-pub fn configure_sidebar_material(_: &Window, _: bool, _: Hsla) {}
+pub fn configure_sidebar_material(_: &Window, _: bool, _: Hsla, _: f32) {}
+
+#[cfg(target_os = "macos")]
+pub fn set_sidebar_material_transparency(sidebar_color: Hsla, sidebar_transparency: f32) {
+    use objc2_app_kit::NSColor;
+
+    let color = sidebar_color.to_rgb();
+    let alpha = if sidebar_transparency.is_finite() {
+        1.0 - sidebar_transparency.clamp(0.0, 100.0) / 100.0
+    } else {
+        0.92
+    };
+    let tint = NSColor::colorWithSRGBRed_green_blue_alpha(
+        f64::from(color.r),
+        f64::from(color.g),
+        f64::from(color.b),
+        f64::from(alpha),
+    );
+
+    SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+        if let Some(tint_view) = slot.as_ref()
+            && let Some(layer) = tint_view.layer()
+        {
+            layer.setBackgroundColor(Some(&tint.CGColor()));
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn set_sidebar_material_transparency(_: Hsla, _: f32) {}
 
 thread_local! {
     static LIQUID_GLASS_VIEW: std::cell::RefCell<Option<objc2::rc::Retained<objc2_app_kit::NSView>>> =

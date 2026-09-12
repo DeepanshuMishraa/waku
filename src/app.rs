@@ -1176,6 +1176,7 @@ pub struct Insulator {
     daemon_reconfigure_pending: bool,
     daemon_token_revealed: bool,
     sound_volume_slider: Entity<SliderState>,
+    sidebar_transparency_slider: Entity<SliderState>,
     settings_focus: FocusHandle,
     window_style_restart_dialog: Option<WindowStyle>,
     onboarding_add_project_focus: FocusHandle,
@@ -2172,6 +2173,13 @@ impl Insulator {
                 .default_value(state.sound_volume)
                 .step(1.0)
         });
+        let sidebar_transparency_slider = cx.new(|_| {
+            SliderState::new()
+                .min(0.0)
+                .max(100.0)
+                .default_value(state.sidebar_transparency)
+                .step(1.0)
+        });
         let skills_search = cx.new(|cx| {
             TextInput::new(window, cx)
                 .clear_on_escape()
@@ -2234,7 +2242,14 @@ impl Insulator {
                 window.display(cx).and_then(|display| display.uuid().ok()),
             ));
         }
-        crate::theme::apply_theme_preference(state.theme, state.color_theme, state.window_style, window, cx);
+        crate::theme::apply_theme_preference(
+            state.theme,
+            state.color_theme,
+            state.window_style,
+            state.sidebar_transparency,
+            window,
+            cx,
+        );
         crate::platform::configure_window_style(window, state.window_style, state.color_theme, state.background_image_path.as_deref());
         crate::platform::set_sidebar_material_width(window, sidebar_width);
         let project_paths = state
@@ -2528,6 +2543,7 @@ impl Insulator {
                         this.state.theme,
                         this.state.color_theme,
                         this.state.window_style,
+                        this.state.sidebar_transparency,
                         window,
                         cx,
                     );
@@ -2707,6 +2723,18 @@ impl Insulator {
                     }
                     SliderEvent::Release(_) => {
                         this.commit_sound_volume(cx);
+                    }
+                },
+            )
+            .detach();
+            cx.subscribe(
+                &sidebar_transparency_slider,
+                |this: &mut Self, _, event: &SliderEvent, cx| match event {
+                    SliderEvent::Change(value) => {
+                        this.set_sidebar_transparency(value.start(), cx);
+                    }
+                    SliderEvent::Release(_) => {
+                        this.commit_sidebar_transparency(cx);
                     }
                 },
             )
@@ -2960,6 +2988,7 @@ impl Insulator {
                 daemon_reconfigure_pending: false,
                 daemon_token_revealed: false,
                 sound_volume_slider,
+                sidebar_transparency_slider,
                 settings_focus,
                 window_style_restart_dialog: None,
                 onboarding_add_project_focus,
