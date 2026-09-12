@@ -456,6 +456,7 @@ impl RenderOnce for MenuChip {
         let theme = Theme::current(cx);
         let badge = self.badge;
         self.base
+            .min_w_0()
             .h(self
                 .height
                 .unwrap_or(if self.outlined { px(30.0) } else { px(26.0) }))
@@ -497,7 +498,7 @@ impl RenderOnce for MenuChip {
                                     .child(icon(badge, 12.0, badge_color)),
                             ),
                     ),
-                    None => element.child(mark),
+                    None => element.child(div().flex_none().child(mark)),
                 }
             })
             .child(
@@ -511,15 +512,17 @@ impl RenderOnce for MenuChip {
                 element
                     .child(
                         div()
+                            .flex_none()
                             .text_color(theme.text_ghost)
                             .child("·"),
                     )
                     .child(
                         div()
+                            .min_w_0()
                             .flex()
                             .items_center()
                             .gap(px(4.0))
-                            .child(icon(icon_path, 11.5, icon_color))
+                            .child(div().flex_none().child(icon(icon_path, 11.5, icon_color)))
                             .child(
                                 div()
                                     .min_w_0()
@@ -530,7 +533,11 @@ impl RenderOnce for MenuChip {
                     )
             })
             .when(self.caret, |element| {
-                element.child(icon("icons/chevron-down.svg", 10.5, theme.text_ghost))
+                element.child(
+                    div()
+                        .flex_none()
+                        .child(icon("icons/chevron-down.svg", 10.5, theme.text_ghost)),
+                )
             })
     }
 }

@@ -124,10 +124,13 @@ impl Insulator {
             .capture_any_mouse_down(cx.listener(Self::navigation_mouse_down))
             .size_full()
             .flex()
-            .bg(match self.state.window_style {
-                WindowStyle::LiquidGlass => gpui::transparent_black(),
-                WindowStyle::Image => gpui::transparent_black(),
-                WindowStyle::Solid => theme.canvas,
+            // Keep the macOS root clear so native sidebar material remains visible
+            // behind the transparent settings sidebar. Other platforms need the
+            // themed root because they do not provide that native material.
+            .bg(if cfg!(target_os = "macos") {
+                gpui::transparent_black()
+            } else {
+                theme.canvas
             })
             .text_color(theme.text)
             .font_family(crate::theme::active_ui_font_family())
@@ -2283,7 +2286,23 @@ impl Insulator {
     }
 
     pub(super) fn commit_sidebar_transparency(&mut self, _cx: &mut Context<Self>) {
+        self.state.sidebar_transparency_customized = true;
         self.save();
+    }
+
+    fn reset_default_sidebar_transparency(
+        &mut self,
+        dark: bool,
+        window_style: WindowStyle,
+        cx: &mut Context<Self>,
+    ) {
+        if !self.state.sidebar_transparency_customized {
+            let transparency = insulator_client::persistence::default_sidebar_transparency_for(
+                dark,
+                window_style,
+            );
+            self.set_sidebar_transparency(transparency, cx);
+        }
     }
 
     fn set_sounds_enabled(&mut self, enabled: bool, cx: &mut Context<Self>) {
@@ -3272,6 +3291,7 @@ impl Insulator {
         if !self.state.color_theme.for_dark(dark) {
             self.state.color_theme = ColorTheme::default_for_dark(dark);
         }
+        self.reset_default_sidebar_transparency(dark, self.state.window_style, cx);
         crate::theme::apply_theme_preference(
             preference,
             self.state.color_theme,
@@ -3363,6 +3383,12 @@ impl Insulator {
         }
         self.state.window_style = style;
         self.window_style_restart_dialog = None;
+        let dark = match self.state.theme {
+            ThemePreference::Dark => true,
+            ThemePreference::Light => false,
+            ThemePreference::System => self.state.color_theme.is_dark(),
+        };
+        self.reset_default_sidebar_transparency(dark, style, cx);
         if style == WindowStyle::LiquidGlass && !self.state.color_theme.for_dark(true) {
             self.state.color_theme = ColorTheme::default_for_dark(true);
         }
@@ -3408,6 +3434,7 @@ impl Insulator {
         self.state.background_image_path = Some(path.to_string_lossy().into_owned());
         self.state.window_style = WindowStyle::Image;
         self.window_style_restart_dialog = None;
+        self.reset_default_sidebar_transparency(self.state.color_theme.is_dark(), WindowStyle::Image, cx);
         crate::theme::update_active_theme(self.state.theme, self.state.color_theme, WindowStyle::Image, cx);
         crate::platform::reapply_window_style(WindowStyle::Image, self.state.color_theme, self.state.background_image_path.as_deref());
         self.save();

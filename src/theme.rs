@@ -159,8 +159,6 @@ impl Theme {
         };
         let (canvas, surface, raised, text, muted, accent, success, warning, danger, is_dark) = palette;
         let sidebar_surface = surface;
-        let canvas = if is_dark { 0x000000 } else { canvas };
-        let surface = if is_dark { 0x000000 } else { surface };
         let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(sidebar_surface).into() };
         let base_overlay = if is_dark { hsla(0.0, 0.0, 1.0, 0.06) } else { hsla(0.0, 0.0, 0.0, 0.06) };
         let elevated_color = if is_dark && raised == 0x44475a {
@@ -174,7 +172,7 @@ impl Theme {
     pub fn dark() -> Self {
         Self {
             is_dark: true,
-            canvas: rgb(0x000000).into(),
+            canvas: rgb(0x1A1A1A).into(),
             sidebar: if cfg!(target_os = "macos") {
                 transparent_black()
             } else {
@@ -182,7 +180,7 @@ impl Theme {
             },
             sidebar_drag_background: rgb(0x181818).into(),
             sidebar_item_background: hsla(0.0, 0.0, 0.941, 0.06),
-            surface: rgb(0x000000).into(),
+            surface: rgb(0x1A1A1A).into(),
             raised: rgb(0x232323).into(),
             elevated: rgb(0x232323).into(),
             elevated_surface: rgb(0x1A1A1A).into(),
