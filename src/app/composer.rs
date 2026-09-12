@@ -1091,7 +1091,8 @@ impl Insulator {
                     runtime_mode_color(&theme, selected_mode),
                     selected_mode.label(),
                 )
-        };
+        }
+        .max_w(px(280.0));
 
         let footer_model_meta = current_model_meta.clone();
         let footer_effort = selected_effort.clone();
@@ -3836,31 +3837,28 @@ impl Insulator {
                         .gap(px(4.0))
                         .text_size(sp(12.5))
                         .line_height(sp(14.0))
-                        .child(self.render_provider_model_control(cx))
-                        .children(self.render_pi_plan_mode_control(cx))
-                        .children(self.render_goal_control(cx))
-                        .child(div().flex_1())
-                        .child(match submit_action {
-                            ComposerSubmitAction::Preparing => div()
-                                .id("send-or-stop")
-                                .w(px(26.0))
-                                .h(px(26.0))
-                                .rounded_full()
+                        .child(
+                            div()
+                                .flex_1()
+                                .min_w_0()
                                 .flex()
                                 .items_center()
-                                .justify_center()
-                                .cursor_default()
-                                .bg(theme.overlay_strong)
-                                .child(dot_matrix_loader(theme.text_secondary, 15.0))
-                                .tooltip(Tooltip::text(tr!("composer.preparing_task"))),
-                            ComposerSubmitAction::Stop => div()
-                                .id("working-actions")
+                                .gap(px(4.0))
+                                .overflow_hidden()
+                                .child(self.render_provider_model_control(cx))
+                                .children(self.render_pi_plan_mode_control(cx))
+                                .children(self.render_goal_control(cx)),
+                        )
+                        .child(
+                            div()
+                                .flex_none()
                                 .flex()
                                 .items_center()
-                                .gap(px(6.0))
-                                .child(
-                                    div()
+                                .gap(px(4.0))
+                                .child(match submit_action {
+                                    ComposerSubmitAction::Preparing => div()
                                         .id("send-or-stop")
+                                        .flex_none()
                                         .w(px(26.0))
                                         .h(px(26.0))
                                         .rounded_full()
@@ -3869,100 +3867,123 @@ impl Insulator {
                                         .justify_center()
                                         .cursor_default()
                                         .bg(theme.overlay_strong)
-                                        .hover(|element| element.bg(theme.danger_soft))
-                                        .active(|element| element.opacity(0.8))
-                                        .when(escape_stop_armed, |element| {
+                                        .child(dot_matrix_loader(theme.text_secondary, 15.0))
+                                        .tooltip(Tooltip::text(tr!("composer.preparing_task"))),
+                                    ComposerSubmitAction::Stop => div()
+                                        .id("working-actions")
+                                        .flex_none()
+                                        .flex()
+                                        .items_center()
+                                        .gap(px(6.0))
+                                        .child(
+                                            div()
+                                                .id("send-or-stop")
+                                                .flex_none()
+                                                .w(px(26.0))
+                                                .h(px(26.0))
+                                                .rounded_full()
+                                                .flex()
+                                                .items_center()
+                                                .justify_center()
+                                                .cursor_default()
+                                                .bg(theme.overlay_strong)
+                                                .hover(|element| element.bg(theme.danger_soft))
+                                                .active(|element| element.opacity(0.8))
+                                                .when(escape_stop_armed, |element| {
+                                                    element.child(
+                                                        div()
+                                                            .text_size(sp(12.5))
+                                                            .font_weight(FontWeight::SEMIBOLD)
+                                                            .text_color(theme.text)
+                                                            .child("Esc"),
+                                                    )
+                                                })
+                                                .when(!escape_stop_armed, |element| {
+                                                    element.child(icon("icons/stop.svg", 18.0, theme.text))
+                                                })
+                                                .on_click(cx.listener(|this, _, _, cx| {
+                                                    this.cancel_turn(cx);
+                                                })),
+                                        )
+                                        .when(can_send, |element| {
                                             element.child(
                                                 div()
-                                                    .text_size(sp(12.5))
-                                                    .font_weight(FontWeight::SEMIBOLD)
-                                                    .text_color(theme.text)
-                                                    .child("Esc"),
+                                                    .id("queue-follow-up")
+                                                    .flex_none()
+                                                    .w(px(26.0))
+                                                    .h(px(26.0))
+                                                    .rounded_full()
+                                                    .flex()
+                                                    .items_center()
+                                                    .justify_center()
+                                                    .cursor_default()
+                                                    .bg(theme.inverse)
+                                                    .hover(|element| element.opacity(0.9))
+                                                    .active(|element| element.opacity(0.8))
+                                                    .child(icon(
+                                                        "icons/arrow-up.svg",
+                                                        16.0,
+                                                        theme.on_inverse,
+                                                    ))
+                                                    .tooltip(Tooltip::text(tr!("composer.queue_followup")))
+                                                    .on_click(cx.listener(|this, _, _, cx| {
+                                                        let prompt =
+                                                            this.composer.read(cx).content(cx).to_owned();
+                                                        if let Some(submission) =
+                                                            this.submission_with_attachments(&prompt, cx)
+                                                        {
+                                                            this.composer
+                                                                .update(cx, |input, cx| input.clear(cx));
+                                                            this.submit_composer_submission(submission, cx);
+                                                        }
+                                                    })),
                                             )
+                                        }),
+                                    ComposerSubmitAction::Send => div()
+                                        .id("send-or-stop")
+                                        .flex_none()
+                                        .w(px(26.0))
+                                        .h(px(26.0))
+                                        .rounded_full()
+                                        .flex()
+                                        .items_center()
+                                        .justify_center()
+                                        .bg(if can_send {
+                                            theme.inverse
+                                        } else {
+                                            theme.overlay_strong
                                         })
-                                        .when(!escape_stop_armed, |element| {
-                                            element.child(icon("icons/stop.svg", 18.0, theme.text))
+                                        .when(can_send, |element| {
+                                            element
+                                                .cursor_default()
+                                                .hover(|element| element.opacity(0.9))
+                                                .active(|element| element.opacity(0.8))
+                                        })
+                                        .child(icon(
+                                            "icons/arrow-up.svg",
+                                            16.0,
+                                            if can_send {
+                                                theme.on_inverse
+                                            } else {
+                                                theme.text_ghost
+                                            },
+                                        ))
+                                        // Says why the button is dead, for the case
+                                        // the draft is ready and the machine is not.
+                                        .when(no_providers, |element| {
+                                            element.tooltip(Tooltip::text(tr!("composer.no_providers")))
                                         })
                                         .on_click(cx.listener(|this, _, _, cx| {
-                                            this.cancel_turn(cx);
+                                            let prompt = this.composer.read(cx).content(cx).to_owned();
+                                            if let Some(submission) =
+                                                this.submission_with_attachments(&prompt, cx)
+                                            {
+                                                this.composer.update(cx, |input, cx| input.clear(cx));
+                                                this.submit_composer_submission(submission, cx);
+                                            }
                                         })),
-                                )
-                                .when(can_send, |element| {
-                                    element.child(
-                                        div()
-                                            .id("queue-follow-up")
-                                            .w(px(26.0))
-                                            .h(px(26.0))
-                                            .rounded_full()
-                                            .flex()
-                                            .items_center()
-                                            .justify_center()
-                                            .cursor_default()
-                                            .bg(theme.inverse)
-                                            .hover(|element| element.opacity(0.9))
-                                            .active(|element| element.opacity(0.8))
-                                            .child(icon(
-                                                "icons/arrow-up.svg",
-                                                16.0,
-                                                theme.on_inverse,
-                                            ))
-                                            .tooltip(Tooltip::text(tr!("composer.queue_followup")))
-                                            .on_click(cx.listener(|this, _, _, cx| {
-                                                let prompt =
-                                                    this.composer.read(cx).content(cx).to_owned();
-                                                if let Some(submission) =
-                                                    this.submission_with_attachments(&prompt, cx)
-                                                {
-                                                    this.composer
-                                                        .update(cx, |input, cx| input.clear(cx));
-                                                    this.submit_composer_submission(submission, cx);
-                                                }
-                                            })),
-                                    )
                                 }),
-                            ComposerSubmitAction::Send => div()
-                                .id("send-or-stop")
-                                .w(px(26.0))
-                                .h(px(26.0))
-                                .rounded_full()
-                                .flex()
-                                .items_center()
-                                .justify_center()
-                                .bg(if can_send {
-                                    theme.inverse
-                                } else {
-                                    theme.overlay_strong
-                                })
-                                .when(can_send, |element| {
-                                    element
-                                        .cursor_default()
-                                        .hover(|element| element.opacity(0.9))
-                                        .active(|element| element.opacity(0.8))
-                                })
-                                .child(icon(
-                                    "icons/arrow-up.svg",
-                                    16.0,
-                                    if can_send {
-                                        theme.on_inverse
-                                    } else {
-                                        theme.text_ghost
-                                    },
-                                ))
-                                // Says why the button is dead, for the case
-                                // the draft is ready and the machine is not.
-                                .when(no_providers, |element| {
-                                    element.tooltip(Tooltip::text(tr!("composer.no_providers")))
-                                })
-                                .on_click(cx.listener(|this, _, _, cx| {
-                                    let prompt = this.composer.read(cx).content(cx).to_owned();
-                                    if let Some(submission) =
-                                        this.submission_with_attachments(&prompt, cx)
-                                    {
-                                        this.composer.update(cx, |input, cx| input.clear(cx));
-                                        this.submit_composer_submission(submission, cx);
-                                    }
-                                })),
-                        }),
+                        ),
                 )
     }
 
@@ -4574,11 +4595,23 @@ impl Insulator {
                     .tab_stop(false)
                     .text_size(sp(12.5))
                     .line_height(sp(14.0))
-                    .child(project_selector)
-                    .child(worktree_selector)
-                    .children(branch_selector)
-                    .child(div().flex_1())
-                    .children(usage_meter),
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .flex()
+                            .items_center()
+                            .gap(px(2.0))
+                            .overflow_hidden()
+                            .child(project_selector)
+                            .child(worktree_selector)
+                            .children(branch_selector),
+                    )
+                    .child(
+                        div()
+                            .flex_none()
+                            .children(usage_meter),
+                    ),
             )
     }
 }
