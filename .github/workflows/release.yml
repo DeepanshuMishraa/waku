@@ -325,6 +325,58 @@ jobs:
             dist/Insulator-${{ needs.version.outputs.version }}.zip \
             dist/appcast.xml
 
+  macos-x86_64:
+    name: macOS x86_64
+    needs: version
+    runs-on: macos-15-intel
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install Rust
+        run: |
+          rustup toolchain install 1.96.0 --profile minimal
+          rustup default 1.96.0
+
+      - uses: oven-sh/setup-bun@v2
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: macos-15-intel-rust-1.96.0-release-${{ hashFiles('Cargo.lock') }}
+          restore-keys: |
+            macos-15-intel-rust-1.96.0-release-
+
+      - name: Build x86_64 DMG
+        env:
+          SPARKLE_PRIVATE_KEY: ${{ secrets.SPARKLE_PRIVATE_KEY }}
+          INSULATOR_DOWNLOAD_URL_PREFIX: https://github.com/${{ github.repository }}/releases/download/v${{ needs.version.outputs.version }}/
+        run: |
+          bun run release --local --adhoc
+          mv "dist/Insulator-${{ needs.version.outputs.version }}.dmg" \
+             "dist/Insulator-${{ needs.version.outputs.version }}-x86_64.dmg"
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: macos-x86_64
+          path: dist/Insulator-${{ needs.version.outputs.version }}-x86_64.dmg
+          if-no-files-found: error
+
+      - name: Publish x86_64 DMG
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload "${{ needs.version.outputs.tag }}" \
+            --repo "${{ github.repository }}" \
+            --clobber \
+            "dist/Insulator-${{ needs.version.outputs.version }}-x86_64.dmg"
+
 #   attach-release-assets:
 #     name: Attach assets to GitHub release
 #     needs:

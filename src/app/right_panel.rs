@@ -2888,6 +2888,7 @@ impl Insulator {
                 WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
                 WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                 WindowStyle::Solid => theme.surface,
+                WindowStyle::Transparent => gpui::transparent_black(),
             })
             .relative()
             .child(self.render_right_panel_header(window, cx))
@@ -4567,12 +4568,12 @@ impl Insulator {
             .border_color(theme.border)
             .bg(if sticky {
                 match self.state.window_style {
-                    WindowStyle::LiquidGlass | WindowStyle::Image => theme.raised,
+                    WindowStyle::LiquidGlass | WindowStyle::Image | WindowStyle::Transparent => theme.raised,
                     WindowStyle::Solid => theme.surface,
                 }
             } else {
                 match self.state.window_style {
-                    WindowStyle::LiquidGlass | WindowStyle::Image => theme.overlay,
+                    WindowStyle::LiquidGlass | WindowStyle::Image | WindowStyle::Transparent => theme.overlay,
                     WindowStyle::Solid => theme.surface,
                 }
             })

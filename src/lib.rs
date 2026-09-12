@@ -417,17 +417,17 @@ pub fn run() {
                     let theme = crate::theme::Theme::current(cx);
                     let (window_style, color_theme, background_image_path, sidebar_transparency) =
                         insulator.window_style_config();
-                    crate::platform::configure_sidebar_material(
-                        window,
-                        theme.is_dark,
-                        theme.sidebar_drag_background,
-                        sidebar_transparency,
-                    );
                     crate::platform::configure_window_style(
                         window,
                         window_style,
                         color_theme,
                         background_image_path,
+                    );
+                    crate::platform::configure_sidebar_material(
+                        window,
+                        theme.is_dark,
+                        theme.sidebar_drag_background,
+                        sidebar_transparency,
                     );
                     cx.activate(true);
                 })

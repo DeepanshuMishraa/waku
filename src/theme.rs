@@ -291,6 +291,7 @@ impl Theme {
                     ..self.canvas
                 },
                 WindowStyle::Solid => self.sidebar,
+                WindowStyle::Transparent => Hsla { a: 0.0, ..self.surface },
             }
         };
         let visibility = if transparency.is_finite() {
@@ -408,6 +409,18 @@ impl Theme {
                         a: 0.14,
                     };
                 }
+                self.terminal = transparent_black();
+            }
+            WindowStyle::Transparent => {
+                let alpha_raised = if self.is_dark { 0.18 } else { 0.28 };
+                let alpha_composer = if self.is_dark { 0.20 } else { 0.32 };
+                let alpha_inset = if self.is_dark { 0.14 } else { 0.24 };
+                let alpha_surface = if self.is_dark { 0.10 } else { 0.18 };
+                self.raised = Hsla { a: alpha_raised, ..self.raised };
+                self.composer = Hsla { a: alpha_composer, ..self.composer };
+                self.inset = Hsla { a: alpha_inset, ..self.inset };
+                self.surface = Hsla { a: alpha_surface, ..self.surface };
+                self.canvas = Hsla { a: 0.0, ..self.canvas };
                 self.terminal = transparent_black();
             }
             WindowStyle::Solid => {}

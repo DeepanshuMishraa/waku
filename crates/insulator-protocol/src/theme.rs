@@ -21,16 +21,18 @@ pub enum WindowStyle {
     Solid,
     LiquidGlass,
     Image,
+    Transparent,
 }
 
 impl WindowStyle {
-    pub const ALL: [Self; 3] = [Self::Solid, Self::LiquidGlass, Self::Image];
+    pub const ALL: [Self; 4] = [Self::Solid, Self::LiquidGlass, Self::Image, Self::Transparent];
 
     pub fn label(self) -> &'static str {
         match self {
             Self::Solid => "Solid",
             Self::LiquidGlass => "Liquid Glass",
             Self::Image => "Image",
+            Self::Transparent => "Transparent",
         }
     }
 }

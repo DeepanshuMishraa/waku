@@ -715,7 +715,10 @@ pub fn configure_sidebar_material(
             return;
         };
 
-        if CURRENT_WINDOW_STYLE.get() != insulator_protocol::theme::WindowStyle::Solid {
+        let window_style = CURRENT_WINDOW_STYLE.get();
+        if window_style != insulator_protocol::theme::WindowStyle::Solid
+            && window_style != insulator_protocol::theme::WindowStyle::Transparent
+        {
             SIDEBAR_TINT_VIEW.with_borrow(|slot| {
                 if let Some(tint_view) = slot.as_ref() {
                     tint_view.setHidden(true);
@@ -736,6 +739,16 @@ pub fn configure_sidebar_material(
             configured_effect = true;
         }
         if !configured_effect {
+            return;
+        }
+
+        if window_style == insulator_protocol::theme::WindowStyle::Transparent {
+            let visibility = 1.0 - sidebar_transparency.clamp(0.0, 100.0) / 100.0;
+            for subview in content_view.subviews().iter() {
+                if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
+                    effect_view.setAlphaValue(f64::from(visibility));
+                }
+            }
             return;
         }
 
@@ -963,6 +976,30 @@ unsafe fn apply_native_window_style(
                         }
                     }
                 });
+            }
+        }
+        insulator_protocol::theme::WindowStyle::Transparent => {
+            native_window.setOpaque(false);
+            native_window.setHasShadow(true);
+            native_window.setBackgroundColor(Some(&NSColor::clearColor()));
+
+            LIQUID_GLASS_VIEW.with_borrow(|slot| {
+                if let Some(glass_view) = slot.as_ref() {
+                    glass_view.setHidden(true);
+                }
+            });
+            SIDEBAR_TINT_VIEW.with_borrow(|slot| {
+                if let Some(tint_view) = slot.as_ref() {
+                    tint_view.setHidden(true);
+                }
+            });
+            for subview in content_view.subviews().iter() {
+                if let Some(effect_view) = subview.downcast_ref::<NSVisualEffectView>() {
+                    effect_view.setHidden(false);
+                    effect_view.setMaterial(NSVisualEffectMaterial::Sidebar);
+                    effect_view.setBlendingMode(NSVisualEffectBlendingMode::BehindWindow);
+                    effect_view.setState(NSVisualEffectState::Active);
+                }
             }
         }
         insulator_protocol::theme::WindowStyle::Image => {

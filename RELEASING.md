@@ -35,7 +35,7 @@ bun run release
   [`scripts/changelog.ts`](scripts/changelog.ts).
 - GitHub Actions: [`.github/workflows/release.yml`](.github/workflows/release.yml)
   builds Linux (x86_64, arm64), Windows (x86_64, arm64), and macOS archives
-  automatically when a `v*` release is published;
+  (including an Intel x86_64 DMG) automatically when a `v*` release is published;
   [`.github/workflows/sync-release.yml`](.github/workflows/sync-release.yml)
   copies published assets into the R2 bucket.
 
@@ -146,8 +146,9 @@ ZIP, appcast, and other platform assets to the existing release.
 macOS CI runs `bun run release --local --adhoc`, which writes the
 same artifacts as a local release:
 
-- `Insulator-<version>.dmg`
-- `Insulator-<version>.zip`
+- `Insulator-<version>.dmg` (Apple Silicon)
+- `Insulator-<version>-x86_64.dmg` (Intel)
+- `Insulator-<version>.zip` (Apple Silicon Sparkle update archive)
 - `appcast.xml` (Sparkle-signed)
 
 Linux CI adds:

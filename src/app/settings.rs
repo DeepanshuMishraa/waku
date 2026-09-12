@@ -338,6 +338,7 @@ impl Insulator {
                     WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
                     WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                     WindowStyle::Solid => theme.surface,
+                    WindowStyle::Transparent => gpui::transparent_black(),
                 })
                 .children(right_window_controls.map(|controls| {
                     self.render_settings_drag_region("settings-skills-titlebar", cx)
@@ -415,6 +416,7 @@ impl Insulator {
                 WindowStyle::LiquidGlass => Hsla { a: 0.10, ..theme.surface },
                 WindowStyle::Image => Hsla { a: 0.82, ..theme.surface },
                 WindowStyle::Solid => theme.surface,
+                WindowStyle::Transparent => gpui::transparent_black(),
             })
             .child(
                 self.render_settings_drag_region("settings-content-titlebar", cx)
@@ -1857,16 +1859,17 @@ impl Insulator {
                                     .text_size(sp(12.5))
                                     .line_height(sp(18.0))
                                     .text_color(theme.text_secondary)
-                                    .child("Choose a solid, glass, or image background."),
+                                    .child("Choose a solid, glass, image, or transparent background."),
                             ),
                     )
                     .child(window_style_selector),
             )
             .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
-            .child(
-                div()
-                    .w_full()
-                    .min_h(px(72.0))
+            .when(selected_window_style != WindowStyle::LiquidGlass, |element| {
+                element.child(
+                    div()
+                        .w_full()
+                        .min_h(px(72.0))
                     .px(px(20.0))
                     .py(px(12.0))
                     .flex()
@@ -1913,7 +1916,8 @@ impl Insulator {
                                     .child(format!("{selected_sidebar_transparency:.0}%")),
                             ),
                     ),
-            )
+                )
+            })
             .when(selected_window_style == WindowStyle::Image, |element| {
                 let weak = cx.entity().downgrade();
                 let image_path = self.state.background_image_path.clone();
