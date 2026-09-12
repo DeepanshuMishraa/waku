@@ -16,6 +16,11 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.7]
+
+- Update the New Task sidebar icon to a clean plus glyph
+- Make the bottom Settings icon slightly larger for better legibility
+
 ## [0.1.6]
 
 - Add an adjustable sidebar transparency control in Appearance settings

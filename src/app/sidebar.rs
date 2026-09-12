@@ -9,6 +9,7 @@ actions!(insulator_sidebar, [CancelSessionRename]);
 
 const SESSION_RENAME_PARENT_CONTEXT: &str = "SessionRename";
 const SESSION_RENAME_FIELD_CONTEXT: &str = "SessionRename > TextInput";
+const SIDEBAR_SETTINGS_ICON_SIZE: f32 = 16.0;
 
 /// Keep Escape inside the focused inline editor so it cancels the rename,
 /// rather than falling through to the window-wide Stop action.
@@ -879,7 +880,7 @@ impl Insulator {
         let new_task = self
             .render_sidebar_action_row(
                 "sidebar-new-task",
-                "icons/compose.svg",
+                "icons/new-task.svg",
                 tr!("menu.new_task"),
                 cx,
             )
@@ -1100,7 +1101,7 @@ impl Insulator {
                     .tooltip(Tooltip::text(tr_cow!("common.settings")))
                     .child(icon(
                         "icons/settings.svg",
-                        SIDEBAR_ACTION_ICON_SIZE,
+                        SIDEBAR_SETTINGS_ICON_SIZE,
                         theme.text_tertiary,
                     ))
                     .on_click(cx.listener(|this, _, window, cx| {
