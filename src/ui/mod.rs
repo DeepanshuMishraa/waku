@@ -644,6 +644,7 @@ mod tests {
             "icons/panel-left.svg",
             "icons/plus.svg",
             "icons/compose.svg",
+            "icons/new-task.svg",
             "icons/arrow-left.svg",
             "icons/arrow-right.svg",
             "icons/arrow-up.svg",

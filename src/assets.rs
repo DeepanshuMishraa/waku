@@ -177,6 +177,7 @@ const ICONS: &[(&str, &[u8])] = icons![
     "panel-right",
     "pencil",
     "plus",
+    "new-task",
     "provider-amp",
     "provider-claude",
     "provider-cursor",
