@@ -85,6 +85,7 @@ impl BackgroundWorkRegistry {
             BackgroundWorkEvent::OutputDelta { key, delta } => self.append_output(&key, &delta),
             BackgroundWorkEvent::ReconcileProcesses { items } => self.reconcile_processes(items),
             BackgroundWorkEvent::ReconcileLive { items } => self.reconcile_live(items),
+            BackgroundWorkEvent::ReconcileSubagents { items } => self.reconcile_subagents(items),
             BackgroundWorkEvent::StopRequested(key) => {
                 if let Some(item) = self.items.get_mut(&key) {
                     item.status = BackgroundWorkStatus::Stopping;
@@ -228,6 +229,30 @@ impl BackgroundWorkRegistry {
         for item in self.items.values_mut() {
             if item.background && item.status.is_live() && !present.contains(&item.key) {
                 item.status = BackgroundWorkStatus::Lost;
+                item.can_stop = false;
+                item.updated_at_ms = now;
+            }
+        }
+        for item in items {
+            self.upsert(item);
+        }
+    }
+
+    fn reconcile_subagents(&mut self, items: Vec<BackgroundWorkItem>) {
+        // Pi only publishes the live set. A complete snapshot means missing
+        // subagents finished, unlike a dead provider process, which is lost.
+        let present = items
+            .iter()
+            .map(|item| item.key.clone())
+            .collect::<HashSet<_>>();
+        let now = unix_time_millis();
+        for item in self.items.values_mut() {
+            if item.key.kind == BackgroundWorkKind::Subagent
+                && item.background
+                && item.status.is_live()
+                && !present.contains(&item.key)
+            {
+                item.status = BackgroundWorkStatus::Completed;
                 item.can_stop = false;
                 item.updated_at_ms = now;
             }
@@ -387,7 +412,7 @@ fn bound_output(item: &mut BackgroundWorkItem) {
     item.output_truncated = true;
 }
 
-fn strip_ansi(text: &str) -> String {
+pub(super) fn strip_ansi(text: &str) -> String {
     let mut clean = String::with_capacity(text.len());
     let mut chars = text.chars().peekable();
     while let Some(character) = chars.next() {
@@ -403,6 +428,17 @@ fn strip_ansi(text: &str) -> String {
         }
     }
     clean
+}
+
+pub(super) fn is_usage_summary(text: &str) -> bool {
+    let text = strip_ansi(text).trim().to_owned();
+    let tps_tracker = text.contains("tok/s")
+        && text.contains("tokens in ")
+        && text.ends_with(" streaming");
+    let pi_status_anim = text
+        .split_once(" tokens · ")
+        .is_some_and(|(count, elapsed)| !count.is_empty() && elapsed.ends_with('s'));
+    tps_tracker || pi_status_anim
 }
 
 pub(super) fn work_status_label(status: BackgroundWorkStatus) -> String {
@@ -557,10 +593,31 @@ impl Insulator {
         session_id: Uuid,
         event: BackgroundWorkEvent,
     ) {
+        let started_subagents = match &event {
+            BackgroundWorkEvent::ReconcileSubagents { items } => {
+                let live_items = items.iter().filter(|item| item.status.is_live());
+                self.background_work
+                    .get(&session_id)
+                    .map(|registry| {
+                        live_items
+                            .filter(|item| !registry.items.contains_key(&item.key))
+                            .count()
+                    })
+                    .unwrap_or_else(|| items.iter().filter(|item| item.status.is_live()).count())
+            }
+            _ => 0,
+        };
         self.background_work
             .entry(session_id)
             .or_default()
             .apply(event);
+        if started_subagents > 0 && self.state.selected_session == Some(session_id) {
+            self.show_success_toast(if started_subagents == 1 {
+                tr!("background.subagents_started_one")
+            } else {
+                tr!("background.subagents_started", count = started_subagents)
+            });
+        }
     }
 
     pub(super) fn mark_background_work_lost(&mut self, session_id: Uuid) {
@@ -711,6 +768,28 @@ impl Insulator {
         );
         driver.stop_background_work(key, control_id);
         cx.notify();
+    }
+
+    pub(super) fn delete_background_work(
+        &mut self,
+        session_id: Uuid,
+        key: BackgroundWorkKey,
+        cx: &mut Context<Self>,
+    ) {
+        let Some(registry) = self.background_work.get_mut(&session_id) else {
+            return;
+        };
+        registry.remove(&key);
+        let active_surface = self.right_panel_active_surface.filter(|index| {
+            self.right_panel_surfaces.get(*index).is_some_and(|surface| {
+                matches!(surface, RightPanelSurface::BackgroundWork { key: surface_key, .. } if surface_key == &key)
+            })
+        });
+        if let Some(index) = active_surface {
+            self.close_right_panel_surface(index, cx);
+        } else {
+            cx.notify();
+        }
     }
 
     pub(super) fn open_background_work_surface(
@@ -1198,6 +1277,62 @@ impl Insulator {
                     })
             })
         });
+        let delete_button = session_id.and_then(|session_id| {
+            (!item.status.is_live()).then(|| {
+                let focus = self.transcript_control_focus(
+                    format!(
+                        "background-surface-delete-{}-{}",
+                        item.key.provider_id, item.key.kind as u8
+                    ),
+                    cx,
+                );
+                let click_key = item.key.clone();
+                let click_weak = cx.entity().downgrade();
+                let key_key = item.key.clone();
+                let key_weak = cx.entity().downgrade();
+                div()
+                    .id(SharedString::from(format!(
+                        "background-surface-delete-{}-{}",
+                        item.key.provider_id, item.key.kind as u8
+                    )))
+                    .track_focus(&focus)
+                    .tab_index(0)
+                    .h(px(26.0))
+                    .px(px(9.0))
+                    .rounded(px(6.0))
+                    .border_1()
+                    .border_color(theme.border_strong)
+                    .flex_none()
+                    .flex()
+                    .items_center()
+                    .gap(px(5.0))
+                    .cursor_default()
+                    .text_size(sp(12.5))
+                    .font_weight(FontWeight::MEDIUM)
+                    .text_color(theme.text_secondary)
+                    .hover(|style| style.bg(theme.overlay_strong))
+                    .active(|style| style.bg(theme.overlay))
+                    .focus_visible(|style| style.border_color(theme.accent))
+                    .tooltip(Tooltip::text(tr!("background.delete")))
+                    .child(icon("icons/trash.svg", 11.0, theme.text_secondary))
+                    .child(tr!("background.delete"))
+                    .on_mouse_down(MouseButton::Left, |_, _, cx| cx.stop_propagation())
+                    .on_click(move |_, _, cx| {
+                        cx.stop_propagation();
+                        let _ = click_weak.update(cx, |this, cx| {
+                            this.delete_background_work(session_id, click_key.clone(), cx);
+                        });
+                    })
+                    .on_key_down(move |event: &KeyDownEvent, _, cx| {
+                        if matches!(event.keystroke.key.as_str(), "enter" | "space") {
+                            let _ = key_weak.update(cx, |this, cx| {
+                                this.delete_background_work(session_id, key_key.clone(), cx);
+                            });
+                            cx.stop_propagation();
+                        }
+                    })
+            })
+        });
         let card = div()
             .w_full()
             .flex()
@@ -1256,7 +1391,8 @@ impl Insulator {
                                     .child(work_elapsed(item)),
                             ),
                     )
-                    .when_some(stop, |header, stop| header.child(stop)),
+                    .when_some(stop, |header, stop| header.child(stop))
+                    .when_some(delete_button, |header, delete| header.child(delete)),
             )
             .child(self.render_background_work_detail(
                 item,
@@ -2109,6 +2245,15 @@ mod tests {
         let output = registry.items.values().next().unwrap();
         assert!(output.output.as_ref().unwrap().len() <= MAX_BACKGROUND_OUTPUT_BYTES);
         assert!(output.output_truncated);
+    }
+
+    #[test]
+    fn toast_text_strips_ansi_sequences() {
+        let message = "\u{1b}[38;2;181;189;104m✓ 429 tok/s  \u{1b}[38;2;102;102;102m169 tokens in 0.4s streaming\u{1b}[39m";
+        assert_eq!(strip_ansi(message), "✓ 429 tok/s  169 tokens in 0.4s streaming");
+        assert!(is_usage_summary(message));
+        assert!(is_usage_summary("429 tokens · 1s"));
+        assert!(!is_usage_summary("Started 3 subagents"));
     }
 
     #[test]

@@ -1953,11 +1953,15 @@ impl Insulator {
     }
 
     fn show_toast_with_tone(&mut self, message: impl Into<String>, tone: ToastTone) {
+        let message = message.into();
+        if background_work::is_usage_summary(&message) {
+            return;
+        }
         self.toast_selection.selection.borrow_mut().clear();
         self.toast_selection.registry.borrow_mut().clear();
         self.toast_generation = self.toast_generation.wrapping_add(1);
         self.toast = Some(ToastState {
-            message: message.into(),
+            message: background_work::strip_ansi(&message),
             tone,
             id: self.toast_generation,
             timer_generation: self.toast_generation,

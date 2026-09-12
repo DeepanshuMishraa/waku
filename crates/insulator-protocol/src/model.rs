@@ -2154,6 +2154,10 @@ pub enum BackgroundWorkEvent {
     ReconcileLive {
         items: Vec<BackgroundWorkItem>,
     },
+    /// Authoritative snapshot scoped to one kind of provider work.
+    ReconcileSubagents {
+        items: Vec<BackgroundWorkItem>,
+    },
     StopRequested(BackgroundWorkKey),
     StopFailed {
         key: BackgroundWorkKey,

@@ -1635,6 +1635,12 @@ background.view:
   en: View
 background.stop:
   en: Stop
+background.delete:
+  en: Delete
+background.subagents_started_one:
+  en: Started 1 subagent
+background.subagents_started:
+  en: Started %{count} subagents
 background.stop_named:
   en: Stop %{name}
 background.stop_all:

@@ -6,7 +6,7 @@
 //! once protocol v2 is negotiated. [`PiFlavor`] carries those differences so
 //! both providers share one transport instead of two near-copies.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::io::{BufRead, BufReader, Write};
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
@@ -17,6 +17,7 @@ use std::time::Duration;
 use anyhow::{Context as _, anyhow};
 use crossbeam_channel::{Sender, bounded, unbounded};
 use parking_lot::Mutex;
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 use super::{activity, computer_use as computer_use_runtime};
@@ -24,8 +25,10 @@ use crate::driver::{
     DriverControl, DriverEventSender, DriverEventSink, DriverStartOptions, SessionOptions,
 };
 use crate::model::{
-    ActivityKind, DriverEvent, ExtensionNotificationLevel, ProviderResumeCursor, ReportedCommand,
-    RuntimeMode, UserInputAnswer, UserInputOption, UserInputQuestion,
+    ActivityKind, BackgroundWorkEvent, BackgroundWorkItem, BackgroundWorkKey, BackgroundWorkKind,
+    BackgroundWorkStatus, DriverEvent, ExtensionNotificationLevel, ProviderResumeCursor,
+    ReportedCommand, RuntimeMode, UserInputAnswer, UserInputOption, UserInputQuestion,
+    unix_time_millis,
 };
 
 const RPC_TIMEOUT: Duration = Duration::from_secs(10);
@@ -835,6 +838,12 @@ impl DriverControl for PiDriver {
         }
     }
 
+    fn stop_background_work(&self, _key: BackgroundWorkKey, control_id: String) {
+        let _ = self.commands.send(CommandMessage::ProviderControl(vec![
+            format!("/subagents-stop {control_id}"),
+        ]));
+    }
+
     fn respond(&self, _request_id: String, _option_id: String) {}
 
     fn apply_options(&self, options: SessionOptions) -> bool {
@@ -1325,6 +1334,182 @@ struct PiStreamState {
     plan_paths: HashMap<String, String>,
 }
 
+const PI_SUBAGENT_ASYNC_WIDGET_KEY: &str = "subagent-async";
+const PI_SUBAGENT_ASYNC_WIDGET_PREFIX: &str = "PI_SUBAGENT_ASYNC_JSON:";
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PiSubagentSnapshot {
+    kind: String,
+    version: u8,
+    runs: Vec<PiSubagentNode>,
+    omitted: PiSubagentOmitted,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct PiSubagentNode {
+    id: String,
+    kind: String,
+    label: String,
+    state: String,
+    #[serde(default)]
+    started_at: Option<u64>,
+    #[serde(default)]
+    updated_at: Option<u64>,
+    #[serde(default)]
+    ended_at: Option<u64>,
+    #[serde(default)]
+    activity: Option<PiSubagentActivity>,
+    #[serde(default)]
+    children: Vec<PiSubagentNode>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PiSubagentActivity {
+    #[serde(default)]
+    state: Option<String>,
+    #[serde(default)]
+    current_tool: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct PiSubagentOmitted {
+    runs: usize,
+    children: usize,
+    byte_limit_exceeded: bool,
+}
+
+fn pi_subagent_status(state: &str) -> BackgroundWorkStatus {
+    match state {
+        "queued" => BackgroundWorkStatus::Starting,
+        "running" => BackgroundWorkStatus::Running,
+        "complete" => BackgroundWorkStatus::Completed,
+        "failed" | "rejected" | "partial" => BackgroundWorkStatus::Failed,
+        "paused" => BackgroundWorkStatus::Running,
+        "stopped" => BackgroundWorkStatus::Stopped,
+        _ => BackgroundWorkStatus::Running,
+    }
+}
+
+fn pi_subagent_activity_detail(activity: Option<&PiSubagentActivity>) -> Option<String> {
+    let activity = activity?;
+    activity
+        .current_tool
+        .as_deref()
+        .map(|tool| format!("tool {tool}"))
+        .or_else(|| activity.state.clone())
+}
+
+fn pi_subagent_items(
+    node: PiSubagentNode,
+    path: Option<String>,
+    parent_id: Option<String>,
+    root_id: &str,
+    seen_ids: &mut HashSet<String>,
+    items: &mut Vec<BackgroundWorkItem>,
+) {
+    let PiSubagentNode {
+        id,
+        kind,
+        label,
+        state,
+        started_at,
+        updated_at,
+        ended_at,
+        activity,
+        children,
+    } = node;
+    if !seen_ids.insert(id.clone()) {
+        return;
+    }
+    let provider_id = path
+        .as_deref()
+        .map(|parent| format!("{parent}/{id}"))
+        .unwrap_or_else(|| format!("pi-subagent/{id}"));
+    let visible = kind == "subagent";
+    let stop_target = if path.is_some() {
+        format!("{root_id} {id}")
+    } else {
+        id.clone()
+    };
+    let next_parent_id = if visible {
+        Some(provider_id.clone())
+    } else {
+        parent_id.clone()
+    };
+    if visible {
+        let status = pi_subagent_status(&state);
+        let started_at_ms = started_at.unwrap_or_else(unix_time_millis);
+        let updated_at_ms = updated_at.or(ended_at).unwrap_or(started_at_ms);
+        let mut item = BackgroundWorkItem::new(
+            BackgroundWorkKind::Subagent,
+            provider_id.clone(),
+            label,
+            status,
+        );
+        item.started_at_ms = started_at_ms;
+        item.updated_at_ms = updated_at_ms;
+        item.duration_ms = ended_at.map(|ended| ended.saturating_sub(started_at_ms));
+        item.background = true;
+        item.can_stop = status.is_stoppable();
+        item.control_id = Some(stop_target);
+        item.detail = pi_subagent_activity_detail(activity.as_ref());
+        item.role = Some(kind);
+        item.parent_id = parent_id;
+        items.push(item);
+    }
+
+    let (visible_children, other_children): (Vec<_>, Vec<_>) = children
+        .into_iter()
+        .partition(|child| child.kind == "subagent");
+    for child in visible_children.into_iter().chain(other_children) {
+        pi_subagent_items(
+            child,
+            Some(provider_id.clone()),
+            next_parent_id.clone(),
+            root_id,
+            seen_ids,
+            items,
+        );
+    }
+}
+
+fn pi_subagent_widget_items(value: &Value) -> Option<(Vec<BackgroundWorkItem>, bool)> {
+    if value.get("method").and_then(Value::as_str) != Some("setWidget")
+        || value.get("widgetKey").and_then(Value::as_str) != Some(PI_SUBAGENT_ASYNC_WIDGET_KEY)
+    {
+        return None;
+    }
+    let line = value
+        .get("widgetLines")
+        .and_then(Value::as_array)
+        .into_iter()
+        .flatten()
+        .filter_map(Value::as_str)
+        .find(|line| line.starts_with(PI_SUBAGENT_ASYNC_WIDGET_PREFIX));
+    let Some(line) = line else {
+        return Some((Vec::new(), true));
+    };
+    let snapshot: PiSubagentSnapshot =
+        serde_json::from_str(&line[PI_SUBAGENT_ASYNC_WIDGET_PREFIX.len()..]).ok()?;
+    if snapshot.kind != "pi-subagents.async-status-snapshot" || snapshot.version != 1 {
+        return None;
+    }
+    let mut items = Vec::new();
+    let mut seen_ids = HashSet::new();
+    for run in snapshot.runs {
+        let root_id = run.id.clone();
+        pi_subagent_items(run, None, None, &root_id, &mut seen_ids, &mut items);
+    }
+    let complete = snapshot.omitted.runs == 0
+        && snapshot.omitted.children == 0
+        && !snapshot.omitted.byte_limit_exceeded;
+    Some((items, complete))
+}
+
 fn handle_pi_message(
     flavor: PiFlavor,
     value: Value,
@@ -1617,6 +1802,21 @@ fn handle_pi_message_with_dialogs(
         "extension_ui_request" => {
             let method = value.get("method").and_then(Value::as_str);
             match method {
+                Some("setWidget") => {
+                    if let Some((items, complete)) = pi_subagent_widget_items(&value) {
+                        if complete {
+                            let _ = events.send(DriverEvent::BackgroundWork(
+                                BackgroundWorkEvent::ReconcileSubagents { items },
+                            ));
+                        } else {
+                            for item in items {
+                                let _ = events.send(DriverEvent::BackgroundWork(
+                                    BackgroundWorkEvent::Upsert(item),
+                                ));
+                            }
+                        }
+                    }
+                }
                 Some("notify") => {
                     if let Some(message) = value.get("message").and_then(Value::as_str) {
                         let level = match value.get("notifyType").and_then(Value::as_str) {
@@ -2581,6 +2781,37 @@ mod tests {
             event_rx.recv().unwrap(),
             DriverEvent::TurnFinished { success: true, .. }
         ));
+    }
+
+    #[test]
+    fn pi_subagent_widget_becomes_nested_background_work() {
+        let (items, complete) = pi_subagent_widget_items(&json!({
+            "method": "setWidget",
+            "widgetKey": "subagent-async",
+            "widgetLines": [r#"PI_SUBAGENT_ASYNC_JSON:{"kind":"pi-subagents.async-status-snapshot","version":1,"runs":[{"id":"run-1","kind":"workflow","label":"scout, scout, scout","state":"running","startedAt":100,"updatedAt":150,"children":[{"id":"step-1","kind":"step","label":"agent-1","state":"queued","children":[{"id":"child-1","kind":"subagent","label":"scout","state":"running","activity":{"currentTool":"read"}}]},{"id":"child-1","kind":"subagent","label":"scout","state":"running","activity":{"currentTool":"read"}}]}],"omitted":{"runs":0,"children":0,"byteLimitExceeded":false}}"#]
+        }))
+        .expect("valid Pi subagent widget");
+
+        assert!(complete);
+        assert_eq!(items.len(), 1);
+        assert_eq!(items[0].key.provider_id, "pi-subagent/run-1/child-1");
+        assert_eq!(items[0].title, "scout");
+        assert_eq!(items[0].detail.as_deref(), Some("tool read"));
+        assert_eq!(items[0].parent_id, None);
+        assert_eq!(items[0].status, BackgroundWorkStatus::Running);
+    }
+
+    #[test]
+    fn bounded_pi_subagent_widget_does_not_reconcile_hidden_work() {
+        let (items, complete) = pi_subagent_widget_items(&json!({
+            "method": "setWidget",
+            "widgetKey": "subagent-async",
+            "widgetLines": [r#"PI_SUBAGENT_ASYNC_JSON:{"kind":"pi-subagents.async-status-snapshot","version":1,"runs":[],"omitted":{"runs":1,"children":0,"byteLimitExceeded":false}}"#]
+        }))
+        .expect("valid bounded Pi subagent widget");
+
+        assert!(!complete);
+        assert!(items.is_empty());
     }
 
     #[test]
