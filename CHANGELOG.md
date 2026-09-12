@@ -16,6 +16,16 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.4]
+
+- Add a Transparent window style with native macOS vibrancy and live window transparency controls
+- Keep transparent surfaces, dialogs, pickers, and panels readable as transparency changes
+- Keep sidebar and main canvas on the same blur layer, with consistent styling at every transparency level
+- Add configurable sidebar transparency and a darker canvas for clearer agent workspaces
+- Refresh sidebar, new-task, settings, and supporting UI icons
+- Expose the composer to macOS accessibility tools
+- Add Intel macOS release builds
+
 ## [0.1.3]
 
 - Keep popovers, context menus, and pickers opaque in Liquid Glass and Image window styles for readability
