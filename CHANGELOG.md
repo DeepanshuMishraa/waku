@@ -23,6 +23,8 @@ the original feature bullet instead of adding separate entries for them.
 - Keep popovers, context menus, and pickers opaque in Liquid Glass and Image window styles for readability
 - Fix settings view background opacity in Image and Liquid Glass window styles
 - Add file editor autosave and immediate Command-S (`⌘S`) save with toast feedback
+- Show Pi subagents in Activity with one row per running agent, start notifications, and Stop/Delete controls
+- Fix duplicate subagent entries and garbled ANSI completion toasts
 
 ## [0.1.2]
 
