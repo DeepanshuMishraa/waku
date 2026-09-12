@@ -16,7 +16,10 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.4]
+
 - Add Pi plan-mode controls, extension UI bridging, and grouped Pi repository/file references in composer autocomplete
+- Update the sidebar Home and Settings icons
 
 ## [0.1.3]
 
