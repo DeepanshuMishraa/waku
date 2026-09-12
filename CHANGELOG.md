@@ -16,6 +16,11 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.5]
+
+- Add macOS Accessibility text-field support to the composer for Willow and WhisprFlow dictation
+- Normalize sidebar action icon sizing
+
 ## [0.1.4]
 
 - Add Pi plan-mode controls, extension UI bridging, and grouped Pi repository/file references in composer autocomplete

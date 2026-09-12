@@ -669,6 +669,7 @@ pub struct TextInput {
     extra_selection_ranges: Vec<Range<usize>>,
     content: SharedString,
     placeholder: SharedString,
+    accessibility_label: Option<SharedString>,
     selected_range: Range<usize>,
     selection_reversed: bool,
     marked_range: Option<Range<usize>>,
@@ -756,6 +757,7 @@ impl TextInput {
             extra_selection_ranges: Vec::new(),
             content: "".into(),
             placeholder: "".into(),
+            accessibility_label: None,
             selected_range: 0..0,
             selection_reversed: false,
             marked_range: None,
@@ -837,6 +839,14 @@ impl TextInput {
     /// Placeholder shown while the field is empty.
     pub fn placeholder(mut self, placeholder: impl Into<SharedString>) -> Self {
         self.placeholder = placeholder.into();
+        self
+    }
+
+    /// Name exposed to macOS accessibility clients such as dictation tools.
+    /// The placeholder remains a separate accessibility property so it can be
+    /// announced as a hint rather than being used as the control's identity.
+    pub fn accessibility_label(mut self, label: impl Into<SharedString>) -> Self {
+        self.accessibility_label = Some(label.into());
         self
     }
 
@@ -2811,6 +2821,8 @@ impl Render for TextInput {
         let theme = Theme::current(cx);
         let input = cx.entity();
         let context_menu_input = input.clone();
+        let accessibility_replace_input = input.clone();
+        let accessibility_set_input = input.clone();
         let scroll_handle = self.scroll_handle.clone();
         let padding_x = self.padding_x;
         let scrollbar = self
@@ -2818,7 +2830,15 @@ impl Render for TextInput {
             .then(|| scrollbar::vertical(&self.scroll_handle, &self.scrollbar_state));
         let field = div()
             .key_context("TextInput")
-            .id("composer-field")
+            // Every TextInput needs its own stable node. The old shared id
+            // collapsed multiple fields into one accessibility element.
+            .id(("text-input", input.entity_id()))
+            .role(accesskit::Role::TextInput)
+            .when_some(self.accessibility_label.clone(), |field, label| {
+                field.aria_label(label)
+            })
+            .aria_value(self.content.clone())
+            .aria_placeholder(self.placeholder.clone())
             .track_focus(&self.focus_handle(cx))
             .cursor(CursorStyle::IBeam)
             .on_action(cx.listener(Self::backspace))
@@ -2867,6 +2887,30 @@ impl Render for TextInput {
             .on_action(cx.listener(Self::newline))
             .on_action(cx.listener(Self::submit_steer))
             .on_action(cx.listener(Self::clear_field))
+            .when(!self.read_only, |field| {
+                field
+                    .on_a11y_action(
+                        accesskit::Action::ReplaceSelectedText,
+                        move |data, _, cx| {
+                            let Some(accesskit::ActionData::Value(value)) = data else {
+                                return;
+                            };
+                            let value = value.to_string();
+                            accessibility_replace_input.update(cx, |input, cx| {
+                                let selected_range = input.selected_range();
+                                input.replace_range(selected_range, &value, cx);
+                            });
+                        },
+                    )
+                    .on_a11y_action(accesskit::Action::SetValue, move |data, _, cx| {
+                        let Some(accesskit::ActionData::Value(value)) = data else {
+                            return;
+                        };
+                        accessibility_set_input.update(cx, |input, cx| {
+                            input.set_content(value.to_string(), cx);
+                        });
+                    })
+            })
             .on_mouse_down(MouseButton::Left, cx.listener(Self::on_mouse_down))
             .on_mouse_down(MouseButton::Right, cx.listener(Self::on_context_mouse_down))
             .on_mouse_up(MouseButton::Left, cx.listener(Self::on_mouse_up))
@@ -3019,6 +3063,7 @@ impl ComposerInput {
                 .submit_on_enter()
                 .auto_height()
                 .media_paste()
+                .accessibility_label("Composer")
                 .placeholder(tr!("input.do_anything"))
         });
         let focus_handle = input.read(cx).focus();
