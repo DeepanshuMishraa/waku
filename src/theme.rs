@@ -158,20 +158,23 @@ impl Theme {
             ColorTheme::InsulatorLight | ColorTheme::InsulatorDark => unreachable!("Insulator base themes return above"),
         };
         let (canvas, surface, raised, text, muted, accent, success, warning, danger, is_dark) = palette;
-        let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(if is_dark { surface } else { surface }).into() };
+        let sidebar_surface = surface;
+        let canvas = if is_dark { 0x000000 } else { canvas };
+        let surface = if is_dark { 0x000000 } else { surface };
+        let sidebar = if cfg!(target_os = "macos") { transparent_black() } else { rgb(sidebar_surface).into() };
         let base_overlay = if is_dark { hsla(0.0, 0.0, 1.0, 0.06) } else { hsla(0.0, 0.0, 0.0, 0.06) };
         let elevated_color = if is_dark && raised == 0x44475a {
             rgb(0x282a36).into()
         } else {
             rgb(raised).into()
         };
-        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), elevated: elevated_color, elevated_surface: rgb(surface).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
+        Self { is_dark, canvas: rgb(canvas).into(), sidebar, sidebar_drag_background: rgb(sidebar_surface).into(), sidebar_item_background: base_overlay, surface: rgb(surface).into(), raised: rgb(raised).into(), elevated: elevated_color, elevated_surface: rgb(sidebar_surface).into(), composer: rgb(raised).into(), inset: rgb(if is_dark { canvas } else { raised }).into(), terminal: rgb(canvas).into(), overlay: base_overlay, overlay_strong: base_overlay.opacity(1.5), border: base_overlay, border_strong: base_overlay.opacity(2.0), sidebar_border: base_overlay, text: rgb(text).into(), text_secondary: rgb(muted).into(), text_tertiary: rgb(muted).into(), text_ghost: rgb(muted).into(), accent: rgb(accent).into(), resize_handle: rgb(accent).into(), gauge: rgb(accent).into(), selection: rgb(accent).into(), code_text: rgb(warning).into(), code_wash: base_overlay, inverse: rgb(text).into(), on_inverse: rgb(canvas).into(), warning: rgb(warning).into(), success: rgb(success).into(), favorite: rgb(warning).into(), danger: rgb(danger).into(), danger_soft: rgb(danger).into() }
     }
 
     pub fn dark() -> Self {
         Self {
             is_dark: true,
-            canvas: rgb(0x1A1A1A).into(),
+            canvas: rgb(0x000000).into(),
             sidebar: if cfg!(target_os = "macos") {
                 transparent_black()
             } else {
@@ -179,7 +182,7 @@ impl Theme {
             },
             sidebar_drag_background: rgb(0x181818).into(),
             sidebar_item_background: hsla(0.0, 0.0, 0.941, 0.06),
-            surface: rgb(0x1A1A1A).into(),
+            surface: rgb(0x000000).into(),
             raised: rgb(0x232323).into(),
             elevated: rgb(0x232323).into(),
             elevated_surface: rgb(0x1A1A1A).into(),
@@ -268,6 +271,41 @@ impl Theme {
 }
 
 impl Theme {
+    /// Resolve the sidebar surface while keeping the content controls fully
+    /// opaque. Transparency is user-facing percentage: 0% is opaque and 100%
+    /// lets the window background show through.
+    pub fn sidebar_background(
+        self,
+        style: WindowStyle,
+        transparency: f32,
+        dragging: bool,
+    ) -> Hsla {
+        let background = if dragging {
+            self.sidebar_drag_background
+        } else {
+            match style {
+                WindowStyle::LiquidGlass => Hsla {
+                    a: 0.08,
+                    ..self.surface
+                },
+                WindowStyle::Image => Hsla {
+                    a: 0.82,
+                    ..self.canvas
+                },
+                WindowStyle::Solid => self.sidebar,
+            }
+        };
+        let visibility = if transparency.is_finite() {
+            1.0 - transparency.clamp(0.0, 100.0) / 100.0
+        } else {
+            1.0 - insulator_client::persistence::DEFAULT_SIDEBAR_TRANSPARENCY / 100.0
+        };
+        Hsla {
+            a: background.a * visibility,
+            ..background
+        }
+    }
+
     pub fn for_window_style(mut self, style: WindowStyle) -> Self {
         match style {
             WindowStyle::LiquidGlass => {
@@ -402,6 +440,7 @@ pub fn apply_theme_preference(
     preference: ThemePreference,
     color_theme: ColorTheme,
     window_style: WindowStyle,
+    sidebar_transparency: f32,
     window: &mut Window,
     cx: &mut App,
 ) {
@@ -424,7 +463,12 @@ pub fn apply_theme_preference(
     let theme = Theme::from_color_theme(color_theme).for_window_style(window_style);
     let sidebar_color = theme.sidebar_drag_background;
     set_active_theme(theme, cx);
-    crate::platform::configure_sidebar_material(window, is_dark, sidebar_color);
+    crate::platform::configure_sidebar_material(
+        window,
+        is_dark,
+        sidebar_color,
+        sidebar_transparency,
+    );
     window.refresh();
 }
 

@@ -1217,6 +1217,11 @@ impl Insulator {
         let is_resizing = self
             .panel_resize_drag
             .is_some_and(|drag| drag.target == PanelResizeTarget::Sidebar);
+        let sidebar_background = theme.sidebar_background(
+            self.state.window_style,
+            self.state.sidebar_transparency,
+            is_resizing,
+        );
 
         let rows = self.sidebar_rows_cached(Local::now().date_naive(), unix_time());
         self.sync_sidebar_rows(&rows);
@@ -1252,15 +1257,7 @@ impl Insulator {
             .flex_none()
             .flex()
             .flex_col()
-            .bg(if is_resizing {
-                theme.sidebar_drag_background
-            } else if self.state.window_style == WindowStyle::Image {
-                Hsla { a: 0.82, ..theme.canvas }
-            } else if self.state.window_style == WindowStyle::LiquidGlass {
-                Hsla { a: 0.08, ..theme.surface }
-            } else {
-                theme.sidebar
-            })
+            .bg(sidebar_background)
             .child(self.render_sidebar_titlebar(window, cx))
             .child(
                 div()

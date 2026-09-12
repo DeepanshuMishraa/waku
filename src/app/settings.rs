@@ -197,11 +197,11 @@ impl Insulator {
             .flex_none()
             .flex()
             .flex_col()
-            .bg(match self.state.window_style {
-                WindowStyle::LiquidGlass => Hsla { a: 0.08, ..theme.surface },
-                WindowStyle::Image => Hsla { a: 0.82, ..theme.canvas },
-                WindowStyle::Solid => theme.sidebar,
-            })
+            .bg(theme.sidebar_background(
+                self.state.window_style,
+                self.state.sidebar_transparency,
+                false,
+            ))
             .child(self.render_settings_sidebar_titlebar(window, cx))
             .child(
                 div().px(px(12.0)).child(
@@ -1425,6 +1425,7 @@ impl Insulator {
         let selected_theme = self.state.theme;
         let selected_color_theme = self.state.color_theme;
         let selected_window_style = self.state.window_style;
+        let selected_sidebar_transparency = self.state.sidebar_transparency;
         let selected_language = self.state.language;
         let weak = cx.entity().downgrade();
         let theme_handle = self.menu_handle("theme-selector", cx);
@@ -1858,6 +1859,58 @@ impl Insulator {
                     )
                     .child(window_style_selector),
             )
+            .child(div().mx(px(20.0)).h(px(1.0)).bg(theme.border))
+            .child(
+                div()
+                    .w_full()
+                    .min_h(px(72.0))
+                    .px(px(20.0))
+                    .py(px(12.0))
+                    .flex()
+                    .items_center()
+                    .gap(px(24.0))
+                    .child(
+                        div()
+                            .flex_1()
+                            .min_w_0()
+                            .child(
+                                div()
+                                    .text_size(sp(13.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text)
+                                    .child("Sidebar transparency"),
+                            )
+                            .child(
+                                div()
+                                    .mt(px(5.0))
+                                    .text_size(sp(12.5))
+                                    .line_height(sp(18.0))
+                                    .text_color(theme.text_secondary)
+                                    .child("Adjust how much of the background shows through."),
+                            ),
+                    )
+                    .child(
+                        div()
+                            .w(px(220.0))
+                            .flex_none()
+                            .flex()
+                            .items_center()
+                            .gap(px(10.0))
+                            .child(
+                                Slider::new(&self.sidebar_transparency_slider)
+                                    .width(px(170.0)),
+                            )
+                            .child(
+                                div()
+                                    .w(px(40.0))
+                                    .text_size(sp(12.5))
+                                    .font_weight(FontWeight::MEDIUM)
+                                    .text_color(theme.text_secondary)
+                                    .text_right()
+                                    .child(format!("{selected_sidebar_transparency:.0}%")),
+                            ),
+                    ),
+            )
             .when(selected_window_style == WindowStyle::Image, |element| {
                 let weak = cx.entity().downgrade();
                 let image_path = self.state.background_image_path.clone();
@@ -2203,6 +2256,33 @@ impl Insulator {
     }
 
     pub(super) fn commit_sound_volume(&mut self, _cx: &mut Context<Self>) {
+        self.save();
+    }
+
+    pub(super) fn set_sidebar_transparency(
+        &mut self,
+        transparency: f32,
+        cx: &mut Context<Self>,
+    ) {
+        let transparency = insulator_client::persistence::sanitized_sidebar_transparency(transparency);
+        if (self.state.sidebar_transparency - transparency).abs() < f32::EPSILON {
+            return;
+        }
+        self.state.sidebar_transparency = transparency;
+        self.sidebar_transparency_slider.update(cx, |slider, cx| {
+            if (slider.value().start() - transparency).abs() >= f32::EPSILON {
+                slider.set_value(transparency, cx);
+            }
+        });
+        let theme = Theme::current(cx);
+        crate::platform::set_sidebar_material_transparency(
+            theme.sidebar_drag_background,
+            transparency,
+        );
+        cx.notify();
+    }
+
+    pub(super) fn commit_sidebar_transparency(&mut self, _cx: &mut Context<Self>) {
         self.save();
     }
 
@@ -3192,7 +3272,14 @@ impl Insulator {
         if !self.state.color_theme.for_dark(dark) {
             self.state.color_theme = ColorTheme::default_for_dark(dark);
         }
-        crate::theme::apply_theme_preference(preference, self.state.color_theme, self.state.window_style, window, cx);
+        crate::theme::apply_theme_preference(
+            preference,
+            self.state.color_theme,
+            self.state.window_style,
+            self.state.sidebar_transparency,
+            window,
+            cx,
+        );
         crate::platform::configure_window_style(window, self.state.window_style, self.state.color_theme, self.state.background_image_path.as_deref());
         self.save();
         cx.notify();
@@ -3208,7 +3295,14 @@ impl Insulator {
             return;
         }
         self.state.color_theme = color_theme;
-        crate::theme::apply_theme_preference(self.state.theme, color_theme, self.state.window_style, window, cx);
+        crate::theme::apply_theme_preference(
+            self.state.theme,
+            color_theme,
+            self.state.window_style,
+            self.state.sidebar_transparency,
+            window,
+            cx,
+        );
         crate::platform::configure_window_style(window, self.state.window_style, color_theme, self.state.background_image_path.as_deref());
         self.save();
         cx.notify();
@@ -3249,8 +3343,15 @@ impl Insulator {
         )
     }
 
-    pub(crate) fn window_style_config(&self) -> (WindowStyle, ColorTheme, Option<&str>) {
-        (self.state.window_style, self.state.color_theme, self.state.background_image_path.as_deref())
+    pub(crate) fn window_style_config(
+        &self,
+    ) -> (WindowStyle, ColorTheme, Option<&str>, f32) {
+        (
+            self.state.window_style,
+            self.state.color_theme,
+            self.state.background_image_path.as_deref(),
+            self.state.sidebar_transparency,
+        )
     }
 
     fn set_window_style(&mut self, style: WindowStyle, window: &mut Window, cx: &mut Context<Self>) {
@@ -3265,8 +3366,20 @@ impl Insulator {
         if style == WindowStyle::LiquidGlass && !self.state.color_theme.for_dark(true) {
             self.state.color_theme = ColorTheme::default_for_dark(true);
         }
-        crate::theme::apply_theme_preference(self.state.theme, self.state.color_theme, style, window, cx);
+        crate::theme::apply_theme_preference(
+            self.state.theme,
+            self.state.color_theme,
+            style,
+            self.state.sidebar_transparency,
+            window,
+            cx,
+        );
         crate::platform::configure_window_style(window, style, self.state.color_theme, self.state.background_image_path.as_deref());
+        let theme = Theme::current(cx);
+        crate::platform::set_sidebar_material_transparency(
+            theme.sidebar_drag_background,
+            self.state.sidebar_transparency,
+        );
         self.save();
         if style == WindowStyle::Image && self.state.background_image_path.is_none() {
             let receiver = cx.prompt_for_paths(PathPromptOptions {

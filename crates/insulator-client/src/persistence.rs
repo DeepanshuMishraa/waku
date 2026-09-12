@@ -80,6 +80,10 @@ fn default_sound_volume() -> f32 {
     100.0
 }
 
+fn default_sidebar_transparency() -> f32 {
+    DEFAULT_SIDEBAR_TRANSPARENCY
+}
+
 fn default_haptics_enabled() -> bool {
     false
 }
@@ -265,6 +269,8 @@ pub struct AppSettings {
     pub color_theme: ColorTheme,
     #[serde(default)]
     pub window_style: WindowStyle,
+    #[serde(default = "default_sidebar_transparency")]
+    pub sidebar_transparency: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_image_path: Option<String>,
     pub language: AppLanguage,
@@ -309,6 +315,7 @@ impl Default for AppSettings {
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
             window_style: WindowStyle::default(),
+            sidebar_transparency: DEFAULT_SIDEBAR_TRANSPARENCY,
             background_image_path: None,
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
@@ -331,6 +338,15 @@ pub const DEFAULT_UI_FONT_SIZE: f32 = 14.0;
 pub const DEFAULT_CODE_FONT_SIZE: f32 = 13.0;
 pub const DEFAULT_UI_FONT_FAMILY: &str = ".SystemUIFont";
 pub const DEFAULT_CODE_FONT_FAMILY: &str = "JetBrains Mono";
+pub const DEFAULT_SIDEBAR_TRANSPARENCY: f32 = 8.0;
+
+pub fn sanitized_sidebar_transparency(transparency: f32) -> f32 {
+    if transparency.is_finite() {
+        transparency.clamp(0.0, 100.0)
+    } else {
+        DEFAULT_SIDEBAR_TRANSPARENCY
+    }
+}
 
 fn default_font_smoothing() -> bool {
     true
@@ -428,6 +444,8 @@ pub struct PersistedState {
     pub color_theme: ColorTheme,
     #[serde(default)]
     pub window_style: WindowStyle,
+    #[serde(default = "default_sidebar_transparency")]
+    pub sidebar_transparency: f32,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_image_path: Option<String>,
     #[serde(default)]
@@ -525,6 +543,7 @@ impl PersistedState {
             theme: ThemePreference::System,
             color_theme: ColorTheme::default(),
             window_style: WindowStyle::default(),
+            sidebar_transparency: DEFAULT_SIDEBAR_TRANSPARENCY,
             background_image_path: None,
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
@@ -659,6 +678,7 @@ impl PersistedState {
             theme: self.theme,
             color_theme: self.color_theme,
             window_style: self.window_style,
+            sidebar_transparency: self.sidebar_transparency,
             background_image_path: self.background_image_path.clone(),
             language: self.language,
             ui_font_size: self.ui_font_size,
@@ -706,6 +726,7 @@ impl PersistedState {
         self.theme = settings.theme;
         self.color_theme = settings.color_theme;
         self.window_style = settings.window_style;
+        self.sidebar_transparency = sanitized_sidebar_transparency(settings.sidebar_transparency);
         self.background_image_path = settings.background_image_path;
         self.language = settings.language;
         self.ui_font_size = sanitized_ui_font_size(settings.ui_font_size);
@@ -1326,6 +1347,21 @@ mod tests {
 
         assert!(!settings.show_resource_usage);
         assert!(!state.show_resource_usage);
+    }
+
+    #[test]
+    fn sidebar_transparency_defaults_and_sanitizes() {
+        let settings: AppSettings = serde_json::from_str("{}").unwrap();
+        let state = PersistedState::fresh(PathBuf::from("/tmp/project"));
+
+        assert_eq!(settings.sidebar_transparency, DEFAULT_SIDEBAR_TRANSPARENCY);
+        assert_eq!(state.sidebar_transparency, DEFAULT_SIDEBAR_TRANSPARENCY);
+        assert_eq!(sanitized_sidebar_transparency(-1.0), 0.0);
+        assert_eq!(sanitized_sidebar_transparency(101.0), 100.0);
+        assert_eq!(
+            sanitized_sidebar_transparency(f32::NAN),
+            DEFAULT_SIDEBAR_TRANSPARENCY
+        );
     }
 
     #[test]

@@ -16,6 +16,12 @@ the original feature bullet instead of adding separate entries for them.
 
 ## [unreleased]
 
+## [0.1.6]
+
+- Add an adjustable sidebar transparency control in Appearance settings
+- Keep dark mode's main application canvas pure black while preserving readable composer and elevated surfaces
+- Keep sidebar action icons, including Settings, at a consistent size
+
 ## [0.1.5]
 
 - Add macOS Accessibility text-field support to the composer for Willow and WhisprFlow dictation
