@@ -271,6 +271,8 @@ pub struct AppSettings {
     pub window_style: WindowStyle,
     #[serde(default = "default_sidebar_transparency")]
     pub sidebar_transparency: f32,
+    #[serde(default)]
+    pub sidebar_transparency_customized: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_image_path: Option<String>,
     pub language: AppLanguage,
@@ -316,6 +318,7 @@ impl Default for AppSettings {
             color_theme: ColorTheme::default(),
             window_style: WindowStyle::default(),
             sidebar_transparency: DEFAULT_SIDEBAR_TRANSPARENCY,
+            sidebar_transparency_customized: false,
             background_image_path: None,
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
@@ -338,7 +341,17 @@ pub const DEFAULT_UI_FONT_SIZE: f32 = 14.0;
 pub const DEFAULT_CODE_FONT_SIZE: f32 = 13.0;
 pub const DEFAULT_UI_FONT_FAMILY: &str = ".SystemUIFont";
 pub const DEFAULT_CODE_FONT_FAMILY: &str = "JetBrains Mono";
-pub const DEFAULT_SIDEBAR_TRANSPARENCY: f32 = 8.0;
+pub const DEFAULT_SIDEBAR_TRANSPARENCY: f32 = 25.0;
+
+pub fn default_sidebar_transparency_for(dark: bool, window_style: WindowStyle) -> f32 {
+    if !dark {
+        10.0
+    } else if window_style == WindowStyle::Image {
+        15.0
+    } else {
+        25.0
+    }
+}
 
 pub fn sanitized_sidebar_transparency(transparency: f32) -> f32 {
     if transparency.is_finite() {
@@ -446,6 +459,8 @@ pub struct PersistedState {
     pub window_style: WindowStyle,
     #[serde(default = "default_sidebar_transparency")]
     pub sidebar_transparency: f32,
+    #[serde(default)]
+    pub sidebar_transparency_customized: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub background_image_path: Option<String>,
     #[serde(default)]
@@ -544,6 +559,7 @@ impl PersistedState {
             color_theme: ColorTheme::default(),
             window_style: WindowStyle::default(),
             sidebar_transparency: DEFAULT_SIDEBAR_TRANSPARENCY,
+            sidebar_transparency_customized: false,
             background_image_path: None,
             language: AppLanguage::default(),
             ui_font_size: DEFAULT_UI_FONT_SIZE,
@@ -679,6 +695,7 @@ impl PersistedState {
             color_theme: self.color_theme,
             window_style: self.window_style,
             sidebar_transparency: self.sidebar_transparency,
+            sidebar_transparency_customized: self.sidebar_transparency_customized,
             background_image_path: self.background_image_path.clone(),
             language: self.language,
             ui_font_size: self.ui_font_size,
@@ -726,7 +743,17 @@ impl PersistedState {
         self.theme = settings.theme;
         self.color_theme = settings.color_theme;
         self.window_style = settings.window_style;
-        self.sidebar_transparency = sanitized_sidebar_transparency(settings.sidebar_transparency);
+        self.sidebar_transparency_customized = settings.sidebar_transparency_customized;
+        let dark = match settings.theme {
+            ThemePreference::Dark => true,
+            ThemePreference::Light => false,
+            ThemePreference::System => settings.color_theme.is_dark(),
+        };
+        self.sidebar_transparency = if self.sidebar_transparency_customized {
+            sanitized_sidebar_transparency(settings.sidebar_transparency)
+        } else {
+            default_sidebar_transparency_for(dark, settings.window_style)
+        };
         self.background_image_path = settings.background_image_path;
         self.language = settings.language;
         self.ui_font_size = sanitized_ui_font_size(settings.ui_font_size);
@@ -1356,6 +1383,9 @@ mod tests {
 
         assert_eq!(settings.sidebar_transparency, DEFAULT_SIDEBAR_TRANSPARENCY);
         assert_eq!(state.sidebar_transparency, DEFAULT_SIDEBAR_TRANSPARENCY);
+        assert_eq!(default_sidebar_transparency_for(false, WindowStyle::Solid), 10.0);
+        assert_eq!(default_sidebar_transparency_for(true, WindowStyle::Solid), 25.0);
+        assert_eq!(default_sidebar_transparency_for(true, WindowStyle::Image), 15.0);
         assert_eq!(sanitized_sidebar_transparency(-1.0), 0.0);
         assert_eq!(sanitized_sidebar_transparency(101.0), 100.0);
         assert_eq!(

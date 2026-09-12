@@ -1222,6 +1222,11 @@ impl Insulator {
             self.state.sidebar_transparency,
             is_resizing,
         );
+        let logo = if theme.is_dark {
+            crate::assets::home_logo()
+        } else {
+            crate::assets::light_home_logo()
+        };
 
         let rows = self.sidebar_rows_cached(Local::now().date_naive(), unix_time());
         self.sync_sidebar_rows(&rows);
@@ -1269,7 +1274,7 @@ impl Insulator {
                     .justify_start()
                     .pl(px(22.0))
                     .child(
-                        img(crate::assets::home_logo())
+                        img(logo)
                             .w(px(120.0))
                             .h(px(41.0))
                             .object_fit(ObjectFit::Contain),
@@ -2973,6 +2978,11 @@ impl Insulator {
 
     pub(super) fn render_home_screen(&self, cx: &mut Context<Self>) -> AnyElement {
         let theme = Theme::current(cx);
+        let logo = if theme.is_dark {
+            crate::assets::home_logo()
+        } else {
+            crate::assets::light_home_logo()
+        };
         div()
             .id("home-screen")
             .size_full()
@@ -2991,7 +3001,7 @@ impl Insulator {
                     .flex_col()
                     .items_center()
                     .child(
-                        img(crate::assets::home_logo())
+                        img(logo)
                             .w(px(360.0))
                             .h(px(123.0))
                             .max_w_full()

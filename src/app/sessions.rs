@@ -812,11 +812,12 @@ impl Insulator {
         _: &mut Window,
         cx: &mut Context<Self>,
     ) {
-        if event.button == MouseButton::Left
-            && let Some(drag) = self.panel_resize_drag.take()
-        {
+        if let Some(drag) = self.panel_resize_drag.take() {
             if drag.target != PanelResizeTarget::FileTree {
                 self.persist_panel_layout();
+            }
+            if event.button == MouseButton::Left {
+                cx.stop_propagation();
             }
             cx.notify();
         }

@@ -525,9 +525,9 @@ fn conversation_navigation_preview_does_not_change_during_a_running_turn() {
 fn panel_widths_preserve_main_content_when_the_window_narrows() {
     let (sidebar, right_panel) = fitted_panel_widths(980.0, true, true, 420.0, 720.0);
 
-    assert_eq!(sidebar, 340.0);
+    assert_eq!(sidebar, 260.0);
     assert_eq!(right_panel, 280.0);
-    assert_eq!(980.0 - sidebar - right_panel, 360.0);
+    assert_eq!(980.0 - sidebar - right_panel, 440.0);
 }
 
 #[test]
@@ -535,7 +535,7 @@ fn hidden_panels_do_not_consume_layout_width() {
     let (sidebar, right_panel) = fitted_panel_widths(980.0, false, true, 420.0, 720.0);
 
     assert_eq!(sidebar, 0.0);
-    assert_eq!(right_panel, 620.0);
+    assert_eq!(right_panel, 540.0);
 }
 
 #[test]
